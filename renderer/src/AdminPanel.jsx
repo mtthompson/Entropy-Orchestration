@@ -7,8 +7,12 @@ export function AdminPanel({
     currentTrack,
     cpuCount,
     gameState,
-    showToast
+    showToast,
+    graphicsSettings,
+    onGraphicsChange,
+    performanceStats
 }) {
+    const [showGraphics, setShowGraphics] = React.useState(false);
     // Debug logging
     React.useEffect(() => {
         console.log('[AdminPanel] Props updated:', { tracksCount: tracks?.length, currentTrack: currentTrack?.name, cpuCount, gameState });
@@ -46,6 +50,49 @@ export function AdminPanel({
         socket.emit('changeTrack', trackId);
         const track = tracks.find(t => t.id === trackId);
         showToast(`Changing to ${track?.name || 'track'}`, 'info');
+    };
+
+    const handleGraphicsPreset = (preset) => {
+        const presets = {
+            Low: {
+                shadowQuality: 1024,
+                enableHDR: false,
+                enableSSAO: false,
+                enableSSR: false,
+                enableDOF: false,
+                enableBloom: true,
+                bloomIntensity: 0.5,
+                toneMapping: 'None',
+                particleLimit: 3000,
+                showPerformance: true
+            },
+            Medium: {
+                shadowQuality: 2048,
+                enableHDR: true,
+                enableSSAO: true,
+                enableSSR: false,
+                enableDOF: false,
+                enableBloom: true,
+                bloomIntensity: 0.8,
+                toneMapping: 'Reinhard',
+                particleLimit: 7000,
+                showPerformance: true
+            },
+            High: {
+                shadowQuality: 4096,
+                enableHDR: true,
+                enableSSAO: true,
+                enableSSR: true,
+                enableDOF: false,
+                enableBloom: true,
+                bloomIntensity: 0.8,
+                toneMapping: 'ACES',
+                particleLimit: 15000,
+                showPerformance: true
+            }
+        };
+        onGraphicsChange(presets[preset]);
+        showToast(`Graphics: ${preset} preset applied`, 'success');
     };
 
     return (
@@ -260,6 +307,188 @@ export function AdminPanel({
                         currentTrack={currentTrack}
                         onSelectTrack={handleChangeTrack}
                     />
+                </div>
+
+                {/* Graphics Settings */}
+                <div style={{
+                    marginTop: '16px',
+                    paddingTop: '16px',
+                    borderTop: '1px solid rgba(255, 0, 255, 0.3)'
+                }}>
+                    <div 
+                        onClick={() => setShowGraphics(!showGraphics)}
+                        style={{
+                            color: '#00ffff',
+                            fontSize: '11px',
+                            marginBottom: '8px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '2px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}
+                    >
+                        <span>🎨 Graphics Settings</span>
+                        <span style={{ fontSize: '16px' }}>{showGraphics ? '▼' : '▶'}</span>
+                    </div>
+
+                    {showGraphics && (
+                        <div style={{ marginTop: '12px' }}>
+                            {/* Quick Presets */}
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
+                                {['Low', 'Medium', 'High'].map(preset => (
+                                    <button
+                                        key={preset}
+                                        onClick={() => handleGraphicsPreset(preset)}
+                                        style={{
+                                            flex: 1,
+                                            background: 'rgba(0, 255, 255, 0.2)',
+                                            border: '1px solid #00ffff',
+                                            borderRadius: '4px',
+                                            color: '#00ffff',
+                                            fontFamily: 'monospace',
+                                            fontSize: '9px',
+                                            padding: '4px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {preset}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Individual Settings */}
+                            <div style={{ fontSize: '10px', color: '#ccc', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {/* Shadow Quality */}
+                                <div>
+                                    <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                        <span>Shadows:</span>
+                                        <span style={{ color: '#00ffff' }}>{graphicsSettings.shadowQuality}</span>
+                                    </label>
+                                    <select
+                                        value={graphicsSettings.shadowQuality}
+                                        onChange={(e) => onGraphicsChange({ ...graphicsSettings, shadowQuality: Number(e.target.value) })}
+                                        style={{
+                                            width: '100%',
+                                            background: '#111',
+                                            color: '#00ffff',
+                                            border: '1px solid #00ffff',
+                                            borderRadius: '4px',
+                                            padding: '4px',
+                                            fontFamily: 'monospace',
+                                            fontSize: '10px'
+                                        }}
+                                    >
+                                        <option value={0}>Off</option>
+                                        <option value={1024}>1024</option>
+                                        <option value={2048}>2048</option>
+                                        <option value={4096}>4096</option>
+                                    </select>
+                                </div>
+
+                                {/* Toggles */}
+                                {[
+                                    { key: 'enableHDR', label: 'HDR Environment' },
+                                    { key: 'enableSSAO', label: 'SSAO' },
+                                    { key: 'enableSSR', label: 'SSR' },
+                                    { key: 'enableDOF', label: 'Depth of Field' },
+                                    { key: 'enableBloom', label: 'Bloom' },
+                                    { key: 'showPerformance', label: 'Performance Overlay' }
+                                ].map(({ key, label }) => (
+                                    <label key={key} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={graphicsSettings[key]}
+                                            onChange={(e) => onGraphicsChange({ ...graphicsSettings, [key]: e.target.checked })}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <span>{label}</span>
+                                    </label>
+                                ))}
+
+                                {/* Bloom Intensity */}
+                                {graphicsSettings.enableBloom && (
+                                    <div>
+                                        <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>Bloom Intensity:</span>
+                                            <span style={{ color: '#00ffff' }}>{graphicsSettings.bloomIntensity.toFixed(1)}</span>
+                                        </label>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="2"
+                                            step="0.1"
+                                            value={graphicsSettings.bloomIntensity}
+                                            onChange={(e) => onGraphicsChange({ ...graphicsSettings, bloomIntensity: Number(e.target.value) })}
+                                            style={{ width: '100%' }}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Tone Mapping */}
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '4px' }}>Tone Mapping:</label>
+                                    <select
+                                        value={graphicsSettings.toneMapping}
+                                        onChange={(e) => onGraphicsChange({ ...graphicsSettings, toneMapping: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            background: '#111',
+                                            color: '#00ffff',
+                                            border: '1px solid #00ffff',
+                                            borderRadius: '4px',
+                                            padding: '4px',
+                                            fontFamily: 'monospace',
+                                            fontSize: '10px'
+                                        }}
+                                    >
+                                        <option value="None">None</option>
+                                        <option value="LINEAR">Linear</option>
+                                        <option value="REINHARD">Reinhard</option>
+                                        <option value="REINHARD2">Reinhard2</option>
+                                        <option value="REINHARD2_ADAPTIVE">Reinhard2 Adaptive</option>
+                                        <option value="UNCHARTED2">Uncharted2</option>
+                                        <option value="OPTIMIZED_CINEON">Optimized Cineon</option>
+                                        <option value="ACES_FILMIC">ACES Filmic</option>
+                                    </select>
+                                </div>
+
+                                {/* Particle Limit */}
+                                <div>
+                                    <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                        <span>Particle Limit:</span>
+                                        <span style={{ color: '#00ffff' }}>{graphicsSettings.particleLimit}</span>
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="1000"
+                                        max="15000"
+                                        step="1000"
+                                        value={graphicsSettings.particleLimit}
+                                        onChange={(e) => onGraphicsChange({ ...graphicsSettings, particleLimit: Number(e.target.value) })}
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
+
+                                {/* FPS Display */}
+                                {performanceStats && (
+                                    <div style={{
+                                        marginTop: '8px',
+                                        padding: '8px',
+                                        background: 'rgba(0, 255, 0, 0.1)',
+                                        borderRadius: '4px',
+                                        fontSize: '9px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between'
+                                    }}>
+                                        <span>FPS: <strong>{performanceStats.fps}</strong></span>
+                                        <span>Draws: <strong>{performanceStats.drawCalls}</strong></span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Keyboard Shortcuts Hint */}

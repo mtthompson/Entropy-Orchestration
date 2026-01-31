@@ -1,4 +1,4 @@
-const { createTrackFromPath, createArena } = require('./GameTrackBuilder');
+const { createTrackFromPath, createArena, validateSpawnPoints } = require('./GameTrackBuilder');
 
 // =============================================================================
 // TRACK DEFINITIONS - All 12 Tracks with Proper Aligned Spawns
@@ -18,8 +18,8 @@ function generateAlignedSpawns(pathPoints, offset, count) {
     const pz = nx;
     const rotation = Math.atan2(dx, dz);
 
-    const colSpacing = 4;
-    const rowSpacing = 6;
+    const colSpacing = 10;
+    const rowSpacing = 15;
 
     for (let i = 0; i < count; i++) {
         const row = Math.floor(i / 4);
@@ -205,20 +205,20 @@ const TRACKS = [];
 // TRACK 1: Stadium Oval
 // =============================================================================
 const OVAL_PATH = [
-    { x: -40, z: 60 }, { x: -45, z: 40 }, { x: -45, z: -40 }, { x: -40, z: -60 },
-    { x: -20, z: -70 }, { x: 20, z: -70 }, { x: 40, z: -60 },
-    { x: 45, z: -40 }, { x: 45, z: 40 }, { x: 40, z: 60 },
-    { x: 20, z: 70 }, { x: -20, z: 70 }
+    { x: -100, z: 150 }, { x: -112, z: 100 }, { x: -112, z: -100 }, { x: -100, z: -150 },
+    { x: -50, z: -175 }, { x: 50, z: -175 }, { x: 100, z: -150 },
+    { x: 112, z: -100 }, { x: 112, z: 100 }, { x: 100, z: 150 },
+    { x: 50, z: 175 }, { x: -50, z: 175 }
 ];
 TRACKS.push({
     id: 'track_01',
     name: 'Stadium Oval',
     type: 'race',
     path: OVAL_PATH,
-    boundaries: createTrackFromPath(OVAL_PATH, 22, true),
-    spawnPoints: generateAlignedSpawns(OVAL_PATH, 5, 12),
-    powerupBounds: { minX: -55, maxX: 55, minZ: -80, maxZ: 80 },
-    floorSize: { width: 160, depth: 200 }
+    boundaries: createTrackFromPath(OVAL_PATH, 55, true),
+    spawnPoints: generateAlignedSpawns(OVAL_PATH, 10, 12),
+    powerupBounds: { minX: -140, maxX: 140, minZ: -200, maxZ: 200 },
+    floorSize: { width: 350, depth: 450 }
 });
 
 // =============================================================================
@@ -228,55 +228,55 @@ TRACKS.push({
     id: 'track_02',
     name: 'Thunder Dome',
     type: 'arena',
-    boundaries: createArena(65, 24),
-    spawnPoints: generateCircleSpawns(50, 12),
-    powerupBounds: { minX: -55, maxX: 55, minZ: -55, maxZ: 55 },
-    floorSize: { width: 160, depth: 160 }
+    boundaries: createArena(160, 24),
+    spawnPoints: generateCircleSpawns(120, 12),
+    powerupBounds: { minX: -140, maxX: 140, minZ: -140, maxZ: 140 },
+    floorSize: { width: 380, depth: 380 }
 });
 
 // =============================================================================
 // TRACK 3: The Switchback
 // =============================================================================
 const SWITCHBACK_PATH = [
-    { x: -60, z: 70 }, { x: -20, z: 70 }, { x: 20, z: 40 },
-    { x: 60, z: 40 }, { x: 60, z: 0 },
-    { x: 20, z: 0 }, { x: -20, z: -30 },
-    { x: -60, z: -30 }, { x: -60, z: -70 },
-    { x: -20, z: -70 }, { x: 20, z: -50 }, { x: 60, z: -70 },
-    { x: 60, z: -90 }, { x: -60, z: -90 }
+    { x: -150, z: 175 }, { x: -50, z: 175 }, { x: 50, z: 100 },
+    { x: 150, z: 100 }, { x: 150, z: 0 },
+    { x: 50, z: 0 }, { x: -50, z: -75 },
+    { x: -150, z: -75 }, { x: -150, z: -175 },
+    { x: -50, z: -175 }, { x: 50, z: -125 }, { x: 150, z: -175 },
+    { x: 150, z: -225 }, { x: -150, z: -225 }
 ];
 TRACKS.push({
     id: 'track_03',
     name: 'The Switchback',
     type: 'race',
     path: SWITCHBACK_PATH,
-    boundaries: createTrackFromPath(SWITCHBACK_PATH, 18, true),
-    spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 5, 8),
-    powerupBounds: { minX: -70, maxX: 70, minZ: -100, maxZ: 80 },
-    floorSize: { width: 180, depth: 220 }
+    boundaries: createTrackFromPath(SWITCHBACK_PATH, 45, true),
+    spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 10, 8),
+    powerupBounds: { minX: -175, maxX: 175, minZ: -250, maxZ: 200 },
+    floorSize: { width: 420, depth: 520 }
 });
 
 // =============================================================================
 // TRACK 4: Cloverleaf
 // =============================================================================
 const CLOVER_PATH = [
-    { x: 0, z: 80 }, { x: -40, z: 60 }, { x: -60, z: 20 },
-    { x: -40, z: -20 }, { x: 0, z: -10 },
-    { x: 40, z: -20 }, { x: 60, z: -60 },
-    { x: 40, z: -80 }, { x: 0, z: -70 },
-    { x: -40, z: -80 }, { x: -60, z: -60 },
-    { x: -40, z: -30 }, { x: 0, z: -10 },
-    { x: 40, z: 20 }, { x: 60, z: 60 }, { x: 40, z: 80 }
+    { x: 0, z: 200 }, { x: -100, z: 150 }, { x: -150, z: 50 },
+    { x: -100, z: -50 }, { x: 0, z: -25 },
+    { x: 100, z: -50 }, { x: 150, z: -150 },
+    { x: 100, z: -200 }, { x: 0, z: -175 },
+    { x: -100, z: -200 }, { x: -150, z: -150 },
+    { x: -100, z: -75 }, { x: 0, z: -25 },
+    { x: 100, z: 50 }, { x: 150, z: 150 }, { x: 100, z: 200 }
 ];
 TRACKS.push({
     id: 'track_04',
     name: 'Cloverleaf',
     type: 'race',
     path: CLOVER_PATH,
-    boundaries: createTrackFromPath(CLOVER_PATH, 20, true),
-    spawnPoints: generateAlignedSpawns(CLOVER_PATH, 5, 8),
-    powerupBounds: { minX: -70, maxX: 70, minZ: -90, maxZ: 90 },
-    floorSize: { width: 180, depth: 220 }
+    boundaries: createTrackFromPath(CLOVER_PATH, 50, true),
+    spawnPoints: generateAlignedSpawns(CLOVER_PATH, 10, 8),
+    powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
+    floorSize: { width: 420, depth: 520 }
 });
 
 // =============================================================================
@@ -286,32 +286,32 @@ TRACKS.push({
     id: 'track_05',
     name: 'Hexagon Heat',
     type: 'arena',
-    boundaries: createArena(55, 6),
-    spawnPoints: generateCircleSpawns(40, 12),
-    powerupBounds: { minX: -45, maxX: 45, minZ: -45, maxZ: 45 },
-    floorSize: { width: 140, depth: 140 }
+    boundaries: createArena(135, 6),
+    spawnPoints: generateCircleSpawns(100, 12),
+    powerupBounds: { minX: -115, maxX: 115, minZ: -115, maxZ: 115 },
+    floorSize: { width: 330, depth: 330 }
 });
 
 // =============================================================================
 // TRACK 6: Dragon's Tail
 // =============================================================================
 const DRAGON_PATH = [
-    { x: -50, z: 90 }, { x: -30, z: 70 }, { x: 10, z: 70 },
-    { x: 30, z: 50 }, { x: 50, z: 30 }, { x: 30, z: 10 },
-    { x: -10, z: 10 }, { x: -30, z: -10 }, { x: -50, z: -30 },
-    { x: -30, z: -50 }, { x: 10, z: -50 }, { x: 30, z: -70 },
-    { x: 50, z: -90 }, { x: 30, z: -100 }, { x: -50, z: -100 },
-    { x: -70, z: -70 }, { x: -70, z: 70 }
+    { x: -125, z: 225 }, { x: -75, z: 175 }, { x: 25, z: 175 },
+    { x: 75, z: 125 }, { x: 125, z: 75 }, { x: 75, z: 25 },
+    { x: -25, z: 25 }, { x: -75, z: -25 }, { x: -125, z: -75 },
+    { x: -75, z: -125 }, { x: 25, z: -125 }, { x: 75, z: -175 },
+    { x: 125, z: -225 }, { x: 75, z: -250 }, { x: -125, z: -250 },
+    { x: -175, z: -175 }, { x: -175, z: 175 }
 ];
 TRACKS.push({
     id: 'track_06',
     name: "Dragon's Tail",
     type: 'race',
     path: DRAGON_PATH,
-    boundaries: createTrackFromPath(DRAGON_PATH, 16, true),
-    spawnPoints: generateAlignedSpawns(DRAGON_PATH, 5, 8),
-    powerupBounds: { minX: -80, maxX: 60, minZ: -110, maxZ: 100 },
-    floorSize: { width: 200, depth: 260 }
+    boundaries: createTrackFromPath(DRAGON_PATH, 40, true),
+    spawnPoints: generateAlignedSpawns(DRAGON_PATH, 10, 8),
+    powerupBounds: { minX: -200, maxX: 150, minZ: -275, maxZ: 250 },
+    floorSize: { width: 480, depth: 600 }
 });
 
 // =============================================================================
@@ -321,34 +321,34 @@ TRACKS.push({
     id: 'track_07',
     name: 'The Octagon',
     type: 'arena',
-    boundaries: createArena(50, 8),
-    spawnPoints: generateCircleSpawns(35, 10),
-    powerupBounds: { minX: -40, maxX: 40, minZ: -40, maxZ: 40 },
-    floorSize: { width: 120, depth: 120 }
+    boundaries: createArena(125, 8),
+    spawnPoints: generateCircleSpawns(90, 10),
+    powerupBounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
+    floorSize: { width: 280, depth: 280 }
 });
 
 // =============================================================================
 // TRACK 8: Grand Prix
 // =============================================================================
 const GP_PATH = [
-    { x: -60, z: 80 }, { x: 0, z: 80 }, { x: 30, z: 70 },
-    { x: 50, z: 50 }, { x: 60, z: 20 },
-    { x: 50, z: 0 }, { x: 30, z: -10 },
-    { x: 50, z: -30 }, { x: 60, z: -50 },
-    { x: 50, z: -70 }, { x: 20, z: -80 },
-    { x: -20, z: -80 }, { x: -50, z: -70 },
-    { x: -60, z: -40 }, { x: -50, z: -10 },
-    { x: -60, z: 20 }
+    { x: -150, z: 200 }, { x: 0, z: 200 }, { x: 75, z: 175 },
+    { x: 125, z: 125 }, { x: 150, z: 50 },
+    { x: 125, z: 0 }, { x: 75, z: -25 },
+    { x: 125, z: -75 }, { x: 150, z: -125 },
+    { x: 125, z: -175 }, { x: 50, z: -200 },
+    { x: -50, z: -200 }, { x: -125, z: -175 },
+    { x: -150, z: -100 }, { x: -125, z: -25 },
+    { x: -150, z: 50 }
 ];
 TRACKS.push({
     id: 'track_08',
     name: 'Grand Prix',
     type: 'race',
     path: GP_PATH,
-    boundaries: createTrackFromPath(GP_PATH, 18, true),
-    spawnPoints: generateAlignedSpawns(GP_PATH, 5, 8),
-    powerupBounds: { minX: -70, maxX: 70, minZ: -90, maxZ: 90 },
-    floorSize: { width: 180, depth: 220 }
+    boundaries: createTrackFromPath(GP_PATH, 45, true),
+    spawnPoints: generateAlignedSpawns(GP_PATH, 10, 8),
+    powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
+    floorSize: { width: 420, depth: 520 }
 });
 
 // =============================================================================
@@ -358,29 +358,29 @@ TRACKS.push({
     id: 'track_09',
     name: 'Triangle Terror',
     type: 'arena',
-    boundaries: createArena(60, 3),
-    spawnPoints: generateCircleSpawns(30, 8),
-    powerupBounds: { minX: -40, maxX: 40, minZ: -40, maxZ: 40 },
-    floorSize: { width: 150, depth: 150 }
+    boundaries: createArena(150, 3),
+    spawnPoints: generateCircleSpawns(75, 8),
+    powerupBounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
+    floorSize: { width: 350, depth: 350 }
 });
 
 // =============================================================================
 // TRACK 10: Velocity Strip
 // =============================================================================
 const STRIP_PATH = [
-    { x: -25, z: 100 }, { x: 25, z: 100 },
-    { x: 25, z: -80 }, { x: 40, z: -95 }, { x: 40, z: -110 },
-    { x: -40, z: -110 }, { x: -40, z: -95 }, { x: -25, z: -80 }
+    { x: -62, z: 250 }, { x: 62, z: 250 },
+    { x: 62, z: -200 }, { x: 100, z: -237 }, { x: 100, z: -275 },
+    { x: -100, z: -275 }, { x: -100, z: -237 }, { x: -62, z: -200 }
 ];
 TRACKS.push({
     id: 'track_10',
     name: 'Velocity Strip',
     type: 'race',
     path: STRIP_PATH,
-    boundaries: createTrackFromPath(STRIP_PATH, 35, true),
-    spawnPoints: generateAlignedSpawns(STRIP_PATH, 5, 8),
-    powerupBounds: { minX: -50, maxX: 50, minZ: -120, maxZ: 110 },
-    floorSize: { width: 120, depth: 280 }
+    boundaries: createTrackFromPath(STRIP_PATH, 85, true),
+    spawnPoints: generateAlignedSpawns(STRIP_PATH, 10, 8),
+    powerupBounds: { minX: -125, maxX: 125, minZ: -300, maxZ: 275 },
+    floorSize: { width: 300, depth: 650 }
 });
 
 // =============================================================================
@@ -390,10 +390,10 @@ TRACKS.push({
     id: 'track_11',
     name: 'The Coliseum',
     type: 'arena',
-    boundaries: createArena(75, 20),
-    spawnPoints: generateCircleSpawns(55, 12),
-    powerupBounds: { minX: -65, maxX: 65, minZ: -65, maxZ: 65 },
-    floorSize: { width: 180, depth: 180 }
+    boundaries: createArena(185, 20),
+    spawnPoints: generateCircleSpawns(135, 12),
+    powerupBounds: { minX: -160, maxX: 160, minZ: -160, maxZ: 160 },
+    floorSize: { width: 420, depth: 420 }
 });
 
 // =============================================================================
@@ -403,15 +403,21 @@ TRACKS.push({
     id: 'track_12',
     name: 'The Cage',
     type: 'arena',
-    boundaries: createArena(35, 12),
-    spawnPoints: generateCircleSpawns(20, 12),
-    powerupBounds: { minX: -28, maxX: 28, minZ: -28, maxZ: 28 },
-    floorSize: { width: 90, depth: 90 }
+    boundaries: createArena(105, 12),
+    spawnPoints: generateCircleSpawns(60, 12),
+    powerupBounds: { minX: -85, maxX: 85, minZ: -85, maxZ: 85 },
+    floorSize: { width: 250, depth: 250 }
 });
 
 // =============================================================================
 // EXPORTS
 // =============================================================================
+
+// Validate and adjust all spawn points on module load
+TRACKS.forEach(track => {
+    track.spawnPoints = validateSpawnPoints(track.spawnPoints, track.boundaries, 15);
+});
+
 function getTrackById(id) {
     return TRACKS.find(track => track.id === id) || TRACKS[0];
 }

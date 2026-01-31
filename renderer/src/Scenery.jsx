@@ -2,7 +2,9 @@ import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-export function Scenery() {
+export function Scenery({ trackData, graphicsSettings }) {
+    const envIntensity = graphicsSettings?.enableHDR ? 1.2 : 0.8;
+    
     return (
         <group>
             {/* Giant Neon Sun with Rings */}
@@ -15,19 +17,19 @@ export function Scenery() {
             <NeonRing position={[0, 35, -116]} radius={62} color="#ff0066" />
 
             {/* Sun Glow */}
-            <pointLight position={[0, 40, -150]} intensity={3} color="#ff00aa" distance={250} />
+            <pointLight position={[0, 40, -150]} intensity={3} color="#ff00aa" distance={250} castShadow={graphicsSettings?.shadowQuality > 0} />
 
             {/* Low Poly Mountains */}
-            <Mountains />
+            <Mountains envIntensity={envIntensity} />
 
             {/* Neon Palms Instanced */}
-            <NeonPalms count={50} />
+            <NeonPalms count={50} envIntensity={envIntensity} />
 
             {/* Floating Geometry / Debris */}
             <FloatingDebris />
 
             {/* Arena Spotlights */}
-            <ArenaLights />
+            <ArenaLights castShadow={graphicsSettings?.shadowQuality > 0} />
 
             {/* Laser Beams */}
             <LaserBeams />
@@ -54,7 +56,7 @@ function NeonRing({ position, radius, color }) {
 }
 
 // Pulsing Arena Spotlights
-function ArenaLights() {
+function ArenaLights({ castShadow }) {
     const lights = useMemo(() => {
         const arr = [];
         for (let i = 0; i < 8; i++) {
@@ -71,13 +73,13 @@ function ArenaLights() {
     return (
         <group>
             {lights.map((l, i) => (
-                <PulsingSpotlight key={i} position={[l.x, 0, l.z]} color={l.color} />
+                <PulsingSpotlight key={i} position={[l.x, 0, l.z]} color={l.color} castShadow={castShadow} />
             ))}
         </group>
     );
 }
 
-function PulsingSpotlight({ position, color }) {
+function PulsingSpotlight({ position, color, castShadow }) {
     const ref = useRef();
     const phase = useMemo(() => Math.random() * Math.PI * 2, []);
 
@@ -94,7 +96,7 @@ function PulsingSpotlight({ position, color }) {
                 <cylinderGeometry args={[0.5, 8, 50, 8, 1, true]} />
                 <meshBasicMaterial color={color} transparent opacity={0.15} side={THREE.DoubleSide} />
             </mesh>
-            <pointLight ref={ref} color={color} intensity={1.5} distance={30} />
+            <pointLight ref={ref} color={color} intensity={1.5} distance={30} castShadow={castShadow} />
         </group>
     );
 }
@@ -125,7 +127,7 @@ function LaserBeams() {
 }
 
 
-function Mountains() {
+function Mountains({ envIntensity }) {
     const geometry = useMemo(() => {
         const geo = new THREE.PlaneGeometry(400, 80, 40, 10);
         const positions = geo.attributes.position;
@@ -138,19 +140,20 @@ function Mountains() {
     }, []);
 
     return (
-        <mesh position={[0, 0, -150]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, 0, -150]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
             <primitive object={geometry} />
             <meshStandardMaterial
                 color="#2a0a4e"
                 wireframe
                 emissive="#ff00ff"
                 emissiveIntensity={0.2}
+                envMapIntensity={envIntensity}
             />
         </mesh>
     );
 }
 
-function NeonPalms({ count }) {
+function NeonPalms({ count, envIntensity }) {
     const meshRef = useRef();
     const dummy = useMemo(() => new THREE.Object3D(), []);
 
@@ -181,9 +184,16 @@ function NeonPalms({ count }) {
     }, [particles, dummy]);
 
     return (
-        <instancedMesh ref={meshRef} args={[null, null, count]}>
+        <instancedMesh ref={meshRef} args={[null, null, count]} castShadow receiveShadow>
             <cylinderGeometry args={[1, 2, 30, 8]} />
-            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.8} />
+            <meshStandardMaterial 
+                color="#00ffff" 
+                emissive="#00ffff" 
+                emissiveIntensity={0.8}
+                envMapIntensity={envIntensity}
+                metalness={0.8}
+                roughness={0.3}
+            />
         </instancedMesh>
     );
 }

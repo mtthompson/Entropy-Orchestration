@@ -1187,7 +1187,11 @@ function startDemoMode() {
 
     // Broadcast track data so renderer displays correct track and music plays
     io.emit('trackData', activeTrack);
-    io.emit('trackStyle', { trackId: activeTrack.id, trackName: activeTrack.name });
+    io.emit('trackStyle', { 
+        trackId: activeTrack.id, 
+        trackName: activeTrack.name,
+        theme: getThemeByTrackId(activeTrack.id)
+    });
 
     // Spawn 4-6 CPU opponents
     const cpuCount = 4 + Math.floor(Math.random() * 3);
@@ -1295,7 +1299,11 @@ function startRace() {
     resetGame();
 
     // Emit track music style
-    io.emit('trackStyle', { trackId: activeTrack.id, trackName: activeTrack.name });
+    io.emit('trackStyle', { 
+        trackId: activeTrack.id, 
+        trackName: activeTrack.name,
+        theme: getThemeByTrackId(activeTrack.id)
+    });
 
     broadcastGameState();
     console.log('[GAME] Race Started!');
@@ -1550,7 +1558,11 @@ io.on('connection', (socket) => {
                     boundaries: activeTrack.boundaries,
                     floorSize: activeTrack.floorSize
                 });
-                io.emit('trackStyle', { trackId: activeTrack.id, trackName: activeTrack.name });
+                io.emit('trackStyle', { 
+                    trackId: activeTrack.id, 
+                    trackName: activeTrack.name,
+                    theme: getThemeByTrackId(activeTrack.id)
+                });
                 io.to('renderers').emit('cpuCount', cpuPlayers.size);
 
                 // Reset game state

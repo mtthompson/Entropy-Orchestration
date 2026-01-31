@@ -1,8 +1,8 @@
 import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Trail, Stars } from '@react-three/drei';
-import { EffectComposer, Bloom, ChromaticAberration, Glitch } from '@react-three/postprocessing';
-import { BlendFunction, GlitchMode } from 'postprocessing';
+import { Trail, Stars, Environment } from '@react-three/drei';
+import { EffectComposer, Bloom, ChromaticAberration, Glitch, N8AO, SSR, DepthOfField, ToneMapping, Vignette } from '@react-three/postprocessing';
+import { BlendFunction, GlitchMode, ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
@@ -11,6 +11,7 @@ import { GameUI } from './GameUI';
 import { useAudio } from './useAudio';
 import { ToastNotification } from './ToastNotification';
 import { AdminPanel } from './AdminPanel';
+import { PerformanceOverlay } from './PerformanceOverlay';
 
 // =============================================================================
 // SOCKET CONNECTION
@@ -25,9 +26,14 @@ const socket = io(SERVER_URL, { query: { role: 'admin' }, path: socketPath });
 // =============================================================================
 // SYNTHWAVE GRID FLOOR - Enhanced with Shader
 // =============================================================================
-function SynthwaveGrid({ floorSize }) {
+function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
     const width = floorSize?.width || 250;
     const depth = floorSize?.depth || 250;
+    
+    // Use theme colors or fallback to defaults
+    const primaryColor = theme?.primaryColor || '#ff00ff';
+    const secondaryColor = theme?.secondaryColor || '#00ffff';
+    const floorColor = theme?.floorColor || '#0a051a';
     const meshRef = useRef();
     const gridRef = useRef();
 
@@ -38,37 +44,39 @@ function SynthwaveGrid({ floorSize }) {
         }
     });
 
+    const envIntensity = graphicsSettings?.enableHDR ? 1.2 : 0.5;
+
     return (
         <group>
             {/* Reflective base floor */}
             <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
                 <planeGeometry args={[width * 1.5, depth * 1.5, 64, 64]} />
                 <meshStandardMaterial
-                    color="#0a051a"
-                    metalness={0.9}
-                    roughness={0.1}
-                    envMapIntensity={0.5}
+                    color={floorColor}
+                    metalness={1.0}
+                    roughness={0.2}
+                    envMapIntensity={envIntensity}
                 />
             </mesh>
 
             {/* Animated grid lines - multiple layers for depth */}
             <group ref={gridRef}>
                 <gridHelper
-                    args={[Math.max(width, depth) * 1.5, 60, '#ff00ff', '#3a1a5e']}
+                    args={[Math.max(width, depth) * 1.5, 60, primaryColor, new THREE.Color(primaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
                     position={[0, 0.02, 0]}
                 />
             </group>
 
             {/* Secondary grid for parallax effect */}
             <gridHelper
-                args={[Math.max(width, depth), 30, '#00ffff', '#1a1a3e']}
+                args={[Math.max(width, depth), 30, secondaryColor, new THREE.Color(secondaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
                 position={[0, 0.03, 0]}
             />
 
             {/* Fog floor edge glow */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
                 <ringGeometry args={[Math.max(width, depth) * 0.5, Math.max(width, depth) * 0.8, 64]} />
-                <meshBasicMaterial color="#ff00ff" transparent opacity={0.1} side={THREE.DoubleSide} />
+                <meshBasicMaterial color={primaryColor} transparent opacity={0.1} side={THREE.DoubleSide} />
             </mesh>
         </group>
     );
@@ -105,7 +113,7 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
 
     // MASK GEOMETRY SWITCHER
     const GeometricModel = () => {
-        const mat = <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} metalness={0.6} roughness={0.2} />;
+        const mat = <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} metalness={0.9} roughness={0.3} />;
         const blackMat = <meshStandardMaterial color="#222" metalness={0.1} roughness={0.9} />;
 
         const Wheels = () => (
@@ -216,7 +224,7 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
 
     return (
         <Trail width={3} length={10} color={trailColor} attenuation={(t) => t * t}>
-            <group ref={meshRef} position={position}>
+            <group ref={meshRef} position={position} castShadow receiveShadow>
                 <GeometricModel />
 
                 {/* Engine Flame Effect */}
@@ -653,7 +661,10 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
 // =============================================================================
 // TRACK WALL COMPONENT
 // =============================================================================
-function TrackWall({ wall }) {
+function TrackWall({ wall, theme }) {
+    const wallColor = theme?.wallColor || '#ff00ff';
+    const primaryColor = theme?.primaryColor || '#ff00ff';
+    const secondaryColor = theme?.secondaryColor || '#00ffff';
     const meshRef = useRef();
     const scanRef = useRef();
 
@@ -684,8 +695,8 @@ function TrackWall({ wall }) {
             <mesh ref={meshRef} position={[0, height / 2, 0]}>
                 <boxGeometry args={[length, height, 0.08]} />
                 <meshStandardMaterial
-                    color="#2a0a4e"
-                    emissive="#ff00ff"
+                    color={new THREE.Color(wallColor).offsetHSL(0, 0, -0.3).getHexString()}
+                    emissive={wallColor}
                     emissiveIntensity={0.5}
                     metalness={0.8}
                     roughness={0.2}
@@ -696,13 +707,13 @@ function TrackWall({ wall }) {
             {/* Neon edge frame - top */}
             <mesh position={[0, height, 0]}>
                 <boxGeometry args={[length + 0.1, 0.15, 0.12]} />
-                <meshBasicMaterial color="#ff00ff" />
+                <meshBasicMaterial color={primaryColor} />
             </mesh>
 
             {/* Neon edge frame - bottom */}
             <mesh position={[0, 0.08, 0]}>
                 <boxGeometry args={[length + 0.1, 0.15, 0.12]} />
-                <meshBasicMaterial color="#00ffff" />
+                <meshBasicMaterial color={secondaryColor} />
             </mesh>
 
             {/* Animated scan line */}
@@ -714,7 +725,7 @@ function TrackWall({ wall }) {
             {/* Glow light */}
             <pointLight
                 position={[0, height / 2, 0.5]}
-                color="#ff00ff"
+                color={primaryColor}
                 intensity={0.3}
                 distance={8}
             />
@@ -722,6 +733,20 @@ function TrackWall({ wall }) {
     );
 }
 
+
+// =============================================================================
+// TRACK BOUNDARIES - Container for all walls
+// =============================================================================
+function TrackBoundaries({ boundaries, theme }) {
+    if (!boundaries) return null;
+    return (
+        <group>
+            {boundaries.map((wall, i) => (
+                <TrackWall key={i} wall={wall} theme={theme} />
+            ))}
+        </group>
+    );
+}
 
 // =============================================================================
 // CAMERA SHAKE EFFECT
@@ -1010,9 +1035,37 @@ function CameraController({ players, gameState }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, trackData, setEngineRpm, gameState, isDemo }) {
+function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate }) {
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
+    const { gl } = useThree();
+    
+    // Performance monitoring
+    const lastTime = useRef(performance.now());
+    const frameCount = useRef(0);
+    const fpsBuffer = useRef([]);
+    
+    useFrame(() => {
+        const now = performance.now();
+        const delta = now - lastTime.current;
+        
+        if (delta > 0) {
+            const fps = 1000 / delta;
+            fpsBuffer.current.push(fps);
+            if (fpsBuffer.current.length > 60) fpsBuffer.current.shift();
+            
+            frameCount.current++;
+            if (frameCount.current % 30 === 0) {
+                const avgFps = Math.round(fpsBuffer.current.reduce((a, b) => a + b, 0) / fpsBuffer.current.length);
+                onPerformanceUpdate?.({
+                    fps: avgFps,
+                    drawCalls: gl.info.render.calls,
+                    particles: 0 // Will be updated by particle system
+                });
+            }
+        }
+        lastTime.current = now;
+    });
 
     // Engine audio reactive to average player velocity
     useEffect(() => {
@@ -1060,22 +1113,88 @@ function Scene({ worldState, trackData, setEngineRpm, gameState, isDemo }) {
         setExplosions(exps => exps.filter(e => e.id !== id));
     };
 
+    // Track-specific HDR environment presets
+    const envPresetMap = {
+        'stadium': 'sunset',
+        'industrial': 'warehouse',
+        'neon_forest': 'forest',
+        'nature': 'park',
+        'volcanic': 'night',
+        'dragon': 'dawn',
+        'mystic': 'park',
+        'classic': 'city',
+        'warning': 'apartment',
+        'speed': 'studio',
+        'roman': 'dawn',
+        'prison': 'lobby'
+    };
+    
+    const envPreset = trackData?.theme?.sceneryType 
+        ? envPresetMap[trackData.theme.sceneryType] || 'sunset'
+        : 'sunset';
+
     return (
         <>
             <color attach="background" args={['#0a0012']} />
             <fog attach="fog" args={['#0a0012', 30, 250]} />
 
-            <ambientLight intensity={0.2} />
-            <pointLight position={[0, 50, 0]} intensity={1} color="#ff00ff" />
-            <pointLight position={[20, 30, 20]} intensity={0.5} color="#00ffff" />
+            {/* HDR Environment Mapping */}
+            {graphicsSettings?.enableHDR && (
+                <Environment 
+                    preset={envPreset}
+                    background={false}
+                    environmentIntensity={0.8}
+                />
+            )}
+
+            {/* Realistic Directional Lighting with Shadows */}
+            <ambientLight intensity={0.3} />
+            {graphicsSettings?.shadowQuality > 0 ? (
+                <>
+                    <directionalLight
+                        position={[-30, 50, 30]}
+                        intensity={1.5}
+                        color="#ffffff"
+                        castShadow
+                        shadow-mapSize-width={graphicsSettings.shadowQuality}
+                        shadow-mapSize-height={graphicsSettings.shadowQuality}
+                        shadow-camera-left={-80}
+                        shadow-camera-right={80}
+                        shadow-camera-top={80}
+                        shadow-camera-bottom={-80}
+                        shadow-camera-near={0.1}
+                        shadow-camera-far={200}
+                        shadow-bias={-0.0001}
+                        shadow-normalBias={0.02}
+                    />
+                    <directionalLight
+                        position={[30, 40, -30]}
+                        intensity={0.8}
+                        color="#ff00ff"
+                        castShadow
+                        shadow-mapSize-width={graphicsSettings.shadowQuality}
+                        shadow-mapSize-height={graphicsSettings.shadowQuality}
+                        shadow-camera-left={-80}
+                        shadow-camera-right={80}
+                        shadow-camera-top={80}
+                        shadow-camera-bottom={-80}
+                        shadow-bias={-0.0001}
+                    />
+                </>
+            ) : (
+                <>
+                    <pointLight position={[0, 50, 0]} intensity={1} color="#ff00ff" />
+                    <pointLight position={[20, 30, 20]} intensity={0.5} color="#00ffff" />
+                </>
+            )}
 
             <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
 
-            <SynthwaveGrid floorSize={trackData?.floorSize} />
-            <Scenery />
+            <SynthwaveGrid floorSize={trackData?.floorSize} graphicsSettings={graphicsSettings} theme={theme} />
+            <Scenery trackData={trackData} graphicsSettings={graphicsSettings} />
 
             {/* Track Walls */}
-            <TrackBoundaries boundaries={trackData?.boundaries} />
+            <TrackBoundaries boundaries={trackData?.boundaries} theme={theme} />
 
             {/* Start/Finish Lines */}
             {trackData?.startLine && (
@@ -1143,16 +1262,75 @@ function Scene({ worldState, trackData, setEngineRpm, gameState, isDemo }) {
 
             {/* Post Processing - RTX 4070 Enhanced */}
             <EffectComposer multisampling={8}>
-                <Bloom
-                    intensity={1.2}
-                    luminanceThreshold={0.3}
-                    luminanceSmoothing={0.8}
-                    mipmapBlur={true}
-                    radius={0.8}
-                />
+                {/* SSAO - Screen Space Ambient Occlusion */}
+                {graphicsSettings?.enableSSAO && (
+                    <N8AO 
+                        aoRadius={2}
+                        intensity={1.5}
+                        quality="performance"
+                    />
+                )}
+
+                {/* SSR - Screen Space Reflections */}
+                {graphicsSettings?.enableSSR && (
+                    <SSR
+                        intensity={0.45}
+                        exponent={1}
+                        distance={10}
+                        fade={2}
+                        roughnessFade={1}
+                        thickness={10}
+                        ior={1.45}
+                        maxRoughness={1}
+                        maxDepthDifference={10}
+                        blend={0.95}
+                        correction={1}
+                        correctionRadius={1}
+                        blur={0.5}
+                        blurKernel={1}
+                        blurSharpness={10}
+                    />
+                )}
+
+                {/* Depth of Field */}
+                {graphicsSettings?.enableDOF && (
+                    <DepthOfField
+                        focusDistance={0.02}
+                        focalLength={0.05}
+                        bokehScale={3}
+                        height={480}
+                    />
+                )}
+
+                {/* Bloom */}
+                {graphicsSettings?.enableBloom && (
+                    <Bloom
+                        intensity={graphicsSettings.bloomIntensity || 0.8}
+                        luminanceThreshold={0.3}
+                        luminanceSmoothing={0.8}
+                        mipmapBlur={true}
+                        radius={0.8}
+                    />
+                )}
+
+                {/* Tone Mapping */}
+                {graphicsSettings?.toneMapping && graphicsSettings.toneMapping !== 'None' && (
+                    <ToneMapping 
+                        mode={ToneMappingMode[graphicsSettings.toneMapping] || ToneMappingMode.ACES_FILMIC} 
+                    />
+                )}
+
+                {/* Chromatic Aberration */}
                 <ChromaticAberration
                     blendFunction={BlendFunction.NORMAL}
                     offset={[0.0005, 0.0005]}
+                />
+                
+                {/* Vignette for cinematic look */}
+                <Vignette 
+                    offset={0.5}
+                    darkness={0.5}
+                    eskil={false}
                 />
             </EffectComposer>
         </>
@@ -1310,6 +1488,31 @@ export default function App() {
     const [cpuCount, setCpuCount] = useState(0);
     const [toasts, setToasts] = useState([]);
 
+    // Graphics Settings with localStorage persistence
+    const [graphicsSettings, setGraphicsSettings] = useState(() => {
+        const saved = localStorage.getItem('graphicsSettings');
+        return saved ? JSON.parse(saved) : {
+            shadowQuality: 2048,
+            enableHDR: true,
+            enableSSAO: true,
+            enableSSR: true,
+            enableDOF: false,
+            enableBloom: true,
+            bloomIntensity: 0.8,
+            toneMapping: 'ACES',
+            particleLimit: 10000,
+            showPerformance: false
+        };
+    });
+
+    // Save graphics settings to localStorage when changed
+    useEffect(() => {
+        localStorage.setItem('graphicsSettings', JSON.stringify(graphicsSettings));
+    }, [graphicsSettings]);
+
+    // Performance monitoring
+    const [performanceStats, setPerformanceStats] = useState({ fps: 60, drawCalls: 0, particles: 0 });
+
     // Audio Hook
     const { initAudio, playSfx, setMusicStyle, setEngineRpm } = useAudio(connected);
 
@@ -1377,8 +1580,19 @@ export default function App() {
 
         // Track style with theme colors
         socket.on('trackStyle', (data) => {
-            console.log('Track style:', data.trackName);
+            console.log('Track style:', data.trackName, 'Theme:', data.theme);
             if (setMusicStyle) setMusicStyle(data.trackId);
+            // Update theme colors if provided
+            if (data.theme) {
+                setTrackTheme({
+                    primaryColor: data.theme.primaryColor || '#ff00ff',
+                    secondaryColor: data.theme.secondaryColor || '#00ffff',
+                    floorColor: data.theme.floorColor || '#0a051a',
+                    gridColor: data.theme.gridColor || '#ff00ff',
+                    wallColor: data.theme.wallColor || '#ff00ff',
+                    skyColor: data.theme.skyColor || '#0a0020'
+                });
+            }
         });
 
         // Leaderboard updates
@@ -1493,14 +1707,24 @@ export default function App() {
         }} onClick={initAudio}>
             <Canvas
                 camera={{ position: [0, 20, 30], fov: 60 }}
-                gl={{ antialias: true, alpha: false }}
+                gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+                shadows={graphicsSettings.shadowQuality > 0}
+                onCreated={({ gl }) => {
+                    if (graphicsSettings.shadowQuality > 0) {
+                        gl.shadowMap.enabled = true;
+                        gl.shadowMap.type = THREE.PCFSoftShadowMap;
+                    }
+                }}
             >
                 <Scene 
                     worldState={worldState} 
-                    trackData={trackData} 
+                    trackData={trackData}
+                    theme={trackTheme}
                     setEngineRpm={setEngineRpm}
                     gameState={gameState.state}
                     isDemo={gameState.isDemo}
+                    graphicsSettings={graphicsSettings}
+                    onPerformanceUpdate={setPerformanceStats}
                 />
             </Canvas>
 
@@ -1518,6 +1742,7 @@ export default function App() {
 
             {/* Admin UI */}
             <ToastNotification toasts={toasts} setToasts={setToasts} />
+            <PerformanceOverlay stats={performanceStats} visible={graphicsSettings.showPerformance} />
             <AdminPanel
                 socket={socket}
                 tracks={trackList}
@@ -1525,6 +1750,9 @@ export default function App() {
                 cpuCount={cpuCount}
                 gameState={gameState.state}
                 showToast={showToast}
+                graphicsSettings={graphicsSettings}
+                onGraphicsChange={setGraphicsSettings}
+                performanceStats={performanceStats}
             />
 
             {!connected && (

@@ -2,6 +2,84 @@
  * TrackBuilder - Generates wall segments from a path of points.
  */
 
+// Helper: Calculate distance from point to line segment
+function distanceToSegment(px, pz, x1, z1, x2, z2) {
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const lenSq = dx * dx + dz * dz;
+    
+    if (lenSq === 0) return Math.sqrt((px - x1) * (px - x1) + (pz - z1) * (pz - z1));
+    
+    let t = ((px - x1) * dx + (pz - z1) * dz) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    
+    const closestX = x1 + t * dx;
+    const closestZ = z1 + t * dz;
+    
+    return Math.sqrt((px - closestX) * (px - closestX) + (pz - closestZ) * (pz - closestZ));
+}
+
+// Helper: Validate and adjust spawn points to ensure minimum clearance from walls
+function validateSpawnPoints(spawnPoints, boundaries, minClearance = 15) {
+    const adjustedSpawns = [];
+    let adjustmentCount = 0;
+    
+    for (const spawn of spawnPoints) {
+        let minDist = Infinity;
+        let nearestWallPoint = null;
+        
+        // Find nearest wall and closest point on that wall
+        for (const wall of boundaries) {
+            const dist = distanceToSegment(spawn.x, spawn.z, wall.x1, wall.z1, wall.x2, wall.z2);
+            if (dist < minDist) {
+                minDist = dist;
+                
+                // Calculate closest point on wall
+                const dx = wall.x2 - wall.x1;
+                const dz = wall.z2 - wall.z1;
+                const lenSq = dx * dx + dz * dz;
+                let t = ((spawn.x - wall.x1) * dx + (spawn.z - wall.z1) * dz) / lenSq;
+                t = Math.max(0, Math.min(1, t));
+                nearestWallPoint = {
+                    x: wall.x1 + t * dx,
+                    z: wall.z1 + t * dz
+                };
+            }
+        }
+        
+        if (minDist < minClearance && nearestWallPoint) {
+            // Calculate direction from wall to spawn
+            const dx = spawn.x - nearestWallPoint.x;
+            const dz = spawn.z - nearestWallPoint.z;
+            const len = Math.sqrt(dx * dx + dz * dz);
+            
+            if (len > 0.001) {
+                // Move spawn away from wall along this direction
+                const pushDistance = minClearance - minDist + 2; // Extra 2 units buffer
+                const dirX = dx / len;
+                const dirZ = dz / len;
+                
+                adjustedSpawns.push({
+                    x: spawn.x + dirX * pushDistance,
+                    z: spawn.z + dirZ * pushDistance,
+                    rotation: spawn.rotation
+                });
+                adjustmentCount++;
+            } else {
+                adjustedSpawns.push(spawn);
+            }
+        } else {
+            adjustedSpawns.push(spawn);
+        }
+    }
+    
+    if (adjustmentCount > 0) {
+        console.log(`  [GameTrackBuilder] Adjusted ${adjustmentCount} spawn point(s) to maintain clearance`);
+    }
+    
+    return adjustedSpawns;
+}
+
 /**
  * Generates walls for a track based on a centerline path and width.
  * @param {Array} points - Array of {x, z} points defining the center path.
@@ -62,12 +140,12 @@ function createTrackFromPath(points, width, loop = true) {
         let mx = n1.x + n2.x;
         let mz = n1.z + n2.z;
         const mLen = Math.sqrt(mx * mx + mz * mz);
-        mx /= mLen;
-        mz /= mLen;
-
-        // Scale by miter length (1 / cos(theta/2)) to keep width constant
-        // For game jam, simple normalized average is 'good enough' to close gaps, 
-        // even if track pinches slightly at sharp corners.
+        
+        // Properly scale miter to maintain constant track width
+        // miterScale = 1 / cos(θ/2), where mLen = 2*cos(θ/2)
+        const miterScale = (mLen > 0.001) ? (2.0 / mLen) : 1.0;
+        mx = (mx / mLen) * miterScale;
+        mz = (mz / mLen) * miterScale;
 
         leftVerts.push({ x: p.x + mx * halfWidth, z: p.z + mz * halfWidth });
         rightVerts.push({ x: p.x - mx * halfWidth, z: p.z - mz * halfWidth });
@@ -125,4 +203,4 @@ function createArena(radius, segments = 32) {
     return boundaries;
 }
 
-module.exports = { createTrackFromPath, createArena };
+module.exports = { createTrackFromPath, createArena, validateSpawnPoints };
