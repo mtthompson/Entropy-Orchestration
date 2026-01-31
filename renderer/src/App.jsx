@@ -236,22 +236,22 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
     texture.repeat.set(length / 2, 1);
 
     return (
-        <group position={[centerX, 0.02, centerZ]} rotation={[-Math.PI / 2, 0, -angle]}>
+        <group position={[centerX, 0.05, centerZ]} rotation={[-Math.PI / 2, 0, -angle]}>
             <mesh>
-                <planeGeometry args={[length, 2]} />
+                <planeGeometry args={[length, 4]} />
                 <meshBasicMaterial map={texture} side={THREE.DoubleSide} />
             </mesh>
             {/* Poles */}
-            <mesh position={[-length / 2, 1, 2]} rotation={[Math.PI / 2, 0, 0]}>
+            <mesh position={[-length / 2, 2, 2]} rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.2, 0.2, 4]} />
                 <meshStandardMaterial color="#fff" />
             </mesh>
-            <mesh position={[length / 2, 1, 2]} rotation={[Math.PI / 2, 0, 0]}>
+            <mesh position={[length / 2, 2, 2]} rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.2, 0.2, 4]} />
                 <meshStandardMaterial color="#fff" />
             </mesh>
             {/* Flag Banner */}
-            <mesh position={[0, 1, 4]} rotation={[Math.PI / 2, 0, 0]}>
+            <mesh position={[0, 4, 2]} rotation={[Math.PI / 2, 0, 0]}>
                 <boxGeometry args={[length, 1, 0.1]} />
                 <meshStandardMaterial color="#333" />
             </mesh>
@@ -288,18 +288,19 @@ function TrackWall({ wall }) {
             position={[centerX, height / 2, centerZ]}
             rotation={[0, -angle, 0]}
         >
-            <boxGeometry args={[length, height, 0.5]} />
+            <boxGeometry args={[length, height, 0.05]} />
             <meshStandardMaterial
                 color="#4a1a8e"
                 emissive="#ff00ff"
                 emissiveIntensity={0.3}
-                transparent
-                opacity={0.6}
+                transparent={false}
+                opacity={1}
                 side={THREE.DoubleSide}
             />
         </mesh>
     );
 }
+
 
 // =============================================================================
 // TRACK BOUNDARIES CONTAINER
@@ -324,23 +325,77 @@ function TrackBoundaries({ boundaries }) {
 function CameraController({ players }) {
     const { camera } = useThree();
     const targetPos = useRef(new THREE.Vector3(0, 20, 30));
+    const targetLookAt = useRef(new THREE.Vector3(0, 0, -30));
+    // Smooth velocity for camera
+    const smoothVel = useRef(new THREE.Vector3(0, 0, -1));
 
-    useFrame(() => {
-        // Get top 3 players by Z position (leaders)
+    useFrame((state, delta) => {
+        // Get top 3 players by Z position
         const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
 
         if (activePlayers.length > 0) {
             const sorted = activePlayers.sort((a, b) => a.position.z - b.position.z);
-            const top3 = sorted.slice(0, 3);
+            const topPack = sorted.slice(0, 3);
 
-            const avgX = top3.reduce((sum, p) => sum + p.position.x, 0) / top3.length;
-            const avgZ = top3.reduce((sum, p) => sum + p.position.z, 0) / top3.length;
+            // Calculate center of pack
+            const avgX = topPack.reduce((sum, p) => sum + p.position.x, 0) / topPack.length;
+            const avgZ = topPack.reduce((sum, p) => sum + p.position.z, 0) / topPack.length;
 
-            targetPos.current.set(avgX, 25, avgZ + 35);
+            // Calculate average velocity of pack
+            let avgVelX = 0;
+            let avgVelZ = 0;
+            let count = 0;
+
+            for (const p of topPack) {
+                if (p.velocity) {
+                    avgVelX += p.velocity.x;
+                    avgVelZ += p.velocity.z;
+                    count++;
+                }
+            }
+
+            if (count > 0) {
+                avgVelX /= count;
+                avgVelZ /= count;
+            }
+
+            // Update smooth velocity
+            const currentDir = new THREE.Vector3(avgVelX, 0, avgVelZ);
+            // If moving fast enough, update direction
+            if (currentDir.length() > 5) {
+                currentDir.normalize();
+                smoothVel.current.lerp(currentDir, 0.05);
+            }
+
+            // Camera Offset: behind movement direction
+            const cameraDist = 35;
+            const cameraHeight = 25;
+
+            // Position camera behind pack
+            targetPos.current.set(
+                avgX - smoothVel.current.x * cameraDist,
+                cameraHeight,
+                avgZ - smoothVel.current.z * cameraDist
+            );
+
+            // Look ahead of pack
+            targetLookAt.current.set(
+                avgX + smoothVel.current.x * 20,
+                0,
+                avgZ + smoothVel.current.z * 20
+            );
         }
 
-        camera.position.lerp(targetPos.current, 0.02);
-        camera.lookAt(targetPos.current.x, 0, targetPos.current.z - 35);
+        camera.position.lerp(targetPos.current, 0.05);
+
+        // Smooth lookAt
+        const currentLook = new THREE.Vector3();
+        camera.getWorldDirection(currentLook);
+        const lookTarget = targetLookAt.current.clone().sub(camera.position).normalize();
+        currentLook.lerp(lookTarget, 0.05);
+        const focusPoint = camera.position.clone().add(currentLook.multiplyScalar(10));
+
+        camera.lookAt(focusPoint);
     });
 
     return null;

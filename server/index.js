@@ -10,6 +10,7 @@ const { getDefaultTrack } = require('./tracks');
 const PORT = process.env.PORT || 3000;
 const TICK_RATE = 60;
 const DAMAGE_THRESHOLD = 15;
+const MAX_SPEED = 80; // Hard cap on velocity to prevent physics explosions
 const POWERUP_SPAWN_INTERVAL = 7000; // 5-10s average
 const POWERUP_TYPES = ['Repair', 'Boost'];
 
@@ -30,6 +31,7 @@ const world = new CANNON.World({
 });
 world.broadphase = new CANNON.SAPBroadphase(world);
 world.allowSleep = true;
+world.solver.iterations = 20; // Increase solver iterations for stability (default is 10)
 
 // Ground plane - prevents objects from falling through
 // Ground plane - prevents objects from falling through
@@ -46,10 +48,10 @@ const carGroundContact = new CANNON.ContactMaterial(carMaterial, groundMaterial,
 });
 
 const carWallContact = new CANNON.ContactMaterial(carMaterial, wallMaterial, {
-    friction: 0.5,
-    restitution: 0.1, // NO BOUNCE on walls (dampens impact)
-    contactEquationStiffness: 1e8,
-    contactEquationRelaxation: 3
+    friction: 0.0,      // Teflon walls - slide along them
+    restitution: 0.0,   // Absolutely NO bounce
+    contactEquationStiffness: 1e9, // Very Rigid (prevents spring effect)
+    contactEquationRelaxation: 3   // Standard stability
 });
 
 const carCarContact = new CANNON.ContactMaterial(carMaterial, carMaterial, {
@@ -90,9 +92,10 @@ function createTrackWalls() {
         const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
 
         // Wall thickness of 2 units
+        // Wall thickness increased to prevents tunneling
         const wallBody = new CANNON.Body({
             mass: 0, // Static
-            shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 1)),
+            shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 2.5)), // 5 units thick (2.5 half-extents)
             position: new CANNON.Vec3(centerX, wall.height / 2, centerZ),
             material: wallMaterial
         });
@@ -137,7 +140,10 @@ function spawnPlayer(id, name = 'Player') {
         linearDamping: 0.5,  // Increased drag for better control (was 0.1)
         angularDamping: 0.5, // Reduced spin (was 0.3)
         allowSleep: false,  // Keep player bodies always awake
-        material: carMaterial
+        material: carMaterial,
+        // Continuous Collision Detection settings
+        ccdSpeedThreshold: 1, // Enable CCD if moving faster than 1 unit/tick
+        ccdIterations: 5      // Check 5 times between steps
     });
 
     world.addBody(body);
@@ -181,6 +187,60 @@ function switchToDrone(id) {
 
     console.log(`[DRONE] Player ${id} is now a drone`);
     io.to(id).emit('becameDrone');
+}
+
+function updatePlayerPhysics(player, input) {
+    if (!player.body) return;
+
+    const { steering, throttle, boost } = input;
+
+    // Wake up body
+    player.body.wakeUp();
+
+    // 1. Update Heading (Steering)
+    // Instead of applying torque, we rotate the car's intended direction
+    // Retrieve current heading from quaternion (approximate)
+    // actually, let's just use angular velocity to turn the car
+    // Apply torque for rotation
+    const turnSpeed = 8.0; // How fast it turns
+    player.body.angularVelocity.y = -steering * turnSpeed;
+
+    // 2. Calculate Forward Direction based on current rotation
+    const quaternion = player.body.quaternion;
+    const forward = new CANNON.Vec3(0, 0, 1);
+    quaternion.vmult(forward, forward); // Rotate forward vector by body rotation
+
+    // 3. Apply Throttle Force (Aligned with heading)
+    const driveForce = 600;
+    const force = forward.clone();
+    force.scale(-throttle * driveForce, force); // -z is forward in our local space usually
+
+    // Boost
+    if (boost && player.boost > 0) {
+        force.scale(2, force);
+        player.boost = Math.max(0, player.boost - 1);
+    } else {
+        player.boost = Math.min(100, player.boost + 0.2);
+    }
+
+    player.body.applyForce(force, player.body.position);
+
+    // 4. Lateral Friction (Grip)
+    // Get velocity relative to car
+    // We want to kill sideways velocity
+    const velocity = player.body.velocity;
+    const right = new CANNON.Vec3(1, 0, 0);
+    quaternion.vmult(right, right);
+
+    const lateralVelocity = velocity.dot(right);
+
+    // Apply opposing impulse to cancel lateral slide
+    // Grip factor: 0.0 = ice, 1.0 = tracks
+    const grip = 0.85;
+    const correctionForce = right.clone();
+    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 5, correctionForce); // *5 to make it stiff
+
+    player.body.applyForce(correctionForce, player.body.position);
 }
 
 // =============================================================================
@@ -397,6 +457,25 @@ const timestep = 1 / TICK_RATE;
 function gameLoop() {
     // Step physics
     world.step(timestep);
+
+    // Safety: Clamp velocities to prevent physics explosions
+    for (const [id, player] of players) {
+        if (player.type === 'driver' && player.body) {
+            const vel = player.body.velocity;
+            const speed = vel.length();
+            if (speed > MAX_SPEED) {
+                vel.scale(MAX_SPEED / speed, vel);
+                // console.log(`[PHYSICS] Clamped speed for ${id} (was ${speed.toFixed(1)})`);
+            }
+
+            // Safety: Reset position if fallen off map (glitch prevention)
+            if (player.body.position.y < -10) {
+                player.body.position.set(0, 5, 0);
+                player.body.velocity.set(0, 0, 0);
+                console.log(`[PHYSICS] Reset ${id} from void`);
+            }
+        }
+    }
 
     // Check powerup collisions
     checkPowerupCollisions();
