@@ -316,58 +316,7 @@ function TrackBoundaries({ boundaries }) {
     );
 }
 
-// =============================================================================
-// CHECKERED LINE (Start/Finish)
-// =============================================================================
-function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
-    // Calculate position, rotation, length
-    const length = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.z - p1.z, 2));
-    const centerX = (p1.x + p2.x) / 2;
-    const centerZ = (p1.z + p2.z) / 2;
-    const angle = Math.atan2(p2.z - p1.z, p2.x - p1.x);
 
-    // Create a texture for checkerboard
-    const texture = useMemo(() => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = color1;
-        ctx.fillRect(0, 0, 64, 64);
-        ctx.fillStyle = color2;
-        ctx.fillRect(0, 0, 32, 32);
-        ctx.fillRect(32, 32, 32, 32);
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        return tex;
-    }, [color1, color2]);
-
-    texture.repeat.set(length / 2, 1);
-
-    return (
-        <group position={[centerX, 0.02, centerZ]} rotation={[-Math.PI / 2, 0, -angle]}>
-            <mesh>
-                <planeGeometry args={[length, 2]} />
-                <meshBasicMaterial map={texture} side={THREE.DoubleSide} />
-            </mesh>
-            {/* Poles */}
-            <mesh position={[-length / 2, 1, 2]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.2, 0.2, 4]} />
-                <meshStandardMaterial color="#fff" />
-            </mesh>
-            <mesh position={[length / 2, 1, 2]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.2, 0.2, 4]} />
-                <meshStandardMaterial color="#fff" />
-            </mesh>
-            {/* Flag Banner */}
-            <mesh position={[0, 1, 4]} rotation={[Math.PI / 2, 0, 0]}>
-                <boxGeometry args={[length, 1, 0.1]} />
-                <meshStandardMaterial color="#333" />
-            </mesh>
-        </group>
-    );
-}
 
 // =============================================================================
 // CAMERA CONTROLLER - PACK LEADER CAM
