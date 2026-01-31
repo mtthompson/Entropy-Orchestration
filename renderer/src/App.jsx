@@ -62,14 +62,14 @@ function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
             {/* Animated grid lines - multiple layers for depth */}
             <group ref={gridRef}>
                 <gridHelper
-                    args={[Math.max(width, depth) * 1.5, 60, primaryColor, new THREE.Color(primaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
+                    args={[Math.max(width, depth) * 1.5, 60, primaryColor, '#' + new THREE.Color(primaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
                     position={[0, 0.02, 0]}
                 />
             </group>
 
             {/* Secondary grid for parallax effect */}
             <gridHelper
-                args={[Math.max(width, depth), 30, secondaryColor, new THREE.Color(secondaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
+                args={[Math.max(width, depth), 30, secondaryColor, '#' + new THREE.Color(secondaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
                 position={[0, 0.03, 0]}
             />
 
@@ -724,7 +724,7 @@ function TrackWall({ wall, theme }) {
             <mesh ref={meshRef} position={[0, height / 2, 0]}>
                 <boxGeometry args={[length, height, 0.08]} />
                 <meshStandardMaterial
-                    color={new THREE.Color(wallColor).offsetHSL(0, 0, -0.3).getHexString()}
+                    color={'#' + new THREE.Color(wallColor).offsetHSL(0, 0, -0.3).getHexString()}
                     emissive={wallColor}
                     emissiveIntensity={0.5}
                     metalness={0.8}
@@ -1272,7 +1272,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                 />
             ))}
 
-            {/* Post Processing - RTX 4070 Enhanced */}
+            {/* Post Processing */}
             <EffectComposer multisampling={8}>
                 {/* SSAO - Screen Space Ambient Occlusion */}
                 {graphicsSettings?.enableSSAO && (
@@ -1510,12 +1510,13 @@ export default function App() {
 
     // Graphics Settings with localStorage persistence
     const [graphicsSettings, setGraphicsSettings] = useState(() => {
-        const saved = localStorage.getItem('graphicsSettings');
-        return saved ? JSON.parse(saved) : {
+        const SETTINGS_VERSION = 2; // Bump this when defaults change
+        const defaultSettings = {
+            version: SETTINGS_VERSION,
             shadowQuality: 2048,
             enableHDR: true,
             enableSSAO: true,
-            enableSSR: true,
+            enableSSR: false, // Disabled by default - can cause WebGL context overflow
             enableDOF: false,
             enableBloom: true,
             bloomIntensity: 0.8,
@@ -1523,6 +1524,22 @@ export default function App() {
             particleLimit: 10000,
             showPerformance: false
         };
+        
+        try {
+            const saved = localStorage.getItem('graphicsSettings');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                // Reset if version mismatch or missing version
+                if (parsed.version !== SETTINGS_VERSION) {
+                    localStorage.removeItem('graphicsSettings');
+                    return defaultSettings;
+                }
+                return parsed;
+            }
+        } catch (e) {
+            localStorage.removeItem('graphicsSettings');
+        }
+        return defaultSettings;
     });
 
     // Save graphics settings to localStorage when changed
