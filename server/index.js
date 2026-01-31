@@ -305,33 +305,37 @@ function updateCPUPhysics() {
 
             // Apply throttle (reduce when turning sharply)
             const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-            let baseThrottle = isRacing ? 400 : 300; // Higher throttle for racing
+            let baseThrottle = isRacing ? 350 : 280; // Reduced from 400/300 for balance
             const throttleStrength = baseThrottle + baseThrottle * turnFactor;
 
-            // Combat AI: detect nearby targets for ramming
+            // Combat AI: detect nearby targets for ramming (less aggressive)
             let combatBoost = 1.0;
-            const combatRange = 30;
+            const combatRange = 25; // Reduced from 30
             
-            // Check for nearby players to ram
-            for (const [pId, player] of players) {
-                if (player.type !== 'driver' || !player.body) continue;
-                const pDist = cpu.body.position.distanceTo(player.body.position);
-                if (pDist < combatRange) {
-                    const toDx = player.body.position.x - pos.x;
-                    const toDz = player.body.position.z - pos.z;
-                    const toAngle = Math.atan2(toDx, -toDz);
-                    const aimDiff = Math.abs(normalizeAngle(toAngle - currentAngle));
-                    
-                    // If aligned with target (within 30 degrees), boost throttle for ramming
-                    if (aimDiff < Math.PI / 6) {
-                        combatBoost = 1.5;
-                        break;
+            // Check for nearby players to ram (less aggressive in race mode)
+            const combatChance = isRacing ? 0.3 : 0.6; // 30% aggressive in races, 60% in arenas
+            
+            if (Math.random() < combatChance) {
+                for (const [pId, player] of players) {
+                    if (player.type !== 'driver' || !player.body) continue;
+                    const pDist = cpu.body.position.distanceTo(player.body.position);
+                    if (pDist < combatRange) {
+                        const toDx = player.body.position.x - pos.x;
+                        const toDz = player.body.position.z - pos.z;
+                        const toAngle = Math.atan2(toDx, -toDz);
+                        const aimDiff = Math.abs(normalizeAngle(toAngle - currentAngle));
+                        
+                        // If aligned with target (within 30 degrees), small boost
+                        if (aimDiff < Math.PI / 6) {
+                            combatBoost = 1.15; // Reduced from 1.5
+                            break;
+                        }
                     }
                 }
             }
             
-            // Check for nearby CPUs to ram (arena mode)
-            if (!isRacing) {
+            // Check for nearby CPUs to ram (in all modes, not just arena)
+            if (Math.random() < combatChance) {
                 for (const [cId, otherCpu] of cpuPlayers) {
                     if (cId === id || !otherCpu.body || otherCpu.hp <= 0) continue;
                     const cDist = cpu.body.position.distanceTo(otherCpu.body.position);
@@ -342,7 +346,7 @@ function updateCPUPhysics() {
                         const aimDiff = Math.abs(normalizeAngle(toAngle - currentAngle));
                         
                         if (aimDiff < Math.PI / 6) {
-                            combatBoost = 1.5;
+                            combatBoost = 1.15; // Reduced from 1.5
                             break;
                         }
                     }
@@ -703,8 +707,8 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damage1 = Math.floor(impactSpeed * 2); // Damage TO p1
-                    let damage2 = Math.floor(impactSpeed * 2); // Damage TO p2
+                    let damage1 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
+                    let damage2 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
                     let knockback1 = 1.0;
                     let knockback2 = 1.0;
 
@@ -734,8 +738,8 @@ world.addEventListener('postStep', () => {
                     // Check P1 Ramming P2
                     if (p1FacingP2 > 0.7) {
                         // P1 is hitting P2 frontally
-                        damage2 *= 1.5; // P2 takes more
-                        damage1 *= 0.5; // P1 takes less
+                        damage2 *= 1.3; // Reduced from 1.5x
+                        damage1 *= 0.6; // Less reduction (was 0.5)
                         knockback2 = 2.0; // P2 gets punted
                         console.log(`[COMBAT] ${p1.name} RAMMED ${p2.name}!`);
                     }
@@ -743,8 +747,8 @@ world.addEventListener('postStep', () => {
                     // Check P2 Ramming P1
                     if (p2FacingP1 > 0.7) {
                         // P2 is hitting P1 frontally
-                        damage1 *= 1.5;
-                        damage2 *= 0.5;
+                        damage1 *= 1.3; // Reduced from 1.5x
+                        damage2 *= 0.6; // Less reduction (was 0.5)
                         knockback1 = 2.0;
                         console.log(`[COMBAT] ${p2.name} RAMMED ${p1.name}!`);
                     }
@@ -799,8 +803,8 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damageToPlayer = Math.floor(impactSpeed * 2);
-                    let damageToCPU = Math.floor(impactSpeed * 2);
+                    let damageToPlayer = Math.floor(impactSpeed * 1.5); // Reduced from 2x
+                    let damageToCPU = Math.floor(impactSpeed * 1.5); // Reduced from 2x
 
                     // ONI MASK: 15% damage resistance
                     if (player.maskType === 'Oni') damageToPlayer *= 0.85;
@@ -832,14 +836,14 @@ world.addEventListener('postStep', () => {
                     const cpuRamming = cForward.dot(v1to2.negate());
 
                     if (playerRamming > 0.7) {
-                        damageToPlayer *= 0.5;
-                        damageToCPU *= 1.5;
+                        damageToPlayer *= 0.6; // Less reduction (was 0.5)
+                        damageToCPU *= 1.3; // Reduced from 1.5x
                         console.log(`[COMBAT] ${player.name} RAMMED ${cpu.name}!`);
                     }
 
                     if (cpuRamming > 0.7) {
-                        damageToCPU *= 0.5;
-                        damageToPlayer *= 1.5;
+                        damageToCPU *= 0.6; // Less reduction (was 0.5)
+                        damageToPlayer *= 1.3; // Reduced from 1.5x
                         console.log(`[COMBAT] ${cpu.name} RAMMED ${player.name}!`);
                     }
 
@@ -890,8 +894,8 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damage1 = Math.floor(impactSpeed * 2);
-                    let damage2 = Math.floor(impactSpeed * 2);
+                    let damage1 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
+                    let damage2 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
 
                     // RAMMING LOGIC
                     const v1to2 = new CANNON.Vec3();
@@ -920,14 +924,14 @@ world.addEventListener('postStep', () => {
                     const cpu2Ramming = f2.dot(v1to2.negate());
 
                     if (cpu1Ramming > 0.7) {
-                        damage1 *= 0.5;
-                        damage2 *= 1.5;
+                        damage1 *= 0.6; // Less reduction (was 0.5)
+                        damage2 *= 1.3; // Reduced from 1.5x
                         console.log(`[COMBAT] ${cpu1.name} RAMMED ${cpu2.name}!`);
                     }
 
                     if (cpu2Ramming > 0.7) {
-                        damage2 *= 0.5;
-                        damage1 *= 1.5;
+                        damage2 *= 0.6; // Less reduction (was 0.5)
+                        damage1 *= 1.3; // Reduced from 1.5x
                         console.log(`[COMBAT] ${cpu2.name} RAMMED ${cpu1.name}!`);
                     }
 
