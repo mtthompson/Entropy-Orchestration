@@ -510,17 +510,17 @@ export function useAudio(connected) {
                 scheduleMetallic(ctx, time, intensity * style.noiseLevel);
             }
 
-            // Bass
-            const bassPattern = BASS_PATTERNS[barData.bassPattern % BASS_PATTERNS.length];
+            // Bass - use track-specific bass pattern
+            const bassPattern = BASS_PATTERNS[trackBassPattern];
             for (const [offset, dur] of bassPattern) {
                 if (offset === step) {
                     const bassNote = CHORDS[chord][0]; // Root note
                     
                     // Use PWM instead of regular bass if enabled
                     if (style.usePWM && Math.random() < 0.5) {
-                        schedulePWM(ctx, time, bassNote, dur * stepDuration, intensity * 0.8, style);
+                        schedulePWM(ctx, time, bassNote, dur * stepDuration, intensity * 0.6, style);
                     } else {
-                        scheduleBass(ctx, time, bassNote, dur * stepDuration, intensity, style);
+                        scheduleBass(ctx, time, bassNote, dur * stepDuration, intensity * 0.7, style);
                     }
                 }
             }
@@ -528,17 +528,17 @@ export function useAudio(connected) {
             // Sub-bass layer for heavy tracks (every 4 steps)
             if (style.useSubBass && step % 4 === 0) {
                 const bassNote = CHORDS[chord][0];
-                scheduleSubBass(ctx, time, bassNote, stepDuration * 4, intensity * 0.8);
+                scheduleSubBass(ctx, time, bassNote, stepDuration * 4, intensity * 0.5);
             }
 
-            // Lead melody
+            // Lead melody - use track-specific melody style
             if (barData.leadEnabled && step === 0) {
-                const melody = generateMelody(chord, barData.section, measureNum);
+                const melody = generateMelody(chord, barData.section, measureNum, style.melodyStyle);
                 for (const note of melody) {
                     const noteTime = ctx.currentTime + note.step * stepDuration;
                     
-                    // Regular lead
-                    scheduleLead(ctx, noteTime, note.note, stepDuration * 1.5, intensity, style);
+                    // Regular lead - reduced volume to prevent harshness
+                    scheduleLead(ctx, noteTime, note.note, stepDuration * 1.5, intensity * 0.6, style);
                     
                     // Add pluck doubling for tracks that use it
                     if (style.usePluck && Math.random() < 0.5 * sectionIntensity) {
@@ -547,27 +547,27 @@ export function useAudio(connected) {
 
                     // Tremolo on some lead notes
                     if (style.useTremolo && Math.random() < 0.3 * sectionIntensity) {
-                        scheduleTremolo(ctx, noteTime, note.note, stepDuration * 2, intensity, style);
+                        scheduleTremolo(ctx, noteTime, note.note, stepDuration * 2, intensity * 0.4, style);
                     }
                 }
 
                 // Portamento slides (occasionally)
                 if (style.usePortamento && measureNum % 8 === 0 && melody.length >= 2) {
-                    schedulePortamento(ctx, ctx.currentTime, melody[0].note, melody[1].note, stepDuration * 4, intensity, style);
+                    schedulePortamento(ctx, ctx.currentTime, melody[0].note, melody[1].note, stepDuration * 4, intensity * 0.5, style);
                 }
             }
 
-            // FM counter-melodies on odd measures
+            // FM counter-melodies on odd measures - use minimal style for variety
             if (style.useFM && barData.leadEnabled && measureNum % 2 === 1 && step === 0 && Math.random() < sectionIntensity) {
-                const melody = generateMelody(chord, barData.section, measureNum + 1);
+                const melody = generateMelody(chord, barData.section, measureNum + 1, 'minimal');
                 for (const note of melody.slice(0, 4)) { // Only first 4 notes
-                    scheduleFM(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.2, intensity * 0.7, style);
+                    scheduleFM(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.2, intensity * 0.5, style);
                 }
             }
 
             // Bells (sparse, high melody every 4 measures)
             if (style.useBells && barData.leadEnabled && measureNum % 4 === 0 && step === 0 && Math.random() < 0.5) {
-                const melody = generateMelody(chord, barData.section, measureNum);
+                const melody = generateMelody(chord, barData.section, measureNum, style.melodyStyle);
                 for (const note of melody.slice(0, 3)) {
                     scheduleBell(ctx, ctx.currentTime + note.step * stepDuration, note.note, style);
                 }
