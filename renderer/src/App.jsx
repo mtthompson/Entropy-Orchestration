@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Trail, Stars, Environment } from '@react-three/drei';
-import { EffectComposer, Bloom, ChromaticAberration, Glitch, N8AO, SSR, DepthOfField, ToneMapping, Vignette } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, ChromaticAberration, Glitch, N8AO, DepthOfField, ToneMapping, Vignette } from '@react-three/postprocessing';
 import { BlendFunction, GlitchMode, ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
@@ -1283,26 +1283,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                     />
                 )}
 
-                {/* SSR - Screen Space Reflections */}
-                {graphicsSettings?.enableSSR && (
-                    <SSR
-                        intensity={0.45}
-                        exponent={1}
-                        distance={10}
-                        fade={2}
-                        roughnessFade={1}
-                        thickness={10}
-                        ior={1.45}
-                        maxRoughness={1}
-                        maxDepthDifference={10}
-                        blend={0.95}
-                        correction={1}
-                        correctionRadius={1}
-                        blur={0.5}
-                        blurKernel={1}
-                        blurSharpness={10}
-                    />
-                )}
+                {/* SSR removed - causes WebGL context overflow crashes */}
 
                 {/* Depth of Field */}
                 {graphicsSettings?.enableDOF && (
@@ -1510,13 +1491,12 @@ export default function App() {
 
     // Graphics Settings with localStorage persistence
     const [graphicsSettings, setGraphicsSettings] = useState(() => {
-        const SETTINGS_VERSION = 2; // Bump this when defaults change
+        const SETTINGS_VERSION = 3; // Bump this when defaults change - v3: removed SSR
         const defaultSettings = {
             version: SETTINGS_VERSION,
             shadowQuality: 2048,
             enableHDR: true,
             enableSSAO: true,
-            enableSSR: false, // Disabled by default - can cause WebGL context overflow
             enableDOF: false,
             enableBloom: true,
             bloomIntensity: 0.8,

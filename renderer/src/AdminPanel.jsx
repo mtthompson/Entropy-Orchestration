@@ -58,7 +58,6 @@ export function AdminPanel({
                 shadowQuality: 1024,
                 enableHDR: false,
                 enableSSAO: false,
-                enableSSR: false,
                 enableDOF: false,
                 enableBloom: true,
                 bloomIntensity: 0.5,
@@ -70,7 +69,6 @@ export function AdminPanel({
                 shadowQuality: 2048,
                 enableHDR: true,
                 enableSSAO: true,
-                enableSSR: false,
                 enableDOF: false,
                 enableBloom: true,
                 bloomIntensity: 0.8,
@@ -82,7 +80,6 @@ export function AdminPanel({
                 shadowQuality: 4096,
                 enableHDR: true,
                 enableSSAO: true,
-                enableSSR: true,
                 enableDOF: false,
                 enableBloom: true,
                 bloomIntensity: 0.8,
@@ -391,7 +388,6 @@ export function AdminPanel({
                                 {[
                                     { key: 'enableHDR', label: 'HDR Environment' },
                                     { key: 'enableSSAO', label: 'SSAO' },
-                                    { key: 'enableSSR', label: 'SSR' },
                                     { key: 'enableDOF', label: 'Depth of Field' },
                                     { key: 'enableBloom', label: 'Bloom' },
                                     { key: 'showPerformance', label: 'Performance Overlay' }
