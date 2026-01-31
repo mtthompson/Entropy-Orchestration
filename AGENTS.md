@@ -1,9 +1,10 @@
-# AGENTS.md - Project Entropy Orchestration (Codename)
+# AGENTS.md - Project Entropy Orchestration
 
 ## Project Overview
-This is a 48-hour Game Jam project.
+This is a 48-hour Game Jam project with the theme: **"MASK"**
 **Concept:** A "Demolition Derby Racer" (Combat Racing).
 **Goal:** Players use phones to drive. The game runs on a shared big screen. Survival is key.
+**Mask Theme:** Players wear digital "masks" (identities) that hide their true selves until elimination reveals their stats.
 **Domain:** `jam.gimongous.net` (Renderer displays QR code pointing here).
 
 ## System Architecture
@@ -11,92 +12,145 @@ This is a 48-hour Game Jam project.
 * **Renderer:** Laptop (RTX 4070) - High-end Visuals.
 * **Controllers:** Mobile Phones - Input & Dashboard.
 
+---
+
 ## 1. The Server (Authority)
-* **Tech:** Node.js, Socket.io, `cannon-es`.
+* **Tech:** Node.js, Socket.io, `cannon-es`, Jest.
 * **Physics:**
-    * **Bodies:** Use Spheres for cars (prevents flipping). Mass: 50.
-    * **Collisions:** ENABLED. Listen for collision events.
-    * **Damage Logic:** If `relativeVelocity > 15`, deduct HP from both cars.
-    * **Elimination:** If `HP <= 0`, remove the body. Notify Renderer of death.
-* **Power-ups:**
-    * Spawn static trigger zones on the track every 5-10s.
-    * **Types:** `Repair` (Heal 50 HP), `Boost` (Velocity * 2.0).
-* **Roles:**
-    * `?role=admin` -> Renderer (Full State).
-    * `?role=controller` -> Player (Input).
-
-## 2. The Renderer (Visuals)
-* **Tech:** React Three Fiber (R3F), Drei, Post-Processing.
-* **Aesthetic:** **Vaporwave / Synthwave**.
-    * Neon grids, deep purple/blue background, bloom effects, chromatic aberration.
-* **QR Code:** Permanent overlay in top-right: `jam.gimongous.net`.
-* **Camera Logic:**
-    * **"Pack Leader" Cam:** Follow the average Z-position of the top 3 cars.
-    * **The "Kill Floor":** If a car falls off the bottom edge of the screen view, it is eliminated.
-* **Visual Effects (The Juice):**
-    * **Trails:** Render "Tron-style" ribbon trails behind cars.
-    * **Damage:** Cars should smoke or flicker red when HP is low.
-    * **Explosions:** Particle burst when a player is eliminated.
-
-## 3. The Controller (Mobile Input)
-* **Tech:** React (2D DOM).
-* **UI:**
-    * **Lobby:** Simple "Enter Name" -> "Join".
-    * **Dashboard:** Large Health Bar (Green -> Red), Boost Meter.
-    * **Feedback:** Vibrate phone (`navigator.vibrate`) on impact or death.
-* **Input:** `DeviceOrientation` (Steering) + Touch (Throttle/Boost).
-
-## 4. Spectator Mode (Drone Swarm)
-* If a player is eliminated (or the server is full > 12 players), they respawn as a **Drone**.
-* **Drone Mechanics:**
-    * Cannot collide with cars.
-    * Can tap a button to drop a "Trap" (Static Box) onto the track to mess with survivors.
+    * Bodies: Spheres for cars (prevents flipping). Mass: 50.
+    * Collisions: Enabled with damage calculation.
+    * Boundary enforcement: Auto-respawn if out of bounds.
+* **Power-ups:** Repair, Boost, Shield, Ghost, Juggernaut, Weapon.
+* **CPU Opponents:** 1-3 AI cars spawn if <3 human players.
+* **Weapons System:** Missiles (40 dmg) and Lasers (20 dmg) with projectile physics.
+* **Demo Mode:** Auto-starts after 60s with no players (4-6 CPU battle).
+* **Leaderboard:** Tracks wins/kills/deaths, persisted in memory.
 
 ---
 
-## Development Status (Updated: 2026-01-30)
+## 2. The Renderer (Visuals)
+* **Tech:** React Three Fiber (R3F), Drei, Post-Processing.
+* **Aesthetic:** Vaporwave / Synthwave with 12 unique track themes.
+* **Features:**
+    * Trail effects behind cars
+    * Particle explosions on elimination
+    * Enhanced powerup visuals (beacons, glow, rings)
+    * Projectile rendering (missiles/lasers)
+    * LeaderboardDisplay in lobby
+    * DemoModeIndicator banner
+* **Camera:** Pack-leader following with smooth interpolation.
 
-### ✅ Implemented
-* **Project Scaffold:** Monorepo with npm workspaces (`server`, `renderer`, `controller`).
-* **Server (Port 3000):**
-    * Socket.io server with 60Hz tick rate.
-    * `cannon-es` physics with sphere bodies (mass 50).
-    * Player join/leave handling, input processing.
-    * "Test Arena" track with 4 boundary walls.
-    * Game state broadcast to all clients.
-* **Renderer (Port 5173):**
-    * React Three Fiber setup with Vaporwave aesthetic.
-    * Neon grid floor, bloom post-processing.
-    * QR code overlay for controller access.
-    * Real-time player sphere rendering from server state.
-* **Controller (Port 5174):**
-    * Mobile-optimized React UI with lobby → dashboard flow.
-    * DeviceOrientation steering with exponential curve.
-    * Touch throttle/brake controls.
-    * Health bar display.
-* **Networking:**
-    * Server uses default `/socket.io` path.
-    * Clients use `/socket.io` for localhost, `/api/socket.io` for production (tailscale strips `/api` prefix).
-    * Tailscale serve routes `/` → controller:5174, `/api` → server:3000.
-    * Vite configs allow `.ts.net` and `jam.gimongous.net` hosts.
+---
 
-### 🚧 In Progress / TODO
-* **Tracks:** Basic test arena complete; need more complex tracks.
-* **Combat:** Collision damage detection not yet wired up.
-* **Power-ups:** Spawning logic not yet implemented.
-* **Visual Polish:** Trails, damage effects, explosions.
-* **Spectator/Drone Mode:** Not yet implemented.
-* **Assets:** Create animations, graphics, and car model.
-* **Audio:** Sound effects and music.
-* **Theme:** Integrate "Mask" theme (Game Jam requirement).
+## 3. The Controller (Mobile Input)
+* **UI:**
+    * Lobby: Name entry + Mask selection.
+    * Dashboard: Health bar, Boost meter, Ammo display, Fire button.
+* **Input:** DeviceOrientation (steering) + Touch (throttle/boost/fire).
+* **Haptic:** Vibration on impact, damage, powerups.
 
-### Dev Commands
+---
+
+## 4. Audio System
+* **Music:** 12 track-specific styles (90-160 BPM, various keys).
+* **SFX:** Engine noise, crashes, powerup pickups, weapons.
+* **Dynamic:** Intensity varies with game action.
+
+---
+
+## 5. Track Themes (12 Unique)
+
+| Track | Theme | Colors | Scenery |
+|-------|-------|--------|---------|
+| Stadium Oval | Classic Synthwave | Magenta/Cyan | Spotlights |
+| Thunder Dome | Industrial | Orange/Yellow | Metal beams |
+| The Switchback | Neon Forest | Mint/Cyan | Glowing trees |
+| Cloverleaf | Nature | Lime/White | Plants |
+| Hexagon Heat | Volcanic | Hot pink/Orange | Lava/smoke |
+| Dragon's Tail | Oriental | Red/Gold | Lanterns |
+| The Octagon | Mystic | Purple/Magenta | Crystals |
+| Grand Prix | Classic | White/Red | Checkered flags |
+| Triangle Terror | Warning | Yellow/Red | Hazard signs |
+| Velocity Strip | Speed | Electric blue/Cyan | Motion blur |
+| The Coliseum | Roman | Gold/Bronze | Pillars/torches |
+| The Cage | Prison | Gray/Red | Chain link |
+
+---
+
+## 6. Mask Theme Integration
+The "mask" theme is interpreted as digital identity:
+
+* **Anonymous Racing:** Player names hidden until death (shown as "MASKED RACER #1").
+* **UNMASKED Reveal:** True identity shown in dramatic elimination banner.
+* **Visual Mask:** Cars have emoji mask icons with HP-based glow.
+* **Mask Types:** Players choose from 5 masks, each with unique ability:
+
+| Mask | Icon | Ability |
+|------|------|---------|
+| Classic | 🎭 | Balanced (no bonus) |
+| Oni | 👹 | +15% damage resistance |
+| Tech | 🤖 | +50% boost regeneration |
+| Clown | 🤡 | Random speed bursts |
+| Skull | 💀 | +10% max speed |
+
+---
+
+## Development Status (Updated: 2026-01-31)
+
+### ✅ Fully Implemented
+* Project scaffold with npm workspaces
+* Server with 60Hz physics, collision damage, boundary enforcement
+* 12 race tracks with unique themes
+* CPU opponents with AI steering
+* Weapons system (missiles/lasers)
+* Demo mode (60s auto-trigger)
+* Leaderboard system (wins/kills/deaths)
+* Enhanced powerup visuals
+* Projectile rendering
+* Jest testing framework
+
+### 🚧 In Progress
+* Particle effects (speed lines, impacts)
+* Dynamic audio mixing
+* Creative mask theme visuals
+* Camera enhancements
+
+---
+
+## Dev Commands
 ```bash
 npm run dev:server      # Server on :3000
 npm run dev:renderer    # Renderer on :5173
 npm run dev:controller  # Controller on :5174
 
-# Tailscale dev setup (port 443):
-tailscale serve --bg http://localhost:5174            # Controller at /
-tailscale serve --bg --set-path /api http://localhost:3000  # Server at /api
+# Testing
+cd server && npm test   # Run Jest tests
+
+# Tailscale:
+tailscale serve --bg http://localhost:5174
+tailscale serve --bg --set-path /api http://localhost:3000
 ```
+
+---
+
+## Socket Events
+
+### Server → Client
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `worldState` | `{players, powerups, traps}` | Game world state |
+| `gameState` | `{state, timer, winner, isDemo}` | Game phase |
+| `trackData` | Track object | Current track info |
+| `trackStyle` | `{trackId, trackName}` | Music style trigger |
+| `leaderboard` | Array of entries | Top 10 leaderboard |
+| `demoMode` | `{active}` | Demo mode status |
+| `projectileFired` | `{position, direction, type}` | Projectile spawn |
+| `damage` | `{hp, damage}` | Damage taken |
+
+### Client → Server
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `join` | `{name, maskType}` | Join game |
+| `input` | `{steering, throttle, boost}` | Player controls |
+| `fire` | (none) | Fire weapon |
+| `spawnTrap` | `{x, z}` | Spectator trap drop |

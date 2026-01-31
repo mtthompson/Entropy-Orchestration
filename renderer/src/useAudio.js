@@ -535,6 +535,44 @@ export function useAudio(connected) {
             gain.gain.linearRampToValueAtTime(0, t + 0.8);
             osc.start(t);
             osc.stop(t + 0.8);
+        } else if (type === 'missile') {
+            // Whoosh + explosion
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(800, t);
+            osc.frequency.exponentialRampToValueAtTime(200, t + 0.3);
+            gain.gain.setValueAtTime(0.4, t);
+            gain.gain.linearRampToValueAtTime(0, t + 0.3);
+            osc.start(t);
+            osc.stop(t + 0.3);
+        } else if (type === 'laser') {
+            // Zap sound
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(1200, t);
+            osc.frequency.exponentialRampToValueAtTime(300, t + 0.15);
+            gain.gain.setValueAtTime(0.25, t);
+            gain.gain.linearRampToValueAtTime(0, t + 0.15);
+            osc.start(t);
+            osc.stop(t + 0.15);
+        } else if (type === 'powerup') {
+            // Magical pickup sound (ascending)
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, t);
+            osc.frequency.setValueAtTime(400, t + 0.1);
+            osc.frequency.setValueAtTime(600, t + 0.2);
+            osc.frequency.setValueAtTime(800, t + 0.3);
+            gain.gain.setValueAtTime(0.15, t);
+            gain.gain.linearRampToValueAtTime(0, t + 0.4);
+            osc.start(t);
+            osc.stop(t + 0.4);
+        } else if (type === 'explosion') {
+            // Big boom
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(100, t);
+            osc.frequency.exponentialRampToValueAtTime(20, t + 0.8);
+            gain.gain.setValueAtTime(0.6, t);
+            gain.gain.linearRampToValueAtTime(0, t + 0.8);
+            osc.start(t);
+            osc.stop(t + 0.8);
         } else if (type === 'join') {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(500, t);
@@ -543,6 +581,15 @@ export function useAudio(connected) {
             gain.gain.linearRampToValueAtTime(0, t + 0.4);
             osc.start(t);
             osc.stop(t + 0.4);
+        } else if (type === 'countdown') {
+            // Countdown beep - ascending pitch
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(440, t);
+            osc.frequency.setValueAtTime(880, t + 0.08);
+            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.linearRampToValueAtTime(0, t + 0.15);
+            osc.start(t);
+            osc.stop(t + 0.15);
         }
     }, []);
 

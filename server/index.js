@@ -2,7 +2,7 @@ const { Server } = require('socket.io');
 const { createServer } = require('http');
 const CANNON = require('cannon-es');
 const { v4: uuidv4 } = require('uuid');
-const { getDefaultTrack } = require('./tracks');
+const { getDefaultTrack, getThemeByTrackId, getRandomTrack } = require('./tracks');
 
 // =============================================================================
 // CONFIGURATION
@@ -13,6 +13,9 @@ const DAMAGE_THRESHOLD = 15;
 const MAX_SPEED = 80; // Hard cap on velocity to prevent physics explosions
 const POWERUP_SPAWN_INTERVAL = 7000; // 5-10s average
 const POWERUP_TYPES = ['Repair', 'Boost'];
+const MAX_POWERUPS = 10; // Prevent accumulation during idle
+const MAX_TRAPS = 15; // Prevent trap spam
+const POWERUP_LIFETIME = 30000; // Powerups expire after 30 seconds
 
 // =============================================================================
 // SERVER SETUP
@@ -397,6 +400,32 @@ function updatePlayerPhysics(player, input) {
 
     const { steering, throttle, boost } = input;
 
+    // ==============================================
+    // MASK ABILITIES - Each mask grants slight bonus
+    // ==============================================
+    // Classic: Balanced (no special bonus)
+    // Oni: +15% damage resistance (handled in collision)
+    // Tech: +50% boost regeneration
+    // Clown: Random speed bursts
+    // Skull: +10% max speed
+    const maskType = player.maskType || 'Classic';
+    let boostRegenMod = 1.0;
+    let maxSpeedMod = 1.0;
+
+    if (maskType === 'Tech') {
+        boostRegenMod = 1.5; // Faster boost regen
+    } else if (maskType === 'Skull') {
+        maxSpeedMod = 1.1; // 10% faster
+    } else if (maskType === 'Clown') {
+        // Random speed burst every ~5 seconds
+        if (Math.random() < 0.003) { // ~18% chance per second at 60fps
+            const burst = new CANNON.Vec3(0, 0, -1);
+            player.body.quaternion.vmult(burst, burst);
+            burst.scale(300, burst);
+            player.body.applyImpulse(burst, player.body.position);
+        }
+    }
+
     // Wake up body
     player.body.wakeUp();
 
@@ -431,7 +460,7 @@ function updatePlayerPhysics(player, input) {
         force.scale(1.8, force);
         player.boost = Math.max(0, player.boost - 1.5);
     } else {
-        player.boost = Math.min(100, player.boost + 0.3);
+        player.boost = Math.min(100, player.boost + 0.3 * boostRegenMod);
     }
 
     player.body.applyForce(force, player.body.position);
@@ -451,8 +480,8 @@ function updatePlayerPhysics(player, input) {
 
     player.body.applyForce(correctionForce, player.body.position);
 
-    // 5. Speed cap to prevent runaway
-    const maxSpeed = 45;
+    // 5. Speed cap to prevent runaway (modified by mask)
+    const maxSpeed = 45 * maxSpeedMod;
     if (speed > maxSpeed) {
         player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
     }
@@ -557,6 +586,10 @@ world.addEventListener('postStep', () => {
                     let knockback1 = 1.0;
                     let knockback2 = 1.0;
 
+                    // ONI MASK: 15% damage resistance
+                    if (p1.maskType === 'Oni') damage1 *= 0.85;
+                    if (p2.maskType === 'Oni') damage2 *= 0.85;
+
                     // RAMMING LOGIC
                     // Calculate attack angles
                     // Vector from 1 to 2
@@ -637,6 +670,12 @@ world.addEventListener('postStep', () => {
 const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon']; // Weighted
 
 function spawnPowerup() {
+    // Prevent accumulation - cap at MAX_POWERUPS
+    if (powerups.size >= MAX_POWERUPS) {
+        console.log(`[POWERUP] Max powerups (${MAX_POWERUPS}) reached, skipping spawn`);
+        return;
+    }
+
     const id = uuidv4();
     const type = EXTENDED_POWERUP_TYPES[Math.floor(Math.random() * EXTENDED_POWERUP_TYPES.length)];
     // Use track bounds for powerup spawning
@@ -652,9 +691,18 @@ function spawnPowerup() {
     });
 
     world.addBody(body);
-    powerups.set(id, { body, type, position: { x, y: 1, z } });
+    powerups.set(id, { body, type, position: { x, y: 1, z }, spawnTime: Date.now() });
 
-    console.log(`[POWERUP] Spawned ${type} at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+    console.log(`[POWERUP] Spawned ${type} at (${x.toFixed(1)}, ${z.toFixed(1)}) [${powerups.size}/${MAX_POWERUPS}]`);
+
+    // Auto-expire after POWERUP_LIFETIME
+    setTimeout(() => {
+        if (powerups.has(id)) {
+            world.removeBody(powerups.get(id).body);
+            powerups.delete(id);
+            console.log(`[POWERUP] Expired ${type} [${powerups.size}/${MAX_POWERUPS}]`);
+        }
+    }, POWERUP_LIFETIME);
 }
 
 function checkPowerupCollisions() {
@@ -705,6 +753,12 @@ setInterval(spawnPowerup, POWERUP_SPAWN_INTERVAL);
 // TRAPS (Drone ability)
 // =============================================================================
 function spawnTrap(x, z, ownerId) {
+    // Prevent trap spam
+    if (traps.size >= MAX_TRAPS) {
+        console.log(`[TRAP] Max traps (${MAX_TRAPS}) reached, skipping spawn`);
+        return;
+    }
+
     const id = uuidv4();
 
     const body = new CANNON.Body({
@@ -716,7 +770,7 @@ function spawnTrap(x, z, ownerId) {
     world.addBody(body);
     traps.set(id, { body, ownerId, position: { x, y: 0.5, z } });
 
-    console.log(`[TRAP] Drone ${ownerId} placed trap at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+    console.log(`[TRAP] Drone ${ownerId} placed trap at (${x.toFixed(1)}, ${z.toFixed(1)}) [${traps.size}/${MAX_TRAPS}]`);
 
     // Remove trap after 10 seconds
     setTimeout(() => {
@@ -728,17 +782,143 @@ function spawnTrap(x, z, ownerId) {
 }
 
 // =============================================================================
+// IDLE CLEANUP - Prevents accumulation during extended idle periods
+// =============================================================================
+function idleCleanup() {
+    const humanCount = [...players.values()].filter(p => !p.isCPU).length;
+    const now = Date.now();
+
+    // If no human players, be more aggressive with cleanup
+    if (humanCount === 0) {
+        // Clear all powerups if too many
+        if (powerups.size > 5) {
+            console.log(`[CLEANUP] No players - clearing ${powerups.size - 3} excess powerups`);
+            let count = 0;
+            for (const [id, powerup] of powerups) {
+                if (count >= 3) { // Keep only 3
+                    world.removeBody(powerup.body);
+                    powerups.delete(id);
+                }
+                count++;
+            }
+        }
+
+        // Clear all traps
+        if (traps.size > 0) {
+            console.log(`[CLEANUP] No players - clearing ${traps.size} traps`);
+            for (const [id, trap] of traps) {
+                world.removeBody(trap.body);
+                traps.delete(id);
+            }
+        }
+
+        // Clear stale projectiles (shouldn't accumulate, but safety)
+        for (const [id, proj] of projectiles) {
+            world.removeBody(proj.body);
+            projectiles.delete(id);
+        }
+    }
+}
+
+// Run idle cleanup every 30 seconds
+setInterval(idleCleanup, 30000);
+
+// =============================================================================
 // GAME LOOP MANAGER
 // =============================================================================
-let gameState = 'LOBBY'; // LOBBY, COUNTDOWN, RACING, WINNER
+let gameState = 'LOBBY'; // LOBBY, COUNTDOWN, RACING, WINNER, DEMO
 let gameTimer = 0;
 let winnerName = null;
+let demoModeActive = false;
+let demoModeTimer = null;
+const DEMO_TIMEOUT = 60000; // 60 seconds of no players triggers demo
+
+// =============================================================================
+// LEADERBOARD SYSTEM
+// =============================================================================
+const leaderboard = new Map(); // name -> { wins, kills, deaths, gamesPlayed }
+
+function updateLeaderboard(playerName, stat, value = 1) {
+    if (!leaderboard.has(playerName)) {
+        leaderboard.set(playerName, { wins: 0, kills: 0, deaths: 0, gamesPlayed: 0 });
+    }
+    const entry = leaderboard.get(playerName);
+    entry[stat] = (entry[stat] || 0) + value;
+}
+
+function getLeaderboardData() {
+    const entries = [];
+    for (const [name, stats] of leaderboard) {
+        entries.push({ name, ...stats });
+    }
+    // Sort by wins, then kills
+    entries.sort((a, b) => (b.wins - a.wins) || (b.kills - a.kills));
+    return entries.slice(0, 10); // Top 10
+}
+
+function broadcastLeaderboard() {
+    io.emit('leaderboard', getLeaderboardData());
+}
+
+// =============================================================================
+// DEMO MODE SYSTEM
+// =============================================================================
+function startDemoMode() {
+    if (demoModeActive || gameState === 'RACING') return;
+
+    console.log('[DEMO] Starting demo mode - CPU battle!');
+    demoModeActive = true;
+    gameState = 'DEMO';
+
+    // Select random track
+    selectRandomTrack();
+
+    // Broadcast track data so renderer displays correct track and music plays
+    io.emit('trackData', activeTrack);
+    io.emit('trackStyle', { trackId: activeTrack.id, trackName: activeTrack.name });
+
+    // Spawn 4-6 CPU opponents
+    const cpuCount = 4 + Math.floor(Math.random() * 3);
+    spawnCPUOpponents(cpuCount);
+
+    io.emit('demoMode', { active: true });
+    broadcastGameState();
+
+    console.log(`[DEMO] Spawned ${cpuCount} CPU opponents for demo on track: ${activeTrack.name}`);
+}
+
+function stopDemoMode() {
+    if (!demoModeActive) return;
+
+    console.log('[DEMO] Stopping demo mode - player joining');
+    demoModeActive = false;
+    gameState = 'LOBBY';
+
+    removeCPUOpponents();
+    io.emit('demoMode', { active: false });
+    broadcastGameState();
+}
+
+function resetDemoTimer() {
+    if (demoModeTimer) clearTimeout(demoModeTimer);
+
+    // Only set timer if no human players
+    const humanCount = [...players.values()].filter(p => !p.isCPU).length;
+    if (humanCount === 0 && !demoModeActive) {
+        demoModeTimer = setTimeout(startDemoMode, DEMO_TIMEOUT);
+        console.log('[DEMO] Demo timer set - starting in 60s if no one joins');
+    }
+}
+
+// Start demo timer on server start
+resetDemoTimer();
 
 function broadcastGameState() {
     io.emit('gameState', {
         state: gameState,
         timer: gameTimer,
-        winner: winnerName
+        winner: winnerName,
+        isDemo: demoModeActive
     });
 }
 
@@ -1086,8 +1266,8 @@ function gameLoop() {
     // Step physics
     world.step(timestep);
 
-    // Update CPU opponents
-    if (gameState === 'RACING') {
+    // Update CPU opponents (in both RACING and DEMO modes)
+    if (gameState === 'RACING' || gameState === 'DEMO') {
         updateCPUPhysics();
         updateProjectiles();
     }
@@ -1135,11 +1315,36 @@ function gameLoop() {
             maskType: player.maskType,
             color: player.color,
             name: player.name,
-            name: player.name,
             boost: player.boost,
             isShielded: player.isShielded || false,
             isGhost: player.isGhost || false,
             isJuggernaut: player.isJuggernaut || false
+        };
+    }
+
+    // Include CPU players in world state (for demo mode camera to follow)
+    for (const [id, cpu] of cpuPlayers) {
+        worldState.players[id] = {
+            position: cpu.body ? {
+                x: cpu.body.position.x,
+                y: cpu.body.position.y,
+                z: cpu.body.position.z
+            } : null,
+            velocity: cpu.body ? {
+                x: cpu.body.velocity.x,
+                y: cpu.body.velocity.y,
+                z: cpu.body.velocity.z
+            } : null,
+            hp: cpu.hp,
+            type: cpu.type,
+            maskType: 'Classic', // CPUs use classic mask
+            color: cpu.color,
+            name: cpu.name,
+            boost: cpu.boost || 100,
+            isCPU: true,
+            isShielded: false,
+            isGhost: false,
+            isJuggernaut: false
         };
     }
 

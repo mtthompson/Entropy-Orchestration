@@ -49,6 +49,156 @@ function generateCircleSpawns(radius, count) {
     return spawns;
 }
 
+// =============================================================================
+// TRACK THEMES - Unique colors, scenery, and visual style for each track
+// =============================================================================
+const TRACK_THEMES = {
+    'track_01': {
+        name: 'Stadium Oval',
+        primaryColor: '#ff00ff',      // Magenta
+        secondaryColor: '#00ffff',    // Cyan
+        floorColor: '#0a051a',
+        gridColor: '#ff00ff',
+        wallColor: '#ff00ff',
+        skyColor: '#0a0020',
+        sceneryType: 'stadium',       // Grandstands, spotlights
+        particleType: 'confetti',
+        ambientIntensity: 0.4
+    },
+    'track_02': {
+        name: 'Thunder Dome',
+        primaryColor: '#ff6600',      // Orange
+        secondaryColor: '#ffff00',    // Yellow
+        floorColor: '#1a0500',
+        gridColor: '#ff3300',
+        wallColor: '#ff6600',
+        skyColor: '#200800',
+        sceneryType: 'industrial',    // Metal beams, sparks
+        particleType: 'sparks',
+        ambientIntensity: 0.3
+    },
+    'track_03': {
+        name: 'The Switchback',
+        primaryColor: '#00ff88',      // Mint
+        secondaryColor: '#00ffff',    // Cyan
+        floorColor: '#001a0a',
+        gridColor: '#00ff88',
+        wallColor: '#00ff88',
+        skyColor: '#002010',
+        sceneryType: 'neon_forest',   // Glowing trees
+        particleType: 'fireflies',
+        ambientIntensity: 0.5
+    },
+    'track_04': {
+        name: 'Cloverleaf',
+        primaryColor: '#88ff00',      // Lime
+        secondaryColor: '#ffffff',    // White
+        floorColor: '#0a1a00',
+        gridColor: '#66ff00',
+        wallColor: '#88ff00',
+        skyColor: '#102000',
+        sceneryType: 'nature',        // Stylized plants
+        particleType: 'leaves',
+        ambientIntensity: 0.6
+    },
+    'track_05': {
+        name: 'Hexagon Heat',
+        primaryColor: '#ff0066',      // Hot pink
+        secondaryColor: '#ff6600',    // Orange
+        floorColor: '#1a0010',
+        gridColor: '#ff0066',
+        wallColor: '#ff0066',
+        skyColor: '#200010',
+        sceneryType: 'volcanic',      // Lava, smoke
+        particleType: 'embers',
+        ambientIntensity: 0.3
+    },
+    'track_06': {
+        name: "Dragon's Tail",
+        primaryColor: '#ff0000',      // Red
+        secondaryColor: '#ff8800',    // Gold
+        floorColor: '#1a0000',
+        gridColor: '#ff0000',
+        wallColor: '#ff0000',
+        skyColor: '#200000',
+        sceneryType: 'dragon',        // Oriental lanterns, fire
+        particleType: 'flames',
+        ambientIntensity: 0.35
+    },
+    'track_07': {
+        name: 'The Octagon',
+        primaryColor: '#6600ff',      // Purple
+        secondaryColor: '#ff00ff',    // Magenta
+        floorColor: '#0a0020',
+        gridColor: '#6600ff',
+        wallColor: '#6600ff',
+        skyColor: '#100030',
+        sceneryType: 'mystic',        // Floating crystals
+        particleType: 'magic',
+        ambientIntensity: 0.5
+    },
+    'track_08': {
+        name: 'Grand Prix',
+        primaryColor: '#ffffff',      // White
+        secondaryColor: '#ff0000',    // Red
+        floorColor: '#0a0a0a',
+        gridColor: '#ffffff',
+        wallColor: '#ffffff',
+        skyColor: '#101010',
+        sceneryType: 'classic',       // Checkered flags, banners
+        particleType: 'confetti',
+        ambientIntensity: 0.7
+    },
+    'track_09': {
+        name: 'Triangle Terror',
+        primaryColor: '#ffff00',      // Yellow
+        secondaryColor: '#ff0000',    // Red
+        floorColor: '#1a1a00',
+        gridColor: '#ffff00',
+        wallColor: '#ffff00',
+        skyColor: '#202000',
+        sceneryType: 'warning',       // Hazard signs, stripes
+        particleType: 'electricity',
+        ambientIntensity: 0.4
+    },
+    'track_10': {
+        name: 'Velocity Strip',
+        primaryColor: '#00aaff',      // Electric blue
+        secondaryColor: '#00ffff',    // Cyan
+        floorColor: '#00050a',
+        gridColor: '#00aaff',
+        wallColor: '#00aaff',
+        skyColor: '#001020',
+        sceneryType: 'speed',         // Motion blur panels
+        particleType: 'speedlines',
+        ambientIntensity: 0.5
+    },
+    'track_11': {
+        name: 'The Coliseum',
+        primaryColor: '#ffd700',      // Gold
+        secondaryColor: '#ff6600',    // Bronze
+        floorColor: '#1a1000',
+        gridColor: '#ffd700',
+        wallColor: '#ffd700',
+        skyColor: '#201800',
+        sceneryType: 'roman',         // Pillars, torches
+        particleType: 'flames',
+        ambientIntensity: 0.45
+    },
+    'track_12': {
+        name: 'The Cage',
+        primaryColor: '#888888',      // Gray
+        secondaryColor: '#ff0000',    // Blood red
+        floorColor: '#0a0a0a',
+        gridColor: '#444444',
+        wallColor: '#666666',
+        skyColor: '#080808',
+        sceneryType: 'prison',        // Chain link, rust
+        particleType: 'dust',
+        ambientIntensity: 0.2
+    }
+};
+
 const TRACKS = [];
 
 // =============================================================================
@@ -272,4 +422,20 @@ function getRandomTrack() {
     return TRACKS[Math.floor(Math.random() * TRACKS.length)];
 }
 
-module.exports = { getTrackById, getAllTracks, getDefaultTrack, getRandomTrack };
+function getThemeByTrackId(trackId) {
+    return TRACK_THEMES[trackId] || TRACK_THEMES['track_01'];
+}
+
+function getAllThemes() {
+    return TRACK_THEMES;
+}
+
+module.exports = { 
+    getTrackById, 
+    getAllTracks, 
+    getDefaultTrack, 
+    getRandomTrack,
+    getThemeByTrackId,
+    getAllThemes,
+    TRACK_THEMES
+};

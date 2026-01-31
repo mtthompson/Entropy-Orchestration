@@ -1,11 +1,19 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
-export function GameUI({ gameState, gameTimer, winner }) {
+export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
+    const [countdownPulse, setCountdownPulse] = useState(false);
+
+    // Trigger pulse animation on countdown change
+    useEffect(() => {
+        if (gameState === 'COUNTDOWN' && gameTimer > 0) {
+            setCountdownPulse(true);
+            onCountdownTick?.(gameTimer); // Notify parent for sound
+            const timer = setTimeout(() => setCountdownPulse(false), 300);
+            return () => clearTimeout(timer);
+        }
+    }, [gameTimer, gameState, onCountdownTick]);
+
     if (gameState === 'LOBBY') {
-        // Only show if NOT counting down (Timer 0). If Timer > 0, we are transitioning.
-        // Wait, startCountdown sets state to 'COUNTDOWN' immediately.
-        // So this block only shows if state is literally 'LOBBY'.
-        // If state is 'LOBBY' and timer is 0, we are waiting.
         return (
             <div style={styles.overlay}>
                 <div style={styles.box}>
@@ -16,16 +24,27 @@ export function GameUI({ gameState, gameTimer, winner }) {
                         <div style={styles.instruction}>👆  Tap/Hold to Drive</div>
                         <div style={styles.instruction}>⚡  Tap Top to Boost</div>
                     </div>
+                    <div style={{ marginTop: 30, fontSize: '1rem', opacity: 0.6, fontFamily: 'monospace' }}>
+                        🎭 Your identity is hidden until elimination
+                    </div>
                 </div>
             </div>
         );
     }
 
     if (gameState === 'COUNTDOWN') {
+        const scale = countdownPulse ? 1.3 : 1;
+        const color = gameTimer === 1 ? '#00ff00' : gameTimer === 2 ? '#ffff00' : '#ff0055';
         return (
             <div style={styles.centerOverlay}>
-                <h1 style={{ ...styles.bigText, fontSize: '15rem', color: '#ff0055' }}>
-                    {gameTimer}
+                <h1 style={{
+                    ...styles.bigText,
+                    fontSize: '15rem',
+                    color: color,
+                    transform: `scale(${scale})`,
+                    transition: 'transform 0.15s ease-out, color 0.3s'
+                }}>
+                    {gameTimer === 0 ? 'GO!' : gameTimer}
                 </h1>
             </div>
         );
@@ -34,17 +53,37 @@ export function GameUI({ gameState, gameTimer, winner }) {
     if (gameState === 'WINNER') {
         return (
             <div style={styles.overlay}>
-                <div style={styles.box}>
-                    <h1 style={styles.title}>WINNER!</h1>
-                    <div style={{ fontSize: '4rem', color: '#00ff00', textShadow: '0 0 20px #00ff00' }}>
+                <div style={{
+                    ...styles.box,
+                    animation: 'winnerGlow 1s ease-in-out infinite alternate',
+                    borderColor: '#ffd700'
+                }}>
+                    <div style={{ fontSize: '4rem', marginBottom: 10 }}>👑</div>
+                    <h1 style={{ ...styles.title, color: '#ffd700' }}>WINNER!</h1>
+                    <div style={{
+                        fontSize: '4rem',
+                        color: '#00ff00',
+                        textShadow: '0 0 20px #00ff00, 0 0 40px #00ff00',
+                        fontFamily: 'monospace',
+                        fontWeight: 'bold'
+                    }}>
                         {winner || 'DRAW'}
                     </div>
+                    <div style={{ marginTop: 20, fontSize: '1.2rem', opacity: 0.7, fontFamily: 'monospace' }}>
+                        🎭 UNMASKED CHAMPION
+                    </div>
                 </div>
+                <style>{`
+                    @keyframes winnerGlow {
+                        from { box-shadow: 0 0 50px #ffd700, 0 0 100px #ff8c00; }
+                        to { box-shadow: 0 0 80px #ffd700, 0 0 150px #ff8c00; }
+                    }
+                `}</style>
             </div>
         );
     }
 
-    // Racing UI (Timer?) - Maybe just show nothing for clutter-free gameplay
+    // Racing UI - minimal for clutter-free gameplay
     return null;
 }
 

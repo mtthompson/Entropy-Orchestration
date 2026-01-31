@@ -377,6 +377,225 @@ function Trap({ position }) {
 }
 
 // =============================================================================
+// PROJECTILE VISUAL
+// =============================================================================
+function Projectile({ position, direction, type }) {
+    const meshRef = useRef();
+    const startTime = useRef(Date.now());
+    const [visible, setVisible] = useState(true);
+
+    // Projectile colors based on type
+    const color = type === 'missile' ? '#ff6600' : '#00aaff';
+
+    useFrame((state, delta) => {
+        if (!meshRef.current || !visible) return;
+
+        // Move projectile forward
+        const speed = type === 'missile' ? 60 : 100;
+        meshRef.current.position.x += direction.x * speed * delta;
+        meshRef.current.position.z += direction.z * speed * delta;
+
+        // Animate glow
+        const t = state.clock.elapsedTime;
+        meshRef.current.material.emissiveIntensity = 2 + Math.sin(t * 20) * 0.5;
+
+        // Auto-hide after 2 seconds
+        if (Date.now() - startTime.current > 2000) {
+            setVisible(false);
+        }
+    });
+
+    if (!visible) return null;
+
+    return (
+        <group position={position}>
+            {/* Main projectile body */}
+            <mesh ref={meshRef}>
+                {type === 'missile' ? (
+                    <coneGeometry args={[0.3, 1.2, 8]} />
+                ) : (
+                    <cylinderGeometry args={[0.1, 0.1, 2, 8]} />
+                )}
+                <meshStandardMaterial
+                    color={color}
+                    emissive={color}
+                    emissiveIntensity={2.5}
+                />
+            </mesh>
+
+            {/* Glowing trail sphere */}
+            <mesh position={[0, 0, 0.5]}>
+                <sphereGeometry args={[0.4, 8, 8]} />
+                <meshBasicMaterial
+                    color={color}
+                    transparent
+                    opacity={0.6}
+                    blending={THREE.AdditiveBlending}
+                />
+            </mesh>
+
+            {/* Point light for glow effect */}
+            <pointLight color={color} intensity={2} distance={5} />
+        </group>
+    );
+}
+
+// =============================================================================
+// DEMO MODE INDICATOR
+// =============================================================================
+function DemoModeIndicator({ active }) {
+    if (!active) return null;
+
+    return (
+        <div style={{
+            position: 'fixed',
+            top: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #ff00ff88, #00ffff88)',
+            borderRadius: 12,
+            padding: '12px 30px',
+            fontSize: 24,
+            fontWeight: 700,
+            letterSpacing: 6,
+            textTransform: 'uppercase',
+            color: '#fff',
+            textShadow: '0 0 20px #ff00ff, 0 0 40px #00ffff',
+            animation: 'pulse 1s ease-in-out infinite',
+            zIndex: 1000
+        }}>
+            DEMO MODE
+        </div>
+    );
+}
+
+// =============================================================================
+// LEADERBOARD DISPLAY
+// =============================================================================
+function LeaderboardDisplay({ entries, visible }) {
+    if (!visible || entries.length === 0) return null;
+
+    return (
+        <div style={{
+            position: 'fixed',
+            top: 100,
+            right: 20,
+            background: 'rgba(0, 0, 0, 0.85)',
+            borderRadius: 12,
+            padding: 16,
+            minWidth: 220,
+            border: '2px solid #ff00ff',
+            boxShadow: '0 0 30px rgba(255, 0, 255, 0.4)',
+            zIndex: 900
+        }}>
+            <div style={{
+                fontSize: 14,
+                fontWeight: 700,
+                letterSpacing: 3,
+                textTransform: 'uppercase',
+                color: '#ff00ff',
+                marginBottom: 12,
+                textAlign: 'center'
+            }}>
+                🏆 LEADERBOARD
+            </div>
+            {entries.slice(0, 5).map((entry, i) => (
+                <div key={entry.name} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '6px 0',
+                    borderBottom: i < 4 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#fff'
+                }}>
+                    <span style={{ fontWeight: 600 }}>
+                        {i === 0 ? '👑' : i + 1 + '.'} {entry.name}
+                    </span>
+                    <span style={{ opacity: 0.8, fontSize: 12 }}>
+                        {entry.wins}W / {entry.kills}K
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// =============================================================================
+// ELIMINATION REVEAL BANNER
+// =============================================================================
+// Shows when a player is eliminated, revealing their true identity
+function EliminationBanner({ eliminations }) {
+    // eliminations is an array of { name, maskType, color, timestamp }
+    const visibleEliminations = eliminations.filter(e =>
+        Date.now() - e.timestamp < 4000 // Show for 4 seconds
+    );
+
+    if (visibleEliminations.length === 0) return null;
+
+    return (
+        <div style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 2000,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            pointerEvents: 'none'
+        }}>
+            {visibleEliminations.map((elim, i) => {
+                const age = Date.now() - elim.timestamp;
+                const opacity = Math.max(0, 1 - (age / 4000));
+                const scale = 1 + (age < 500 ? (1 - age / 500) * 0.3 : 0);
+                const maskIcon = MASK_ICONS[elim.maskType] || '🎭';
+
+                return (
+                    <div key={elim.timestamp + i} style={{
+                        background: 'linear-gradient(135deg, rgba(255,0,100,0.9), rgba(100,0,255,0.8))',
+                        padding: '20px 40px',
+                        borderRadius: 12,
+                        textAlign: 'center',
+                        fontFamily: 'monospace',
+                        boxShadow: `0 0 40px ${elim.color}, 0 0 80px rgba(255,0,255,0.5)`,
+                        border: `3px solid ${elim.color}`,
+                        opacity: opacity,
+                        transform: `scale(${scale})`,
+                        animation: 'eliminationPulse 0.5s ease-out'
+                    }}>
+                        <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 4 }}>
+                            💀 UNMASKED 💀
+                        </div>
+                        <div style={{ fontSize: 32, marginBottom: 4 }}>
+                            {maskIcon}
+                        </div>
+                        <div style={{
+                            fontSize: 24,
+                            fontWeight: 700,
+                            color: elim.color,
+                            textShadow: `0 0 20px ${elim.color}`
+                        }}>
+                            {elim.name}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                            WAS ELIMINATED
+                        </div>
+                    </div>
+                );
+            })}
+
+            <style>{`
+                @keyframes eliminationPulse {
+                    0% { transform: scale(1.5); opacity: 0; }
+                    50% { transform: scale(1.1); }
+                    100% { transform: scale(1); opacity: 1; }
+                }
+            `}</style>
+        </div>
+    );
+}
+
+// =============================================================================
 // CHECKERED LINE (Start/Finish)
 // =============================================================================
 function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
@@ -503,6 +722,121 @@ function TrackWall({ wall }) {
 
 
 // =============================================================================
+// CAMERA SHAKE EFFECT
+// =============================================================================
+function CameraShake({ intensity = 0 }) {
+    const { camera } = useThree();
+    const originalPos = useRef(new THREE.Vector3());
+    const isShaking = useRef(false);
+
+    useEffect(() => {
+        if (intensity > 0 && !isShaking.current) {
+            originalPos.current.copy(camera.position);
+            isShaking.current = true;
+        }
+    }, [intensity, camera]);
+
+    useFrame(() => {
+        if (intensity > 0) {
+            const shake = intensity * 0.5;
+            camera.position.x = originalPos.current.x + (Math.random() - 0.5) * shake;
+            camera.position.y = originalPos.current.y + (Math.random() - 0.5) * shake * 0.5;
+            camera.position.z = originalPos.current.z + (Math.random() - 0.5) * shake;
+        } else if (isShaking.current) {
+            isShaking.current = false;
+        }
+    });
+
+    return null;
+}
+
+// =============================================================================
+// SPEED LINES EFFECT (During Boost)
+// =============================================================================
+function SpeedLines({ active, color = '#ffffff' }) {
+    const linesRef = useRef();
+    const positions = useMemo(() => {
+        const pts = [];
+        for (let i = 0; i < 50; i++) {
+            pts.push(
+                (Math.random() - 0.5) * 80,  // x
+                Math.random() * 30 + 5,       // y
+                Math.random() * -100 - 20     // z (behind camera)
+            );
+        }
+        return new Float32Array(pts);
+    }, []);
+
+    useFrame((state, delta) => {
+        if (!linesRef.current || !active) return;
+
+        const pos = linesRef.current.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            pos.setZ(i, pos.getZ(i) + 80 * delta);
+            if (pos.getZ(i) > 50) {
+                pos.setZ(i, Math.random() * -100 - 50);
+                pos.setX(i, (Math.random() - 0.5) * 80);
+            }
+        }
+        pos.needsUpdate = true;
+    });
+
+    if (!active) return null;
+
+    return (
+        <points ref={linesRef}>
+            <bufferGeometry>
+                <bufferAttribute
+                    attach="attributes-position"
+                    count={50}
+                    array={positions}
+                    itemSize={3}
+                />
+            </bufferGeometry>
+            <pointsMaterial
+                size={0.5}
+                color={color}
+                transparent
+                opacity={0.8}
+                blending={THREE.AdditiveBlending}
+            />
+        </points>
+    );
+}
+
+// =============================================================================
+// SCREEN FLASH EFFECT (On Damage)
+// =============================================================================
+function ScreenFlash({ active, color = '#ff0000' }) {
+    const [opacity, setOpacity] = useState(0);
+
+    useEffect(() => {
+        if (active) {
+            setOpacity(0.4);
+            const timer = setTimeout(() => setOpacity(0), 150);
+            return () => clearTimeout(timer);
+        }
+    }, [active]);
+
+    if (opacity === 0) return null;
+
+    return (
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: color,
+            opacity: opacity,
+            pointerEvents: 'none',
+            transition: 'opacity 0.15s',
+            zIndex: 2000
+        }} />
+    );
+}
+
+// =============================================================================
 // TRACK BOUNDARIES CONTAINER
 // =============================================================================
 function TrackBoundaries({ boundaries }) {
@@ -604,9 +938,28 @@ function CameraController({ players }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, trackData }) {
+function Scene({ worldState, trackData, setEngineRpm }) {
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
+
+    // Engine audio reactive to average player velocity
+    useEffect(() => {
+        if (!setEngineRpm) return;
+        const players = Object.values(worldState.players || {});
+        const drivers = players.filter(p => p.type === 'driver' && p.velocity);
+
+        if (drivers.length > 0) {
+            // Calculate average velocity magnitude
+            const avgVelocity = drivers.reduce((sum, p) => {
+                const vMag = Math.sqrt(p.velocity.x ** 2 + p.velocity.z ** 2);
+                return sum + vMag;
+            }, 0) / drivers.length;
+
+            // Map velocity (0-40) to RPM (0-1)
+            const rpm = Math.min(1, avgVelocity / 40);
+            setEngineRpm(rpm);
+        }
+    }, [worldState.players, setEngineRpm]);
 
     // Detect player eliminations for explosions
     useEffect(() => {
@@ -761,8 +1114,18 @@ function QROverlay() {
 // =============================================================================
 // PLAYER LIST OVERLAY
 // =============================================================================
-function PlayerList({ players }) {
+// Mask Icons by type
+const MASK_ICONS = {
+    Classic: '🎭',
+    Oni: '👹',
+    Tech: '🤖',
+    Clown: '🤡',
+    Skull: '💀'
+};
+
+function PlayerList({ players, gameState }) {
     const activePlayers = Object.entries(players || {}).filter(([, p]) => p.type === 'driver');
+    const isRacing = gameState === 'RACING' || gameState === 'COUNTDOWN';
 
     return (
         <div style={{
@@ -775,39 +1138,68 @@ function PlayerList({ players }) {
             zIndex: 1000
         }}>
             <div style={{ fontSize: 14, marginBottom: 8, opacity: 0.7 }}>
-                PLAYERS: {activePlayers.length}
+                {isRacing ? '🎭 MASKED RACERS' : 'PLAYERS'}: {activePlayers.length}
             </div>
-            {activePlayers.map(([id, player]) => (
-                <div key={id} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginBottom: 4
-                }}>
-                    <div style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: '50%',
-                        backgroundColor: player.color,
-                        boxShadow: `0 0 10px ${player.color}`
-                    }} />
-                    <span style={{ fontSize: 12 }}>{player.name}</span>
-                    <div style={{
-                        width: 60,
-                        height: 6,
-                        backgroundColor: '#333',
-                        borderRadius: 3,
-                        overflow: 'hidden'
+            {activePlayers.map(([id, player], index) => {
+                // During race, hide real identity
+                const displayName = isRacing
+                    ? `MASKED RACER #${index + 1}`
+                    : player.name;
+                const maskIcon = MASK_ICONS[player.maskType] || '🎭';
+
+                // Glow intensity based on HP
+                const glowIntensity = player.hp / 100;
+                const isLowHP = player.hp < 30;
+
+                return (
+                    <div key={id} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        marginBottom: 4,
+                        animation: isLowHP ? 'pulse 0.5s infinite' : 'none'
                     }}>
+                        {/* Mask icon instead of color dot */}
+                        <span style={{
+                            fontSize: 16,
+                            filter: `drop-shadow(0 0 ${4 + glowIntensity * 6}px ${player.color})`,
+                            opacity: 0.5 + glowIntensity * 0.5
+                        }}>
+                            {maskIcon}
+                        </span>
+                        <span style={{
+                            fontSize: 12,
+                            color: isRacing ? '#aaa' : '#fff'
+                        }}>
+                            {displayName}
+                        </span>
                         <div style={{
-                            width: `${player.hp}%`,
-                            height: '100%',
-                            backgroundColor: player.hp > 50 ? '#00ff00' : player.hp > 25 ? '#ffff00' : '#ff0000',
-                            transition: 'width 0.2s'
-                        }} />
+                            width: 60,
+                            height: 6,
+                            backgroundColor: '#333',
+                            borderRadius: 3,
+                            overflow: 'hidden',
+                            boxShadow: isLowHP ? '0 0 8px #ff0000' : 'none'
+                        }}>
+                            <div style={{
+                                width: `${player.hp}%`,
+                                height: '100%',
+                                backgroundColor: player.hp > 50 ? '#00ff00' : player.hp > 25 ? '#ffff00' : '#ff0000',
+                                transition: 'width 0.2s',
+                                boxShadow: `inset 0 0 ${glowIntensity * 10}px rgba(255,255,255,0.3)`
+                            }} />
+                        </div>
                     </div>
-                </div>
-            ))}
+                );
+            })}
+
+            {/* CSS Animation for low HP pulse */}
+            <style>{`
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+            `}</style>
         </div>
     );
 }
@@ -824,13 +1216,49 @@ export default function App() {
     const [gameState, setGameState] = useState({
         state: 'LOBBY',
         timer: 0,
-        winner: null
+        winner: null,
+        isDemo: false
     });
     const [trackData, setTrackData] = useState(null);
     const [connected, setConnected] = useState(false);
+    const [projectiles, setProjectiles] = useState([]);
+    const [leaderboard, setLeaderboard] = useState([]);
+    const [demoMode, setDemoMode] = useState(false);
+    const [eliminations, setEliminations] = useState([]);
+    const [screenShake, setScreenShake] = useState(0); // 0-1 intensity
+    const prevPlayersRef = useRef({});
 
     // Audio Hook
-    const { initAudio, playSfx } = useAudio(connected);
+    const { initAudio, playSfx, setMusicStyle, setEngineRpm } = useAudio(connected);
+
+    // Track player eliminations for reveal banner
+    useEffect(() => {
+        const prevPlayers = prevPlayersRef.current;
+        const currentPlayers = worldState.players || {};
+
+        // Check for players that were drivers but are now drones/eliminated
+        for (const [id, prev] of Object.entries(prevPlayers)) {
+            if (prev.type === 'driver' && prev.hp > 0) {
+                const current = currentPlayers[id];
+                if (!current || current.type === 'drone' || current.hp <= 0) {
+                    // Player was eliminated - add to eliminations
+                    setEliminations(elims => [...elims, {
+                        name: prev.name,
+                        maskType: prev.maskType,
+                        color: prev.color,
+                        timestamp: Date.now()
+                    }]);
+                    playSfx('explosion');
+                }
+            }
+        }
+
+        // Update ref for next comparison
+        prevPlayersRef.current = { ...currentPlayers };
+
+        // Clean up old eliminations (older than 5 seconds)
+        setEliminations(elims => elims.filter(e => Date.now() - e.timestamp < 5000));
+    }, [worldState.players, playSfx]);
 
     useEffect(() => {
         socket.on('connect', () => {
@@ -859,30 +1287,84 @@ export default function App() {
             setTrackData(data);
         });
 
-        socket.on('damage', () => playSfx('crash'));
+        // Track style with theme colors
+        socket.on('trackStyle', (data) => {
+            console.log('Track style:', data.trackName);
+            if (setMusicStyle) setMusicStyle(data.trackId);
+        });
+
+        // Leaderboard updates
+        socket.on('leaderboard', (data) => {
+            setLeaderboard(data);
+        });
+
+        // Demo mode indicator
+        socket.on('demoMode', (data) => {
+            setDemoMode(data.active);
+        });
+
+        // Projectile fired events
+        socket.on('projectileFired', (data) => {
+            setProjectiles(prev => [...prev, {
+                id: Date.now(),
+                position: data.position,
+                direction: data.direction,
+                type: data.type,
+                ownerId: data.ownerId
+            }]);
+        });
+
+        socket.on('damage', (data) => {
+            playSfx('crash');
+            // Trigger screen shake based on damage amount
+            const intensity = Math.min(1, (data?.damage || 20) / 50);
+            setScreenShake(intensity);
+            setTimeout(() => setScreenShake(0), 200);
+        });
 
         return () => {
             socket.off('trackData');
+            socket.off('trackStyle');
+            socket.off('leaderboard');
+            socket.off('demoMode');
+            socket.off('projectileFired');
             socket.off('connect');
             socket.off('disconnect');
             socket.off('worldState');
             socket.off('gameState');
             socket.off('damage');
         };
-    }, [playSfx]);
+    }, [playSfx, setMusicStyle]);
+
+    // Calculate shake offset
+    const shakeX = screenShake * (Math.random() - 0.5) * 20;
+    const shakeY = screenShake * (Math.random() - 0.5) * 20;
 
     return (
-        <div style={{ width: '100vw', height: '100vh' }} onClick={initAudio}>
+        <div style={{
+            width: '100vw',
+            height: '100vh',
+            transform: screenShake > 0 ? `translate(${shakeX}px, ${shakeY}px)` : 'none',
+            transition: 'transform 0.05s ease-out'
+        }} onClick={initAudio}>
             <Canvas
                 camera={{ position: [0, 20, 30], fov: 60 }}
                 gl={{ antialias: true, alpha: false }}
             >
-                <Scene worldState={worldState} trackData={trackData} />
+                <Scene worldState={worldState} trackData={trackData} setEngineRpm={setEngineRpm} />
             </Canvas>
 
-            <GameUI gameState={gameState.state} gameTimer={gameState.timer} winner={gameState.winner} />
+            <GameUI
+                gameState={gameState.state}
+                gameTimer={gameState.timer}
+                winner={gameState.winner}
+                onCountdownTick={(count) => count > 0 && playSfx('countdown')}
+            />
             <QROverlay />
-            <PlayerList players={worldState.players} />
+            <PlayerList players={worldState.players} gameState={gameState.state} />
+            <DemoModeIndicator active={demoMode} />
+            <LeaderboardDisplay entries={leaderboard} visible={gameState.state === 'LOBBY' || demoMode} />
+            <EliminationBanner eliminations={eliminations} />
 
             {!connected && (
                 <div style={{

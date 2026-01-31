@@ -3,11 +3,16 @@
     "version": "1.0.0",
     "main": "index.js",
     "scripts": {
-        "start": "node index.js"
+        "start": "node index.js",
+        "test": "jest --verbose",
+        "test:watch": "jest --watch"
     },
     "dependencies": {
         "cannon-es": "^0.20.0",
         "socket.io": "^4.7.4",
         "uuid": "^9.0.1"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0"
     }
 }
