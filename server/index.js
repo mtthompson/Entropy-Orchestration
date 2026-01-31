@@ -353,14 +353,10 @@ function updateCPUPhysics() {
                 }
             }
 
-            // Calculate forward direction from quaternion
-            const forward = new CANNON.Vec3(
-                2 * (q.x * q.z + q.w * q.y),
-                0,
-                1 - 2 * (q.x * q.x + q.y * q.y)
-            );
-            forward.normalize();
-            forward.scale(-throttleStrength * combatBoost, forward); // Apply combat boost
+            // Calculate forward direction from quaternion using correct method
+            const forward = new CANNON.Vec3(0, 0, -1); // Negative Z is forward
+            cpu.body.quaternion.vmult(forward, forward);
+            forward.scale(throttleStrength * combatBoost, forward); // Apply combat boost
 
             cpu.body.applyForce(forward, cpu.body.position);
         }
@@ -723,12 +719,12 @@ world.addEventListener('postStep', () => {
                     p2.body.position.vsub(p1.body.position, v1to2);
                     v1to2.normalize();
 
-                    // P1's forward vector
-                    const p1Forward = new CANNON.Vec3(0, 0, 1);
+                    // P1's forward vector (negative Z is forward)
+                    const p1Forward = new CANNON.Vec3(0, 0, -1);
                     p1.body.quaternion.vmult(p1Forward, p1Forward);
 
-                    // P2's forward vector
-                    const p2Forward = new CANNON.Vec3(0, 0, 1);
+                    // P2's forward vector (negative Z is forward)
+                    const p2Forward = new CANNON.Vec3(0, 0, -1);
                     p2.body.quaternion.vmult(p2Forward, p2Forward);
 
                     // Dot products (> 0.7 is roughly < 45 degrees)
@@ -814,23 +810,13 @@ world.addEventListener('postStep', () => {
                     cpu.body.position.vsub(player.body.position, v1to2);
                     v1to2.normalize();
 
-                    // Player heading
-                    const pq = player.body.quaternion;
-                    const pForward = new CANNON.Vec3(
-                        2 * (pq.x * pq.z + pq.w * pq.y),
-                        0,
-                        1 - 2 * (pq.x * pq.x + pq.y * pq.y)
-                    );
-                    pForward.normalize();
+                    // Player heading - use correct quaternion rotation
+                    const pForward = new CANNON.Vec3(0, 0, -1);
+                    player.body.quaternion.vmult(pForward, pForward);
 
-                    // CPU heading
-                    const cq = cpu.body.quaternion;
-                    const cForward = new CANNON.Vec3(
-                        2 * (cq.x * cq.z + cq.w * cq.y),
-                        0,
-                        1 - 2 * (cq.x * cq.x + cq.y * cq.y)
-                    );
-                    cForward.normalize();
+                    // CPU heading - use correct quaternion rotation
+                    const cForward = new CANNON.Vec3(0, 0, -1);
+                    cpu.body.quaternion.vmult(cForward, cForward);
 
                     const playerRamming = pForward.dot(v1to2);
                     const cpuRamming = cForward.dot(v1to2.negate());
@@ -902,23 +888,13 @@ world.addEventListener('postStep', () => {
                     cpu2.body.position.vsub(cpu1.body.position, v1to2);
                     v1to2.normalize();
 
-                    // CPU1 heading
-                    const q1 = cpu1.body.quaternion;
-                    const f1 = new CANNON.Vec3(
-                        2 * (q1.x * q1.z + q1.w * q1.y),
-                        0,
-                        1 - 2 * (q1.x * q1.x + q1.y * q1.y)
-                    );
-                    f1.normalize();
+                    // CPU1 heading - use correct quaternion rotation
+                    const f1 = new CANNON.Vec3(0, 0, -1);
+                    cpu1.body.quaternion.vmult(f1, f1);
 
-                    // CPU2 heading
-                    const q2 = cpu2.body.quaternion;
-                    const f2 = new CANNON.Vec3(
-                        2 * (q2.x * q2.z + q2.w * q2.y),
-                        0,
-                        1 - 2 * (q2.x * q2.x + q2.y * q2.y)
-                    );
-                    f2.normalize();
+                    // CPU2 heading - use correct quaternion rotation
+                    const f2 = new CANNON.Vec3(0, 0, -1);
+                    cpu2.body.quaternion.vmult(f2, f2);
 
                     const cpu1Ramming = f1.dot(v1to2);
                     const cpu2Ramming = f2.dot(v1to2.negate());
