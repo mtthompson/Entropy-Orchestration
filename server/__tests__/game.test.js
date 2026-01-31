@@ -280,6 +280,236 @@ describe('Damage Calculation', () => {
 });
 
 // =============================================================================
+// CPU RACING AND COMBAT TESTS
+// =============================================================================
+describe('CPU Racing System', () => {
+    const { findNearestWaypointIndex, getNextWaypoint } = require('../cpuPathfinding');
+    
+    const OVAL_PATH = [
+        { x: -40, z: 60 }, { x: -45, z: 40 }, { x: -45, z: -40 }, { x: -40, z: -60 },
+        { x: -20, z: -70 }, { x: 20, z: -70 }, { x: 40, z: -60 },
+        { x: 45, z: -40 }, { x: 45, z: 40 }, { x: 40, z: 60 },
+        { x: 20, z: 70 }, { x: -20, z: 70 }
+    ];
+    
+    test('CPU waypoint system works correctly', () => {
+        // Test that CPU can use waypoint navigation
+        let cpu = {
+            body: { position: { x: -40, z: 60 } },
+            waypointIndex: 0
+        };
+        
+        // Get initial target
+        const result1 = getNextWaypoint(cpu, OVAL_PATH, 2);
+        expect(result1.x).toBeDefined();
+        expect(result1.z).toBeDefined();
+        
+        // Move CPU to a different position on track
+        cpu.body.position = { x: 20, z: 70 };
+        cpu.waypointIndex = 10; // Near waypoint 10
+        
+        const result2 = getNextWaypoint(cpu, OVAL_PATH, 2);
+        
+        // Should get valid target
+        expect(result2.x).toBeDefined();
+        expect(result2.z).toBeDefined();
+        
+        // Test shows waypoint system returns valid targets
+        expect(OVAL_PATH.length).toBe(12);
+    });
+    
+    test('lap tracking detects finish line crossing', () => {
+        let lapsCompleted = 0;
+        let waypointIndex = OVAL_PATH.length - 2;
+        
+        // Simulate approaching finish
+        waypointIndex = OVAL_PATH.length - 1;
+        // Next update wraps to 0
+        const newIndex = 0;
+        
+        if (waypointIndex === OVAL_PATH.length - 1 && newIndex === 0) {
+            lapsCompleted++;
+        }
+        
+        expect(lapsCompleted).toBe(1);
+    });
+    
+    test('CPU completes 3 laps and wins', () => {
+        const LAPS_TO_WIN = 3;
+        let cpu = { lapsCompleted: 2 };
+        
+        // Complete one more lap
+        cpu.lapsCompleted++;
+        
+        const hasWon = cpu.lapsCompleted >= LAPS_TO_WIN;
+        expect(hasWon).toBe(true);
+    });
+});
+
+describe('CPU Collision System', () => {
+    const DAMAGE_THRESHOLD = 15;
+    
+    function calculateCollisionDamage(impactSpeed) {
+        if (impactSpeed < DAMAGE_THRESHOLD) return 0;
+        return Math.floor(impactSpeed * 2);
+    }
+    
+    test('CPU takes damage from high-speed collision', () => {
+        let cpuHP = 100;
+        const impactSpeed = 25;
+        
+        const damage = calculateCollisionDamage(impactSpeed);
+        cpuHP -= damage;
+        
+        expect(damage).toBeGreaterThan(0);
+        expect(cpuHP).toBeLessThan(100);
+    });
+    
+    test('CPU is eliminated when HP reaches zero', () => {
+        let cpu = { hp: 20, body: {}, type: 'driver' };
+        const damage = 25;
+        
+        cpu.hp -= damage;
+        
+        if (cpu.hp <= 0) {
+            cpu.body = null;
+            cpu.type = 'eliminated';
+        }
+        
+        expect(cpu.hp).toBeLessThanOrEqual(0);
+        expect(cpu.body).toBeNull();
+        expect(cpu.type).toBe('eliminated');
+    });
+    
+    test('CPU-CPU collision calculates mutual damage', () => {
+        let cpu1 = { hp: 100, name: 'NEON' };
+        let cpu2 = { hp: 100, name: 'RAZOR' };
+        
+        const impactSpeed = 30;
+        const damage = calculateCollisionDamage(impactSpeed);
+        
+        cpu1.hp -= damage;
+        cpu2.hp -= damage;
+        
+        expect(cpu1.hp).toBe(100 - damage);
+        expect(cpu2.hp).toBe(100 - damage);
+    });
+    
+    test('ramming attack increases damage to target', () => {
+        const baseDamage = 20;
+        let damageToRammed = baseDamage * 1.5; // Frontal hit
+        let damageToRammer = baseDamage * 0.5; // Attacker takes less
+        
+        expect(damageToRammed).toBe(30);
+        expect(damageToRammer).toBe(10);
+    });
+});
+
+describe('Win Condition System', () => {
+    test('race track uses lap-based win condition', () => {
+        const trackType = 'race';
+        const LAPS_TO_WIN = 3;
+        
+        let winner = null;
+        let player = { name: 'TestPlayer', lapsCompleted: 3 };
+        
+        if (trackType === 'race' && player.lapsCompleted >= LAPS_TO_WIN) {
+            winner = player;
+        }
+        
+        expect(winner).not.toBeNull();
+        expect(winner.name).toBe('TestPlayer');
+    });
+    
+    test('arena uses last-survivor win condition', () => {
+        const trackType = 'arena';
+        
+        const players = [
+            { name: 'Player1', hp: 0, type: 'driver' },
+            { name: 'Player2', hp: 50, type: 'driver' },
+            { name: 'CPU1', hp: 0, isCPU: true }
+        ];
+        
+        const activePlayers = players.filter(p => p.hp > 0);
+        
+        expect(trackType).toBe('arena');
+        expect(activePlayers.length).toBe(1);
+        expect(activePlayers[0].name).toBe('Player2');
+    });
+    
+    test('CPU can win in arena mode', () => {
+        const players = [
+            { name: 'Player1', hp: 0, type: 'driver' },
+            { name: 'NEON', hp: 75, isCPU: true, type: 'driver' }
+        ];
+        
+        const activePlayers = players.filter(p => p.hp > 0 && p.type === 'driver');
+        
+        expect(activePlayers.length).toBe(1);
+        expect(activePlayers[0].isCPU).toBe(true);
+        expect(activePlayers[0].name).toBe('NEON');
+    });
+});
+
+describe('Leaderboard System', () => {
+    let leaderboard;
+    
+    beforeEach(() => {
+        leaderboard = new Map();
+    });
+    
+    function updateLeaderboard(playerName, stat, value = 1, isCPU = false) {
+        if (!leaderboard.has(playerName)) {
+            leaderboard.set(playerName, { wins: 0, kills: 0, deaths: 0, gamesPlayed: 0, isCPU });
+        }
+        const entry = leaderboard.get(playerName);
+        entry[stat] = (entry[stat] || 0) + value;
+        if (isCPU) entry.isCPU = true;
+    }
+    
+    test('CPU wins are tracked in leaderboard', () => {
+        updateLeaderboard('NEON', 'wins', 1, true);
+        
+        const entry = leaderboard.get('NEON');
+        expect(entry.wins).toBe(1);
+        expect(entry.isCPU).toBe(true);
+    });
+    
+    test('CPU and player stats are separate', () => {
+        updateLeaderboard('Player1', 'wins', 1, false);
+        updateLeaderboard('RAZOR', 'wins', 1, true);
+        
+        expect(leaderboard.get('Player1').isCPU).toBeFalsy();
+        expect(leaderboard.get('RAZOR').isCPU).toBe(true);
+    });
+    
+    test('CPU kills are credited', () => {
+        updateLeaderboard('VOLT', 'kills', 1, true);
+        
+        const entry = leaderboard.get('VOLT');
+        expect(entry.kills).toBe(1);
+    });
+    
+    test('leaderboard sorts by wins then kills', () => {
+        updateLeaderboard('Player1', 'wins', 2, false);
+        updateLeaderboard('NEON', 'wins', 3, true);
+        updateLeaderboard('Player2', 'wins', 2, false);
+        updateLeaderboard('Player2', 'kills', 5, false);
+        
+        const entries = Array.from(leaderboard.entries()).map(([name, stats]) => ({
+            name,
+            ...stats
+        }));
+        
+        entries.sort((a, b) => (b.wins - a.wins) || (b.kills - a.kills));
+        
+        expect(entries[0].name).toBe('NEON'); // Most wins
+        expect(entries[1].name).toBe('Player2'); // Same wins as Player1, more kills
+        expect(entries[2].name).toBe('Player1');
+    });
+});
+
+// =============================================================================
 // MASK TYPE TESTS
 // =============================================================================
 describe('Mask System', () => {

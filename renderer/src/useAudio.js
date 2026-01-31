@@ -7,20 +7,56 @@ export function useAudio(connected) {
     const currentMeasure = useRef(0);
     const currentStyleRef = useRef('classic');
 
-    // 12 Track-specific music styles
+    // 12 Track-specific music styles with comprehensive instrument configurations
     const TRACK_STYLES = {
-        'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassType: 'square', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.0 },
-        'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassType: 'sawtooth', leadType: 'square', intensity: 1.4, filterMod: 0.7 },
-        'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassType: 'square', leadType: 'sawtooth', intensity: 1.1, filterMod: 1.2 },
-        'track_04': { name: 'Dreamwave', bpm: 100, key: 'F', bassType: 'triangle', leadType: 'sine', intensity: 0.7, filterMod: 1.5 },
-        'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassType: 'sawtooth', leadType: 'square', intensity: 1.5, filterMod: 0.5 },
-        'track_06': { name: 'Cyberpunk', bpm: 130, key: 'C', bassType: 'square', leadType: 'sawtooth', intensity: 1.2, filterMod: 0.8 },
-        'track_07': { name: 'Horror Synth', bpm: 90, key: 'Gm', bassType: 'sawtooth', leadType: 'triangle', intensity: 0.6, filterMod: 0.4 },
-        'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassType: 'square', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.3 },
-        'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassType: 'sawtooth', leadType: 'square', intensity: 1.8, filterMod: 0.3 },
-        'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassType: 'square', leadType: 'sawtooth', intensity: 1.3, filterMod: 1.4 },
-        'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassType: 'triangle', leadType: 'sine', intensity: 0.9, filterMod: 1.6 },
-        'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassType: 'sawtooth', leadType: 'square', intensity: 1.4, filterMod: 0.6 }
+        'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassType: 'square', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.0, 
+            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
+            useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'electronic', noiseLevel: 0.3 },
+        'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassType: 'sawtooth', leadType: 'square', intensity: 1.4, filterMod: 0.7, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: true, useBells: false, useMetallic: true, 
+            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.7 },
+        'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassType: 'square', leadType: 'sawtooth', intensity: 1.1, filterMod: 1.2, 
+            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: true, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4 },
+        'track_04': { name: 'Dreamwave', bpm: 100, key: 'F', bassType: 'triangle', leadType: 'sine', intensity: 0.7, filterMod: 1.5, 
+            usePluck: false, useArp: false, useSubBass: false, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: false, useFormant: true, 
+            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'minimal', noiseLevel: 0.2 },
+        'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassType: 'sawtooth', leadType: 'square', intensity: 1.5, filterMod: 0.5, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
+            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: true, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.8 },
+        'track_06': { name: 'Cyberpunk', bpm: 130, key: 'C', bassType: 'square', leadType: 'sawtooth', intensity: 1.2, filterMod: 0.8, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: false, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
+            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.5 },
+        'track_07': { name: 'Horror Synth', bpm: 90, key: 'Gm', bassType: 'sawtooth', leadType: 'triangle', intensity: 0.6, filterMod: 0.4, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
+            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: true, 
+            useGranular: true, useReverse: true, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.7 },
+        'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassType: 'square', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.3, 
+            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: false, useStabs: true, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'live', noiseLevel: 0.3 },
+        'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassType: 'sawtooth', leadType: 'square', intensity: 1.8, filterMod: 0.3, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.9 },
+        'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassType: 'square', leadType: 'sawtooth', intensity: 1.3, filterMod: 1.4, 
+            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4 },
+        'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassType: 'triangle', leadType: 'sine', intensity: 0.9, filterMod: 1.6, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: true, 
+            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.3 },
+        'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassType: 'sawtooth', leadType: 'square', intensity: 1.4, filterMod: 0.6, 
+            usePluck: false, useArp: true, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
+            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
+            useGranular: true, useReverse: true, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.6 }
     };
 
     // Extended Note Frequencies (3 octaves)
@@ -149,6 +185,46 @@ export function useAudio(connected) {
             kick: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             snare: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             hihat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+    };
+
+    // Percussion patterns for additional instruments
+    const PERCUSSION_PATTERNS = {
+        minimal: {
+            clap: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            tom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            rim: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            cymbal: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        electronic: {
+            clap: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            tom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            rim: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            cymbal: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        },
+        live: {
+            clap: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            tom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
+            rim: [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            cymbal: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        },
+        industrial: {
+            clap: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            tom: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+            rim: [0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+            cymbal: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        sparse: {
+            clap: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            tom: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            rim: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            cymbal: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        broken: {
+            clap: [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+            tom: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            rim: [1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1],
+            cymbal: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         },
     };
 
@@ -301,6 +377,14 @@ export function useAudio(connected) {
         const chord = progression[chordIndex % progression.length];
         const intensity = (barData.intensity || 1.0) * (style.intensity || 1.0);
 
+        // Section-based instrument probability (0=intro, 1=verse, 2=prechorus, 3=chorus, 4=bridge, 5=breakdown, 6=drop, 7=outro)
+        const sectionIntensity = {
+            0: 0.3, 1: 0.5, 2: 0.7, 3: 1.0, 4: 0.6, 5: 0.2, 6: 1.0, 7: 0.5
+        }[barData.section] || 0.5;
+
+        // Get percussion pattern
+        const percPattern = PERCUSSION_PATTERNS[style.percStyle] || PERCUSSION_PATTERNS.minimal;
+
         // Schedule all 16 steps in this measure
         for (let step = 0; step < 16; step++) {
             const time = ctx.currentTime + step * stepDuration;
@@ -311,27 +395,125 @@ export function useAudio(connected) {
             if (drumPattern.snare[step]) scheduleSnare(ctx, time, intensity);
             if (drumPattern.hihat[step]) scheduleHihat(ctx, time, intensity);
 
+            // Percussion (when enabled)
+            if (style.usePercussion && Math.random() < sectionIntensity) {
+                if (percPattern.clap[step]) scheduleClap(ctx, time, intensity);
+                if (percPattern.tom[step]) scheduleTom(ctx, time, ['hi', 'mid', 'lo'][step % 3], intensity);
+                if (percPattern.rim[step]) scheduleRim(ctx, time, intensity);
+                if (percPattern.cymbal[step]) scheduleCymbal(ctx, time, 0.3, intensity);
+            }
+
+            // Metallic hits on snare hits
+            if (style.useMetallic && drumPattern.snare[step] && Math.random() < 0.7) {
+                scheduleMetallic(ctx, time, intensity * style.noiseLevel);
+            }
+
             // Bass
             const bassPattern = BASS_PATTERNS[barData.bassPattern % BASS_PATTERNS.length];
             for (const [offset, dur] of bassPattern) {
                 if (offset === step) {
                     const bassNote = CHORDS[chord][0]; // Root note
-                    scheduleBass(ctx, time, bassNote, dur * stepDuration, intensity, style);
+                    
+                    // Use PWM instead of regular bass if enabled
+                    if (style.usePWM && Math.random() < 0.5) {
+                        schedulePWM(ctx, time, bassNote, dur * stepDuration, intensity * 0.8, style);
+                    } else {
+                        scheduleBass(ctx, time, bassNote, dur * stepDuration, intensity, style);
+                    }
                 }
+            }
+
+            // Sub-bass layer for heavy tracks (every 4 steps)
+            if (style.useSubBass && step % 4 === 0) {
+                const bassNote = CHORDS[chord][0];
+                scheduleSubBass(ctx, time, bassNote, stepDuration * 4, intensity * 0.8);
             }
 
             // Lead melody
             if (barData.leadEnabled && step === 0) {
                 const melody = generateMelody(chord, barData.section, measureNum);
                 for (const note of melody) {
-                    scheduleLead(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.5, intensity, style);
+                    const noteTime = ctx.currentTime + note.step * stepDuration;
+                    
+                    // Regular lead
+                    scheduleLead(ctx, noteTime, note.note, stepDuration * 1.5, intensity, style);
+                    
+                    // Add pluck doubling for tracks that use it
+                    if (style.usePluck && Math.random() < 0.5 * sectionIntensity) {
+                        schedulePluck(ctx, noteTime, note.note, style);
+                    }
+
+                    // Tremolo on some lead notes
+                    if (style.useTremolo && Math.random() < 0.3 * sectionIntensity) {
+                        scheduleTremolo(ctx, noteTime, note.note, stepDuration * 2, intensity, style);
+                    }
+                }
+
+                // Portamento slides (occasionally)
+                if (style.usePortamento && measureNum % 8 === 0 && melody.length >= 2) {
+                    schedulePortamento(ctx, ctx.currentTime, melody[0].note, melody[1].note, stepDuration * 4, intensity, style);
                 }
             }
 
-            // Chord pad
-            if (barData.chordPad && step === 0) {
-                scheduleChordPad(ctx, time, chord, measureDuration * 0.95, intensity * 0.5, style);
+            // FM counter-melodies on odd measures
+            if (style.useFM && barData.leadEnabled && measureNum % 2 === 1 && step === 0 && Math.random() < sectionIntensity) {
+                const melody = generateMelody(chord, barData.section, measureNum + 1);
+                for (const note of melody.slice(0, 4)) { // Only first 4 notes
+                    scheduleFM(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.2, intensity * 0.7, style);
+                }
             }
+
+            // Bells (sparse, high melody every 4 measures)
+            if (style.useBells && barData.leadEnabled && measureNum % 4 === 0 && step === 0 && Math.random() < 0.5) {
+                const melody = generateMelody(chord, barData.section, measureNum);
+                for (const note of melody.slice(0, 3)) {
+                    scheduleBell(ctx, ctx.currentTime + note.step * stepDuration, note.note, style);
+                }
+            }
+
+            // Arpeggiator on chord changes
+            if (style.useArp && barData.chordPad && step === 0 && measureNum % 2 === 0 && Math.random() < sectionIntensity) {
+                scheduleArp(ctx, time, chord, stepDuration, style);
+            }
+
+            // Chord pad or detuned pad
+            if (barData.chordPad && step === 0) {
+                if (style.useDetuned && Math.random() < sectionIntensity) {
+                    scheduleDetunedPad(ctx, time, chord, measureDuration * 0.95, intensity * 0.4, style);
+                } else {
+                    scheduleChordPad(ctx, time, chord, measureDuration * 0.95, intensity * 0.5, style);
+                }
+            }
+
+            // Gated pads on chorus sections
+            if (style.useGated && barData.section === 3 && step === 0) {
+                scheduleGated(ctx, time, chord, measureDuration * 0.95, stepDuration, style);
+            }
+
+            // Stabs on downbeats during energetic sections
+            if (style.useStabs && step === 0 && (barData.section === 3 || barData.section === 6)) {
+                scheduleStab(ctx, time, chord, intensity, style);
+            }
+        }
+
+        // Formant sweeps on pads during bridges
+        if (style.useFormant && barData.chordPad && barData.section === 4 && Math.random() < 0.5) {
+            scheduleFormant(ctx, ctx.currentTime, chord, measureDuration * 0.95, intensity * 0.6, style);
+        }
+
+        // Granular textures on breakdowns
+        if (style.useGranular && barData.section === 5 && Math.random() < 0.7) {
+            scheduleGranular(ctx, ctx.currentTime, measureDuration * 0.95, chord, intensity * 0.5, style);
+        }
+
+        // Noise sweeps during transitions/risers
+        if (style.useNoiseSweep && (barData.riser || barData.section === 2)) {
+            scheduleNoiseSweep(ctx, ctx.currentTime, measureDuration * 0.9, 'up', intensity * style.noiseLevel);
+        }
+
+        // Reverse sweeps before drops
+        if (style.useReverse && barData.section === 5 && measureNum % 4 === 3) {
+            scheduleReverse(ctx, ctx.currentTime, measureDuration, intensity * 0.8);
         }
 
         // Riser for buildups
@@ -497,6 +679,588 @@ export function useAudio(connected) {
         }
     };
 
+    // ============= NEW INSTRUMENTS =============
+
+    // Pluck synth - short attack, fast decay
+    const schedulePluck = (ctx, time, note, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = 'triangle';
+        osc.frequency.value = freq * 2; // One octave higher for brightness
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(3000, time);
+        filter.frequency.exponentialRampToValueAtTime(800, time + 0.15);
+        filter.Q.value = 5;
+
+        gain.gain.setValueAtTime(0.12 * (style.intensity || 1.0), time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + 0.2);
+    };
+
+    // Arpeggiator - fast note sequence
+    const scheduleArp = (ctx, time, chord, stepDuration, style = {}) => {
+        const notes = CHORDS[chord];
+        if (!notes) return;
+
+        const arpSpeed = stepDuration / 4; // 16th notes
+        for (let i = 0; i < 8; i++) {
+            const note = notes[i % notes.length];
+            const freq = NOTE_FREQS[chordUp(note)];
+            if (!freq) continue;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = style.leadType === 'square' ? 'square' : 'sawtooth';
+            osc.frequency.value = freq * (i < 4 ? 1 : 2); // Second half octave up
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 1200 * (style.filterMod || 1.0);
+            filter.Q.value = 3;
+
+            gain.gain.setValueAtTime(0.06 * (style.intensity || 1.0), time + i * arpSpeed);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + i * arpSpeed + arpSpeed * 0.8);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(time + i * arpSpeed);
+            osc.stop(time + i * arpSpeed + arpSpeed);
+        }
+    };
+
+    // Sub-bass - very low frequency for weight
+    const scheduleSubBass = (ctx, time, note, duration, intensity) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = freq / 2; // Drop one octave
+
+        gain.gain.setValueAtTime(0.25 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + duration);
+    };
+
+    // Detuned pad - multiple oscillators slightly detuned for richness
+    const scheduleDetunedPad = (ctx, time, chord, duration, intensity, style = {}) => {
+        const notes = CHORDS[chord];
+        if (!notes) return;
+
+        for (const note of notes) {
+            const freq = NOTE_FREQS[chordUp(chordUp(note))];
+            if (!freq) continue;
+
+            // Create 3 detuned oscillators per note
+            for (let detune of [-8, 0, 8]) {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                const filter = ctx.createBiquadFilter();
+
+                osc.type = 'sawtooth';
+                osc.frequency.value = freq;
+                osc.detune.value = detune;
+
+                filter.type = 'lowpass';
+                filter.frequency.value = 400 * (style.filterMod || 1.0);
+                filter.Q.value = 1;
+
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.015 * intensity, time + 0.5);
+                gain.gain.linearRampToValueAtTime(0.01 * intensity, time + duration - 0.5);
+                gain.gain.linearRampToValueAtTime(0, time + duration);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(time);
+                osc.stop(time + duration);
+            }
+        }
+    };
+
+    // FM synth - frequency modulation for bell/electric piano tones
+    const scheduleFM = (ctx, time, note, duration, intensity, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const modulator = ctx.createOscillator();
+        const modulatorGain = ctx.createGain();
+        const carrier = ctx.createOscillator();
+        const carrierGain = ctx.createGain();
+
+        modulator.type = 'sine';
+        modulator.frequency.value = freq * 2; // 2:1 ratio
+        modulatorGain.gain.value = freq * 3 * intensity; // Modulation depth
+
+        carrier.type = 'sine';
+        carrier.frequency.value = freq;
+
+        carrierGain.gain.setValueAtTime(0.08 * intensity, time);
+        carrierGain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        modulator.connect(modulatorGain);
+        modulatorGain.connect(carrier.frequency);
+        carrier.connect(carrierGain);
+        carrierGain.connect(ctx.destination);
+
+        modulator.start(time);
+        carrier.start(time);
+        modulator.stop(time + duration);
+        carrier.stop(time + duration);
+    };
+
+    // Stabs - short chord hits
+    const scheduleStab = (ctx, time, chord, intensity, style = {}) => {
+        const notes = CHORDS[chord];
+        if (!notes) return;
+
+        for (const note of notes) {
+            const freq = NOTE_FREQS[chordUp(note)];
+            if (!freq) continue;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = style.leadType || 'square';
+            osc.frequency.value = freq;
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 2000;
+            filter.Q.value = 2;
+
+            gain.gain.setValueAtTime(0.15 * intensity, time);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(time);
+            osc.stop(time + 0.1);
+        }
+    };
+
+    // Bells - high sine wave melodies with long release
+    const scheduleBell = (ctx, time, note, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = freq * 4; // Two octaves up
+
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.03 * (style.intensity || 1.0), time + 0.3);
+        gain.gain.linearRampToValueAtTime(0, time + 3);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + 3);
+    };
+
+    // Metallic - ring modulation percussion
+    const scheduleMetallic = (ctx, time, intensity) => {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = 'square';
+        osc1.frequency.value = 200 + Math.random() * 100;
+        osc2.type = 'square';
+        osc2.frequency.value = 311 + Math.random() * 100;
+
+        gain.gain.setValueAtTime(0.1 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+
+        osc1.connect(gain);
+        osc2.connect(gain.gain);
+        gain.connect(ctx.destination);
+
+        osc1.start(time);
+        osc2.start(time);
+        osc1.stop(time + 0.12);
+        osc2.stop(time + 0.12);
+    };
+
+    // Noise sweep - filtered noise risers/falls
+    const scheduleNoiseSweep = (ctx, time, duration, direction, intensity) => {
+        const bufferSize = ctx.sampleRate * duration;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.value = 5;
+        
+        if (direction === 'up') {
+            filter.frequency.setValueAtTime(200, time);
+            filter.frequency.exponentialRampToValueAtTime(8000, time + duration);
+        } else {
+            filter.frequency.setValueAtTime(8000, time);
+            filter.frequency.exponentialRampToValueAtTime(200, time + duration);
+        }
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.12 * intensity, time + duration * 0.5);
+        gain.gain.linearRampToValueAtTime(0, time + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(time);
+    };
+
+    // PWM synth - pulse width modulation
+    const schedulePWM = (ctx, time, note, duration, intensity, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        // Two square waves slightly detuned
+        for (let detune of [-10, 10]) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = 'square';
+            osc.frequency.value = freq;
+            osc.detune.value = detune;
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 800 * (style.filterMod || 1.0);
+
+            gain.gain.setValueAtTime(0.08 * intensity, time);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(time);
+            osc.stop(time + duration);
+        }
+    };
+
+    // Portamento - sliding pitch
+    const schedulePortamento = (ctx, time, noteStart, noteEnd, duration, intensity, style = {}) => {
+        const freqStart = NOTE_FREQS[noteStart];
+        const freqEnd = NOTE_FREQS[noteEnd];
+        if (!freqStart || !freqEnd) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = style.leadType || 'sawtooth';
+        osc.frequency.setValueAtTime(freqStart, time);
+        osc.frequency.exponentialRampToValueAtTime(freqEnd, time + duration);
+
+        filter.type = 'lowpass';
+        filter.frequency.value = 1500;
+
+        gain.gain.setValueAtTime(0.1 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + duration);
+    };
+
+    // Gated pad - rhythmic gating
+    const scheduleGated = (ctx, time, chord, duration, stepDuration, style = {}) => {
+        const notes = CHORDS[chord];
+        if (!notes) return;
+
+        const gateSpeed = stepDuration / 4;
+        const gateCount = Math.floor(duration / gateSpeed);
+
+        for (const note of notes) {
+            const freq = NOTE_FREQS[chordUp(note)];
+            if (!freq) continue;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+
+            osc.type = 'sawtooth';
+            osc.frequency.value = freq;
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 600;
+
+            // Create gate pattern
+            for (let i = 0; i < gateCount; i++) {
+                const t = time + i * gateSpeed;
+                if (i % 2 === 0) {
+                    gain.gain.setValueAtTime(0.04 * (style.intensity || 1.0), t);
+                } else {
+                    gain.gain.setValueAtTime(0, t);
+                }
+            }
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(time);
+            osc.stop(time + duration);
+        }
+    };
+
+    // Tremolo - amplitude modulation
+    const scheduleTremolo = (ctx, time, note, duration, intensity, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const tremolo = ctx.createOscillator();
+        const tremoloGain = ctx.createGain();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+
+        tremolo.type = 'sine';
+        tremolo.frequency.value = 6; // 6 Hz tremolo
+        tremoloGain.gain.value = 0.3;
+
+        gain.gain.setValueAtTime(0.06 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        tremolo.connect(tremoloGain);
+        tremoloGain.connect(gain.gain);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(time);
+        tremolo.start(time);
+        osc.stop(time + duration);
+        tremolo.stop(time + duration);
+    };
+
+    // Clap - hand clap simulation
+    const scheduleClap = (ctx, time, intensity) => {
+        for (let i = 0; i < 3; i++) {
+            const bufferSize = ctx.sampleRate * 0.05;
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let j = 0; j < bufferSize; j++) {
+                data[j] = (Math.random() * 2 - 1) * (1 - j / bufferSize);
+            }
+            const noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1000 + Math.random() * 500;
+            filter.Q.value = 1;
+
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.12 * intensity, time + i * 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + i * 0.01 + 0.05);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            noise.start(time + i * 0.01);
+        }
+    };
+
+    // Tom - pitched drum
+    const scheduleTom = (ctx, time, pitch, intensity) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        const baseFreq = pitch === 'hi' ? 200 : pitch === 'mid' ? 120 : 80;
+        osc.frequency.setValueAtTime(baseFreq, time);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, time + 0.15);
+
+        gain.gain.setValueAtTime(0.2 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(time);
+        osc.stop(time + 0.25);
+    };
+
+    // Rim shot
+    const scheduleRim = (ctx, time, intensity) => {
+        const bufferSize = ctx.sampleRate * 0.01;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 3000;
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.08 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.01);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(time);
+    };
+
+    // Cymbal
+    const scheduleCymbal = (ctx, time, duration, intensity) => {
+        const bufferSize = ctx.sampleRate * duration;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 6000;
+        filter.Q.value = 0.5;
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.08 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(time);
+    };
+
+    // Formant filter - vowel sounds
+    const scheduleFormant = (ctx, time, chord, duration, intensity, style = {}) => {
+        const notes = CHORDS[chord];
+        if (!notes) return;
+
+        const vowels = [
+            [700, 1200, 2600], // 'a'
+            [400, 2000, 2800], // 'e'
+            [300, 2300, 3000], // 'i'
+        ];
+        const vowel = vowels[Math.floor(Math.random() * vowels.length)];
+
+        for (const note of notes) {
+            const freq = NOTE_FREQS[chordUp(note)];
+            if (!freq) continue;
+
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = freq;
+
+            let node = osc;
+            for (const formantFreq of vowel) {
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = formantFreq;
+                filter.Q.value = 10;
+                node.connect(filter);
+                node = filter;
+            }
+
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.02 * intensity, time);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+            node.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(time);
+            osc.stop(time + duration);
+        }
+    };
+
+    // Granular synthesis - textural clouds
+    const scheduleGranular = (ctx, time, duration, chord, intensity, style = {}) => {
+        const notes = CHORDS[chord];
+        if (!notes) return;
+
+        const grainCount = 30;
+        const grainDuration = 0.03;
+
+        for (let i = 0; i < grainCount; i++) {
+            const grainTime = time + Math.random() * duration;
+            const note = notes[Math.floor(Math.random() * notes.length)];
+            const freq = NOTE_FREQS[note];
+            if (!freq) continue;
+
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = freq * (0.5 + Math.random());
+
+            gain.gain.setValueAtTime(0.02 * intensity, grainTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, grainTime + grainDuration);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(grainTime);
+            osc.stop(grainTime + grainDuration);
+        }
+    };
+
+    // Reverse cymbal/noise swell
+    const scheduleReverse = (ctx, time, duration, intensity) => {
+        const bufferSize = ctx.sampleRate * duration;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(200, time);
+        filter.frequency.exponentialRampToValueAtTime(8000, time + duration);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.15 * intensity, time + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(time);
+    };
+
     const scheduleRiser = (ctx, time, duration) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -616,7 +1380,32 @@ export function useAudio(connected) {
         const style = TRACK_STYLES[trackId];
         if (style) {
             currentStyleRef.current = style;
-            console.log(`[AUDIO] Music style changed to: ${style.name} (${style.bpm} BPM, bass=${style.bassType}, lead=${style.leadType}, intensity=${style.intensity}, filterMod=${style.filterMod})`);
+            
+            // Build active instruments list
+            const activeInstruments = [];
+            if (style.usePluck) activeInstruments.push('pluck');
+            if (style.useArp) activeInstruments.push('arp');
+            if (style.useSubBass) activeInstruments.push('sub-bass');
+            if (style.useDetuned) activeInstruments.push('detuned-pad');
+            if (style.useFM) activeInstruments.push('FM');
+            if (style.useStabs) activeInstruments.push('stabs');
+            if (style.useBells) activeInstruments.push('bells');
+            if (style.useMetallic) activeInstruments.push('metallic');
+            if (style.useNoiseSweep) activeInstruments.push('noise-sweep');
+            if (style.usePWM) activeInstruments.push('PWM');
+            if (style.usePortamento) activeInstruments.push('portamento');
+            if (style.useGated) activeInstruments.push('gated');
+            if (style.useTremolo) activeInstruments.push('tremolo');
+            if (style.usePercussion) activeInstruments.push('percussion');
+            if (style.useFormant) activeInstruments.push('formant');
+            if (style.useGranular) activeInstruments.push('granular');
+            if (style.useReverse) activeInstruments.push('reverse');
+
+            console.log(`[AUDIO] 🎵 Music style: ${style.name}`);
+            console.log(`[AUDIO]   BPM: ${style.bpm} | Bass: ${style.bassType} | Lead: ${style.leadType}`);
+            console.log(`[AUDIO]   Intensity: ${style.intensity} | Filter: ${style.filterMod} | Noise: ${style.noiseLevel}`);
+            console.log(`[AUDIO]   Drums: ${style.drumStyle} | Perc: ${style.percStyle}`);
+            console.log(`[AUDIO]   Instruments (${activeInstruments.length}): ${activeInstruments.join(', ') || 'none'}`);
         } else {
             console.warn(`[AUDIO] Unknown track style: ${trackId}`);
         }

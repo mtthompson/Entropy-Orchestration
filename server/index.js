@@ -149,6 +149,9 @@ const CPU_NAMES = ['NEON', 'RAZOR', 'VOLT', 'BLAZE', 'CYBER', 'TURBO'];
 let cpuIdCounter = 0;
 let projectileIdCounter = 0;
 
+// Lap tracking constants
+const LAPS_TO_WIN = 3;
+
 // =============================================================================
 // BOUNDARY ENFORCEMENT
 // =============================================================================
@@ -205,7 +208,9 @@ function spawnCPUOpponents(count) {
             type: 'driver',
             isCPU: true,
             waypointIndex: 0, // Will be updated based on spawn position
-            boost: 100
+            boost: 100,
+            lapsCompleted: 0,
+            lastWaypointIndex: 0
         };
 
         // Stagger spawn positions more - alternate sides and add larger offset
@@ -247,13 +252,33 @@ function updateCPUPhysics() {
 
         const pos = cpu.body.position;
         let target;
+        let isRacing = false;
 
         // Different behavior for race tracks vs arenas
         if (activeTrack.type === 'race' && activeTrack.path) {
             // Race track: Follow waypoints
-            const result = getNextWaypoint(cpu, activeTrack.path);
+            const WAYPOINT_THRESHOLD = 10; // Reduced from 15 for tighter racing
+            const result = getNextWaypoint(cpu, activeTrack.path, 3); // Increased lookahead
             target = { x: result.x, z: result.z };
-            cpu.waypointIndex = result.waypointIndex;
+            
+            // Lap tracking: detect finish line crossing
+            if (cpu.waypointIndex !== result.waypointIndex) {
+                // Waypoint advanced
+                if (result.waypointIndex === 0 && cpu.waypointIndex === activeTrack.path.length - 1) {
+                    // Wrapped from last to first = lap completed
+                    cpu.lapsCompleted++;
+                    console.log(`[LAP] ${cpu.name} completed lap ${cpu.lapsCompleted}`);
+                    
+                    // Check for race completion
+                    if (cpu.lapsCompleted >= LAPS_TO_WIN) {
+                        endRace(cpu);
+                        return;
+                    }
+                }
+                cpu.waypointIndex = result.waypointIndex;
+            }
+            
+            isRacing = true;
         } else {
             // Arena: Chase enemies or patrol center
             target = getArenaTarget(cpu, players, cpuPlayers);
@@ -280,7 +305,49 @@ function updateCPUPhysics() {
 
             // Apply throttle (reduce when turning sharply)
             const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-            const throttleStrength = 300 + 300 * turnFactor; // 300-600 based on turn
+            let baseThrottle = isRacing ? 400 : 300; // Higher throttle for racing
+            const throttleStrength = baseThrottle + baseThrottle * turnFactor;
+
+            // Combat AI: detect nearby targets for ramming
+            let combatBoost = 1.0;
+            const combatRange = 30;
+            
+            // Check for nearby players to ram
+            for (const [pId, player] of players) {
+                if (player.type !== 'driver' || !player.body) continue;
+                const pDist = cpu.body.position.distanceTo(player.body.position);
+                if (pDist < combatRange) {
+                    const toDx = player.body.position.x - pos.x;
+                    const toDz = player.body.position.z - pos.z;
+                    const toAngle = Math.atan2(toDx, -toDz);
+                    const aimDiff = Math.abs(normalizeAngle(toAngle - currentAngle));
+                    
+                    // If aligned with target (within 30 degrees), boost throttle for ramming
+                    if (aimDiff < Math.PI / 6) {
+                        combatBoost = 1.5;
+                        break;
+                    }
+                }
+            }
+            
+            // Check for nearby CPUs to ram (arena mode)
+            if (!isRacing) {
+                for (const [cId, otherCpu] of cpuPlayers) {
+                    if (cId === id || !otherCpu.body || otherCpu.hp <= 0) continue;
+                    const cDist = cpu.body.position.distanceTo(otherCpu.body.position);
+                    if (cDist < combatRange) {
+                        const toDx = otherCpu.body.position.x - pos.x;
+                        const toDz = otherCpu.body.position.z - pos.z;
+                        const toAngle = Math.atan2(toDx, -toDz);
+                        const aimDiff = Math.abs(normalizeAngle(toAngle - currentAngle));
+                        
+                        if (aimDiff < Math.PI / 6) {
+                            combatBoost = 1.5;
+                            break;
+                        }
+                    }
+                }
+            }
 
             // Calculate forward direction from quaternion
             const forward = new CANNON.Vec3(
@@ -289,7 +356,7 @@ function updateCPUPhysics() {
                 1 - 2 * (q.x * q.x + q.y * q.y)
             );
             forward.normalize();
-            forward.scale(-throttleStrength, forward); // Negative because car faces -Z
+            forward.scale(-throttleStrength * combatBoost, forward); // Apply combat boost
 
             cpu.body.applyForce(forward, cpu.body.position);
         }
@@ -431,6 +498,27 @@ function switchToDrone(id) {
 
 function updatePlayerPhysics(player, input) {
     if (!player.body) return;
+    
+    // Lap tracking for race tracks
+    if (activeTrack.type === 'race' && activeTrack.path && gameState === 'RACING') {
+        const pos = { x: player.body.position.x, z: player.body.position.z };
+        const currentWaypointIndex = findNearestWaypointIndex(pos, activeTrack.path);
+        
+        // Check for lap completion (wrapping from last to first waypoint)
+        if (player.waypointIndex === activeTrack.path.length - 1 && currentWaypointIndex === 0) {
+            player.lapsCompleted++;
+            console.log(`[LAP] ${player.name} completed lap ${player.lapsCompleted}`);
+            io.to(player.id).emit('lapCompleted', { lap: player.lapsCompleted, totalLaps: LAPS_TO_WIN });
+            
+            // Check for race win
+            if (player.lapsCompleted >= LAPS_TO_WIN) {
+                endRace(player);
+                return;
+            }
+        }
+        
+        player.waypointIndex = currentWaypointIndex;
+    }
 
     const { steering, throttle, boost } = input;
 
@@ -696,6 +784,180 @@ world.addEventListener('postStep', () => {
             }
         }
     }
+
+    // Check collisions between players and CPUs
+    for (const [playerId, player] of players) {
+        if (player.type !== 'driver' || !player.body) continue;
+
+        for (const [cpuId, cpu] of cpuPlayers) {
+            if (!cpu.body || cpu.hp <= 0) continue;
+
+            const dist = player.body.position.distanceTo(cpu.body.position);
+            if (dist < 2.2) {
+                const relVel = new CANNON.Vec3();
+                player.body.velocity.vsub(cpu.body.velocity, relVel);
+                const impactSpeed = relVel.length();
+
+                if (impactSpeed > DAMAGE_THRESHOLD) {
+                    let damageToPlayer = Math.floor(impactSpeed * 2);
+                    let damageToCPU = Math.floor(impactSpeed * 2);
+
+                    // ONI MASK: 15% damage resistance
+                    if (player.maskType === 'Oni') damageToPlayer *= 0.85;
+
+                    // RAMMING LOGIC
+                    const v1to2 = new CANNON.Vec3();
+                    cpu.body.position.vsub(player.body.position, v1to2);
+                    v1to2.normalize();
+
+                    // Player heading
+                    const pq = player.body.quaternion;
+                    const pForward = new CANNON.Vec3(
+                        2 * (pq.x * pq.z + pq.w * pq.y),
+                        0,
+                        1 - 2 * (pq.x * pq.x + pq.y * pq.y)
+                    );
+                    pForward.normalize();
+
+                    // CPU heading
+                    const cq = cpu.body.quaternion;
+                    const cForward = new CANNON.Vec3(
+                        2 * (cq.x * cq.z + cq.w * cq.y),
+                        0,
+                        1 - 2 * (cq.x * cq.x + cq.y * cq.y)
+                    );
+                    cForward.normalize();
+
+                    const playerRamming = pForward.dot(v1to2);
+                    const cpuRamming = cForward.dot(v1to2.negate());
+
+                    if (playerRamming > 0.7) {
+                        damageToPlayer *= 0.5;
+                        damageToCPU *= 1.5;
+                        console.log(`[COMBAT] ${player.name} RAMMED ${cpu.name}!`);
+                    }
+
+                    if (cpuRamming > 0.7) {
+                        damageToCPU *= 0.5;
+                        damageToPlayer *= 1.5;
+                        console.log(`[COMBAT] ${cpu.name} RAMMED ${player.name}!`);
+                    }
+
+                    // Juggernaut and Shield Logic
+                    if (player.isJuggernaut) { damageToPlayer *= 0.2; damageToCPU *= 1.5; }
+                    if (player.isShielded) damageToPlayer = 0;
+
+                    player.hp -= Math.floor(damageToPlayer);
+                    cpu.hp -= Math.floor(damageToCPU);
+
+                    console.log(`[COLLISION] ${player.name} (-${damageToPlayer}) <-> ${cpu.name} (-${damageToCPU}) | Speed: ${impactSpeed.toFixed(1)}`);
+
+                    io.to(playerId).emit('damage', { hp: player.hp, damage: damageToPlayer });
+
+                    if (player.hp <= 0) {
+                        switchToDrone(playerId);
+                        updateLeaderboard(cpu.name, 'kills', 1, true); // CPU gets kill credit
+                        checkWinCondition();
+                    }
+                    if (cpu.hp <= 0) {
+                        console.log(`[CPU] ${cpu.name} eliminated by ${player.name}`);
+                        world.removeBody(cpu.body);
+                        cpu.body = null;
+                        cpu.type = 'eliminated';
+                        updateLeaderboard(player.name, 'kills', 1, false);
+                        updateLeaderboard(cpu.name, 'deaths', 1, true);
+                        checkWinCondition();
+                    }
+                }
+            }
+        }
+    }
+
+    // Check collisions between CPUs
+    const cpuArray = Array.from(cpuPlayers.entries());
+    for (let i = 0; i < cpuArray.length; i++) {
+        const [id1, cpu1] = cpuArray[i];
+        if (!cpu1.body || cpu1.hp <= 0) continue;
+
+        for (let j = i + 1; j < cpuArray.length; j++) {
+            const [id2, cpu2] = cpuArray[j];
+            if (!cpu2.body || cpu2.hp <= 0) continue;
+
+            const dist = cpu1.body.position.distanceTo(cpu2.body.position);
+            if (dist < 2.2) {
+                const relVel = new CANNON.Vec3();
+                cpu1.body.velocity.vsub(cpu2.body.velocity, relVel);
+                const impactSpeed = relVel.length();
+
+                if (impactSpeed > DAMAGE_THRESHOLD) {
+                    let damage1 = Math.floor(impactSpeed * 2);
+                    let damage2 = Math.floor(impactSpeed * 2);
+
+                    // RAMMING LOGIC
+                    const v1to2 = new CANNON.Vec3();
+                    cpu2.body.position.vsub(cpu1.body.position, v1to2);
+                    v1to2.normalize();
+
+                    // CPU1 heading
+                    const q1 = cpu1.body.quaternion;
+                    const f1 = new CANNON.Vec3(
+                        2 * (q1.x * q1.z + q1.w * q1.y),
+                        0,
+                        1 - 2 * (q1.x * q1.x + q1.y * q1.y)
+                    );
+                    f1.normalize();
+
+                    // CPU2 heading
+                    const q2 = cpu2.body.quaternion;
+                    const f2 = new CANNON.Vec3(
+                        2 * (q2.x * q2.z + q2.w * q2.y),
+                        0,
+                        1 - 2 * (q2.x * q2.x + q2.y * q2.y)
+                    );
+                    f2.normalize();
+
+                    const cpu1Ramming = f1.dot(v1to2);
+                    const cpu2Ramming = f2.dot(v1to2.negate());
+
+                    if (cpu1Ramming > 0.7) {
+                        damage1 *= 0.5;
+                        damage2 *= 1.5;
+                        console.log(`[COMBAT] ${cpu1.name} RAMMED ${cpu2.name}!`);
+                    }
+
+                    if (cpu2Ramming > 0.7) {
+                        damage2 *= 0.5;
+                        damage1 *= 1.5;
+                        console.log(`[COMBAT] ${cpu2.name} RAMMED ${cpu1.name}!`);
+                    }
+
+                    cpu1.hp -= Math.floor(damage1);
+                    cpu2.hp -= Math.floor(damage2);
+
+                    console.log(`[COLLISION] ${cpu1.name} (-${damage1}) <-> ${cpu2.name} (-${damage2}) | Speed: ${impactSpeed.toFixed(1)}`);
+
+                    if (cpu1.hp <= 0) {
+                        console.log(`[CPU] ${cpu1.name} eliminated by ${cpu2.name}`);
+                        world.removeBody(cpu1.body);
+                        cpu1.body = null;
+                        cpu1.type = 'eliminated';
+                        updateLeaderboard(cpu2.name, 'kills', 1, true);
+                        updateLeaderboard(cpu1.name, 'deaths', 1, true);
+                        checkWinCondition();
+                    }
+                    if (cpu2.hp <= 0) {
+                        console.log(`[CPU] ${cpu2.name} eliminated by ${cpu1.name}`);
+                        world.removeBody(cpu2.body);
+                        cpu2.body = null;
+                        cpu2.type = 'eliminated';
+                        updateLeaderboard(cpu1.name, 'kills', 1, true);
+                        updateLeaderboard(cpu2.name, 'deaths', 1, true);
+                        checkWinCondition();
+                    }
+                }
+            }
+        }
+    }
 });
 
 // =============================================================================
@@ -870,14 +1132,16 @@ const DEMO_TIMEOUT = 60000; // 60 seconds of no players triggers demo
 // =============================================================================
 // LEADERBOARD SYSTEM
 // =============================================================================
-const leaderboard = new Map(); // name -> { wins, kills, deaths, gamesPlayed }
+const leaderboard = new Map(); // name -> { wins, kills, deaths, gamesPlayed, isCPU }
 
-function updateLeaderboard(playerName, stat, value = 1) {
+function updateLeaderboard(playerName, stat, value = 1, isCPU = false) {
     if (!leaderboard.has(playerName)) {
-        leaderboard.set(playerName, { wins: 0, kills: 0, deaths: 0, gamesPlayed: 0 });
+        leaderboard.set(playerName, { wins: 0, kills: 0, deaths: 0, gamesPlayed: 0, isCPU });
     }
     const entry = leaderboard.get(playerName);
     entry[stat] = (entry[stat] || 0) + value;
+    // Ensure isCPU flag is set
+    if (isCPU) entry.isCPU = true;
 }
 
 function getLeaderboardData() {
@@ -1051,11 +1315,31 @@ function resetGame() {
 }
 
 function endRace(winner) {
-    if (gameState !== 'RACING') return;
+    if (gameState !== 'RACING' && gameState !== 'DEMO') return;
     gameState = 'WINNER';
     winnerName = winner ? winner.name : 'Nobody';
     gameTimer = 10; // 10s until lobby
     console.log(`[GAME] Winner: ${winnerName}`);
+    
+    // Update leaderboard for winner
+    if (winner) {
+        updateLeaderboard(winner.name, 'wins', 1, winner.isCPU || false);
+        updateLeaderboard(winner.name, 'gamesPlayed', 1, winner.isCPU || false);
+    }
+    
+    // Update gamesPlayed for all other participants
+    for (const [id, player] of players) {
+        if (!winner || player.name !== winner.name) {
+            updateLeaderboard(player.name, 'gamesPlayed', 1, false);
+        }
+    }
+    for (const [id, cpu] of cpuPlayers) {
+        if (!winner || cpu.name !== winner.name) {
+            updateLeaderboard(cpu.name, 'gamesPlayed', 1, true);
+        }
+    }
+    
+    broadcastLeaderboard();
     broadcastGameState();
 
     const interval = setInterval(() => {
@@ -1071,21 +1355,49 @@ function endRace(winner) {
 }
 
 function checkWinCondition() {
-    if (gameState !== 'RACING') return;
+    if (gameState !== 'RACING' && gameState !== 'DEMO') return;
 
-    // Count active drivers
-    let activeDrivers = [];
-    for (const [id, p] of players) {
-        if (p.type === 'driver' && p.hp > 0) activeDrivers.push(p);
-    }
+    // For race tracks: lap completion is handled in updateCPUPhysics and updatePlayerPhysics
+    // Only check elimination-based win condition for arenas or if everyone is eliminated
+    
+    if (activeTrack.type === 'arena') {
+        // Arena mode: Last survivor wins
+        let activeDrivers = [];
+        
+        // Count human players
+        for (const [id, p] of players) {
+            if (p.type === 'driver' && p.hp > 0) activeDrivers.push(p);
+        }
+        
+        // Count CPU players
+        for (const [id, cpu] of cpuPlayers) {
+            if (cpu.hp > 0 && cpu.body) activeDrivers.push(cpu);
+        }
 
-    // PvP Win Condition: Last man standing (only if we have multiple players)
-    if (players.size > 1 && activeDrivers.length === 1) {
-        endRace(activeDrivers[0]);
-    }
-    // Single Player / Everyone Died Condition
-    else if (activeDrivers.length === 0) {
-        endRace(null); // Game Over
+        // Last survivor wins
+        if (activeDrivers.length === 1) {
+            endRace(activeDrivers[0]);
+        }
+        // Everyone died
+        else if (activeDrivers.length === 0) {
+            endRace(null);
+        }
+    } else if (activeTrack.type === 'race') {
+        // Race mode: Check if everyone is eliminated (no lap winner yet)
+        let activeDrivers = [];
+        
+        for (const [id, p] of players) {
+            if (p.type === 'driver' && p.hp > 0) activeDrivers.push(p);
+        }
+        
+        for (const [id, cpu] of cpuPlayers) {
+            if (cpu.hp > 0 && cpu.body) activeDrivers.push(cpu);
+        }
+
+        // If everyone is eliminated before finishing, end race
+        if (activeDrivers.length === 0) {
+            endRace(null);
+        }
     }
 }
 
@@ -1296,7 +1608,9 @@ io.on('connection', (socket) => {
                 boost: 100,
                 isShielded: false,
                 isGhost: false,
-                isJuggernaut: false
+                isJuggernaut: false,
+                lapsCompleted: 0,
+                waypointIndex: 0
             };
             players.set(socket.id, newPlayer);
             // ...
