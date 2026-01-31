@@ -49,20 +49,34 @@ function SynthwaveGrid() {
       varying vec3 vPosition;
       
       void main() {
-        vec2 grid = abs(fract(vPosition.xz * 0.1 - vec2(0.0, time)) - 0.5);
-        float line = min(grid.x, grid.y);
-        float alpha = 1.0 - smoothstep(0.0, 0.03, line);
+        // Grid coordinates with scrolling
+        vec2 coord = vPosition.xz * 0.1;
+        coord.y -= time;
         
-        float dist = length(vPosition.xz) * 0.02;
-        vec3 color = mix(color1, color2, sin(dist + time) * 0.5 + 0.5);
+        // Calculate grid lines (stable calculation)
+        vec2 gridLines = abs(mod(coord, 1.0) - 0.5) * 2.0;
+        float lineX = smoothstep(0.95, 1.0, gridLines.x);
+        float lineY = smoothstep(0.95, 1.0, gridLines.y);
+        float line = max(lineX, lineY);
         
-        gl_FragColor = vec4(color, alpha * 0.8);
+        // Distance fade
+        float dist = length(vPosition.xz);
+        float fade = 1.0 - smoothstep(50.0, 100.0, dist);
+        
+        // Color gradient
+        vec3 color = mix(color1, color2, sin(dist * 0.02 + time) * 0.5 + 0.5);
+        
+        // Base floor color (dark) + bright grid lines
+        vec3 baseColor = vec3(0.02, 0.0, 0.04);
+        vec3 finalColor = mix(baseColor, color, line);
+        
+        gl_FragColor = vec4(finalColor, fade);
       }
     `
     }), []);
 
     return (
-        <mesh ref={gridRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
+        <mesh ref={gridRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
             <planeGeometry args={[200, 200, 1, 1]} />
             <shaderMaterial
                 ref={materialRef}
@@ -361,13 +375,13 @@ function Scene({ worldState }) {
             {/* Post Processing */}
             <EffectComposer>
                 <Bloom
-                    intensity={1.5}
-                    luminanceThreshold={0.2}
+                    intensity={0.8}
+                    luminanceThreshold={0.4}
                     luminanceSmoothing={0.9}
                 />
                 <ChromaticAberration
                     blendFunction={BlendFunction.NORMAL}
-                    offset={[0.002, 0.002]}
+                    offset={[0.001, 0.001]}
                 />
             </EffectComposer>
         </>

@@ -29,6 +29,15 @@ const world = new CANNON.World({
 world.broadphase = new CANNON.SAPBroadphase(world);
 world.allowSleep = true;
 
+// Ground plane - prevents objects from falling through
+const groundBody = new CANNON.Body({
+    mass: 0, // Static body
+    shape: new CANNON.Plane(),
+    position: new CANNON.Vec3(0, 0, 0)
+});
+groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
+world.addBody(groundBody);
+
 // =============================================================================
 // GAME STATE
 // =============================================================================
@@ -51,7 +60,7 @@ function spawnPlayer(id, name = 'Player') {
     const body = new CANNON.Body({
         mass: 50,
         shape: new CANNON.Sphere(1),
-        position: new CANNON.Vec3(spawnX, 2, spawnZ),
+        position: new CANNON.Vec3(spawnX, 1, spawnZ),
         linearDamping: 0.3,
         angularDamping: 0.5
     });

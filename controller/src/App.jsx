@@ -261,6 +261,51 @@ function DrivingScreen({ playerState }) {
         };
     }, []);
 
+    // Keyboard controls for desktop testing
+    useEffect(() => {
+        const keysPressed = new Set();
+
+        const updateFromKeys = () => {
+            // Throttle: W or ArrowUp
+            if (keysPressed.has('w') || keysPressed.has('arrowup')) {
+                setIsThrottling(true);
+            } else {
+                setIsThrottling(false);
+            }
+
+            // Boost: Space
+            if (keysPressed.has(' ')) {
+                setIsBoosting(true);
+            } else {
+                setIsBoosting(false);
+            }
+
+            // Steering: A/D or ArrowLeft/ArrowRight
+            let steer = 0;
+            if (keysPressed.has('a') || keysPressed.has('arrowleft')) steer -= 1;
+            if (keysPressed.has('d') || keysPressed.has('arrowright')) steer += 1;
+            setSteering(steer);
+        };
+
+        const handleKeyDown = (e) => {
+            keysPressed.add(e.key.toLowerCase());
+            updateFromKeys();
+        };
+
+        const handleKeyUp = (e) => {
+            keysPressed.delete(e.key.toLowerCase());
+            updateFromKeys();
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, []);
+
     // Send input at 30Hz
     useEffect(() => {
         const interval = setInterval(() => {
