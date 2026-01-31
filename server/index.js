@@ -32,10 +32,42 @@ world.broadphase = new CANNON.SAPBroadphase(world);
 world.allowSleep = true;
 
 // Ground plane - prevents objects from falling through
+// Ground plane - prevents objects from falling through
+const groundMaterial = new CANNON.Material('ground');
+const wallMaterial = new CANNON.Material('wall');
+const carMaterial = new CANNON.Material('car');
+
+// Define interactions
+const carGroundContact = new CANNON.ContactMaterial(carMaterial, groundMaterial, {
+    friction: 0.7,
+    restitution: 0.1, // Little bounce on ground
+    contactEquationStiffness: 1e8,
+    contactEquationRelaxation: 3
+});
+
+const carWallContact = new CANNON.ContactMaterial(carMaterial, wallMaterial, {
+    friction: 0.5,
+    restitution: 0.1, // NO BOUNCE on walls (dampens impact)
+    contactEquationStiffness: 1e8,
+    contactEquationRelaxation: 3
+});
+
+const carCarContact = new CANNON.ContactMaterial(carMaterial, carMaterial, {
+    friction: 0.5,
+    restitution: 0.4, // Some bounce between cars
+    contactEquationStiffness: 1e8,
+    contactEquationRelaxation: 3
+});
+
+world.addContactMaterial(carGroundContact);
+world.addContactMaterial(carWallContact);
+world.addContactMaterial(carCarContact);
+
 const groundBody = new CANNON.Body({
     mass: 0, // Static body
     shape: new CANNON.Plane(),
-    position: new CANNON.Vec3(0, 0, 0)
+    position: new CANNON.Vec3(0, 0, 0),
+    material: groundMaterial
 });
 groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
 world.addBody(groundBody);
@@ -61,7 +93,8 @@ function createTrackWalls() {
         const wallBody = new CANNON.Body({
             mass: 0, // Static
             shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 1)),
-            position: new CANNON.Vec3(centerX, wall.height / 2, centerZ)
+            position: new CANNON.Vec3(centerX, wall.height / 2, centerZ),
+            material: wallMaterial
         });
         wallBody.quaternion.setFromEuler(0, -angle, 0);
 
@@ -101,9 +134,10 @@ function spawnPlayer(id, name = 'Player') {
         mass: 50,
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(spawnX, 1, spawnZ),
-        linearDamping: 0.1,  // Reduced from 0.3 for less drag
-        angularDamping: 0.3, // Reduced from 0.5 for snappier rotation
-        allowSleep: false  // Keep player bodies always awake
+        linearDamping: 0.5,  // Increased drag for better control (was 0.1)
+        angularDamping: 0.5, // Reduced spin (was 0.3)
+        allowSleep: false,  // Keep player bodies always awake
+        material: carMaterial
     });
 
     world.addBody(body);
@@ -313,14 +347,16 @@ io.on('connection', (socket) => {
             // Apply forces based on input
             const force = new CANNON.Vec3();
 
-            // Forward/backward - increased for snappier acceleration
-            force.z = -throttle * 200;
+            // Forward/backward - increased for punchy acceleration
+            force.z = -throttle * 600; // Was 200
 
             // Steering (rotate force direction) - sharper response
             const angle = steering * 0.8;
             const rotatedX = force.x * Math.cos(angle) - force.z * Math.sin(angle);
             const rotatedZ = force.x * Math.sin(angle) + force.z * Math.cos(angle);
-            force.x = rotatedX + steering * 150;
+
+            // Lateral force helper - helps turn the car by pushing it sideways
+            force.x = rotatedX + steering * 400; // Was 150
             force.z = rotatedZ;
 
             // Boost
