@@ -266,11 +266,11 @@ io.on('connection', (socket) => {
             // Forward/backward - increased for snappier acceleration
             force.z = -throttle * 200;
 
-            // Steering (rotate force direction)
-            const angle = steering * 0.5;
+            // Steering (rotate force direction) - sharper response
+            const angle = steering * 0.8;
             const rotatedX = force.x * Math.cos(angle) - force.z * Math.sin(angle);
             const rotatedZ = force.x * Math.sin(angle) + force.z * Math.cos(angle);
-            force.x = rotatedX + steering * 100;
+            force.x = rotatedX + steering * 150;
             force.z = rotatedZ;
 
             // Boost
