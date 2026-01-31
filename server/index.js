@@ -2,8 +2,8 @@ const { Server } = require('socket.io');
 const { createServer } = require('http');
 const CANNON = require('cannon-es');
 const { v4: uuidv4 } = require('uuid');
-const { getDefaultTrack, getThemeByTrackId, getRandomTrack } = require('./tracks');
-const { getNextWaypoint, getArenaTarget, normalizeAngle } = require('./cpuPathfinding');
+const { getDefaultTrack, getThemeByTrackId, getRandomTrack, getRandomRaceTrack } = require('./tracks');
+const { getNextWaypoint, getArenaTarget, normalizeAngle, findNearestWaypointIndex } = require('./cpuPathfinding');
 
 // =============================================================================
 // CONFIGURATION
@@ -193,6 +193,7 @@ function enforceBoundaries(body) {
 function spawnCPUOpponents(count) {
     for (let i = 0; i < count; i++) {
         const cpuId = `cpu_${cpuIdCounter++}`;
+        // Use different spawn points for each CPU to spread them out
         const spawnIndex = i % activeTrack.spawnPoints.length;
         const spawn = activeTrack.spawnPoints[spawnIndex];
 
@@ -203,16 +204,20 @@ function spawnCPUOpponents(count) {
             hp: 100,
             type: 'driver',
             isCPU: true,
-            waypointIndex: 0,
+            waypointIndex: 0, // Will be updated based on spawn position
             boost: 100
         };
+
+        // Stagger spawn positions more - alternate sides and add larger offset
+        const xOffset = ((i % 2) * 2 - 1) * (4 + Math.floor(i / 2) * 3); // -4, +4, -7, +7, etc
+        const zOffset = -i * 8; // Spread them behind each other
 
         const body = new CANNON.Body({
             mass: 50,
             shape: new CANNON.Sphere(1),
-            position: new CANNON.Vec3(spawn.x + (i * 3), 1, spawn.z),
-            linearDamping: 0.5,
-            angularDamping: 0.5,
+            position: new CANNON.Vec3(spawn.x + xOffset, 1, spawn.z + zOffset),
+            linearDamping: 0.3, // Reduced damping for more momentum
+            angularDamping: 0.3,
             allowSleep: false,
             material: carMaterial
         });
@@ -220,6 +225,14 @@ function spawnCPUOpponents(count) {
 
         world.addBody(body);
         cpu.body = body;
+
+        // Initialize waypointIndex based on spawn position for race tracks
+        if (activeTrack.path) {
+            cpu.waypointIndex = findNearestWaypointIndex(
+                { x: spawn.x + xOffset, z: spawn.z + zOffset },
+                activeTrack.path
+            );
+        }
         cpuPlayers.set(cpuId, cpu);
     }
     console.log(`[CPU] Spawned ${count} CPU opponents`);
@@ -228,6 +241,9 @@ function spawnCPUOpponents(count) {
 function updateCPUPhysics() {
     for (const [id, cpu] of cpuPlayers) {
         if (!cpu.body || cpu.hp <= 0) continue;
+
+        // Wake up the body to ensure physics applies
+        cpu.body.wakeUp();
 
         const pos = cpu.body.position;
         let target;
@@ -252,27 +268,30 @@ function updateCPUPhysics() {
             const targetAngle = Math.atan2(dx, -dz);
 
             // Get current heading from quaternion
-            const euler = { x: 0, y: 0, z: 0 };
             const q = cpu.body.quaternion;
-            euler.y = Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x));
-            const currentAngle = euler.y;
+            const currentAngle = Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x));
 
             // Calculate angle difference
             let angleDiff = normalizeAngle(targetAngle - currentAngle);
 
             // Apply steering proportional to angle difference
-            const steerStrength = 4.0;
+            const steerStrength = 3.0;
             cpu.body.angularVelocity.y = angleDiff * steerStrength;
 
             // Apply throttle (reduce when turning sharply)
             const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-            const throttleStrength = 400 + 200 * turnFactor; // 400-600 based on turn
+            const throttleStrength = 300 + 300 * turnFactor; // 300-600 based on turn
 
-            const forward = new CANNON.Vec3(0, 0, -1);
-            cpu.body.quaternion.vmult(forward, forward);
-            const force = forward.clone();
-            force.scale(throttleStrength, force);
-            cpu.body.applyForce(force, cpu.body.position);
+            // Calculate forward direction from quaternion
+            const forward = new CANNON.Vec3(
+                2 * (q.x * q.z + q.w * q.y),
+                0,
+                1 - 2 * (q.x * q.x + q.y * q.y)
+            );
+            forward.normalize();
+            forward.scale(-throttleStrength, forward); // Negative because car faces -Z
+
+            cpu.body.applyForce(forward, cpu.body.position);
         }
 
         // Enforce boundaries for CPU too
@@ -882,8 +901,17 @@ function startDemoMode() {
     demoModeActive = true;
     gameState = 'DEMO';
 
-    // Select random track
-    selectRandomTrack();
+    // Select random RACE track (with path for CPU pathfinding)
+    const { getRandomRaceTrack } = require('./tracks');
+    activeTrack = getRandomRaceTrack();
+    console.log(`[DEMO] Selected race track: ${activeTrack.name}`);
+
+    // Clear existing walls and create new ones for the selected track
+    for (const wall of trackWalls) {
+        world.removeBody(wall);
+    }
+    trackWalls.length = 0;
+    createTrackWalls();
 
     // Broadcast track data so renderer displays correct track and music plays
     io.emit('trackData', activeTrack);
@@ -1106,16 +1134,124 @@ io.on('connection', (socket) => {
     });
 
     // Send initial game state
-    socket.emit('gameState', { state: gameState, timer: gameTimer, winner: winnerName });
+    socket.emit('gameState', { state: gameState, timer: gameTimer, winner: winnerName, isDemo: demoModeActive });
+
+    // Send demo mode state
+    socket.emit('demoMode', { active: demoModeActive });
 
     if (role === 'admin') {
-        // Renderer connection - just receives state
+        // Renderer connection - receives state + can send admin commands
         socket.join('renderers');
+
+        // Send track list and CPU count on connect
+        const { getAllTracks } = require('./tracks');
+        socket.emit('trackList', getAllTracks().map(t => ({ id: t.id, name: t.name, type: t.type })));
+        socket.emit('cpuCount', cpuPlayers.size);
 
         // Admin commands
         socket.on('startGame', () => {
-            console.log("Admin requested start");
+            console.log("[ADMIN] Requested start");
             if (gameState === 'LOBBY') startCountdown();
+        });
+
+        socket.on('addCPU', () => {
+            if (cpuPlayers.size < 10) {
+                spawnCPUOpponents(1);
+                io.to('renderers').emit('cpuCount', cpuPlayers.size);
+                console.log(`[ADMIN] Added CPU - now ${cpuPlayers.size}`);
+            }
+        });
+
+        socket.on('removeCPU', () => {
+            if (cpuPlayers.size > 0) {
+                // Remove the first CPU
+                const [firstId] = cpuPlayers.keys();
+                const cpu = cpuPlayers.get(firstId);
+                if (cpu.body) world.removeBody(cpu.body);
+                cpuPlayers.delete(firstId);
+                io.to('renderers').emit('cpuCount', cpuPlayers.size);
+                console.log(`[ADMIN] Removed CPU - now ${cpuPlayers.size}`);
+            }
+        });
+
+        socket.on('changeTrack', (trackId) => {
+            const { getTrackById } = require('./tracks');
+            const newTrack = getTrackById(trackId);
+            if (newTrack) {
+                console.log(`[ADMIN] Changing track to: ${newTrack.name}`);
+
+                // Remove existing walls
+                for (const wall of trackWalls) {
+                    world.removeBody(wall);
+                }
+                trackWalls.length = 0;
+
+                // Remove all CPUs
+                removeCPUOpponents();
+
+                // Set new track and rebuild
+                activeTrack = newTrack;
+                createTrackWalls();
+
+                // Broadcast new track data
+                io.emit('trackData', {
+                    id: activeTrack.id,
+                    name: activeTrack.name,
+                    boundaries: activeTrack.boundaries,
+                    floorSize: activeTrack.floorSize
+                });
+                io.emit('trackStyle', { trackId: activeTrack.id, trackName: activeTrack.name });
+                io.to('renderers').emit('cpuCount', cpuPlayers.size);
+
+                // Reset game state
+                if (demoModeActive) {
+                    spawnCPUOpponents(4);
+                    io.to('renderers').emit('cpuCount', cpuPlayers.size);
+                }
+            }
+        });
+
+        socket.on('restartGame', () => {
+            console.log("[ADMIN] Restarting game");
+
+            // Stop demo mode if active
+            if (demoModeActive) {
+                demoModeActive = false;
+                io.emit('demoMode', { active: false });
+            }
+
+            // Remove all CPUs
+            removeCPUOpponents();
+
+            // Reset all players
+            for (const [id, player] of players) {
+                removePlayerBody(player);
+            }
+            players.clear();
+
+            // Clear powerups and traps
+            for (const [id, p] of powerups) {
+                world.removeBody(p.body);
+            }
+            powerups.clear();
+
+            for (const [id, t] of traps) {
+                world.removeBody(t.body);
+            }
+            traps.clear();
+
+            // Reset game state
+            gameState = 'LOBBY';
+            gameTimer = 0;
+            winnerName = null;
+
+            broadcastGameState();
+            io.to('renderers').emit('cpuCount', 0);
+
+            // Restart demo timer
+            resetDemoTimer();
+
+            console.log("[ADMIN] Game reset to LOBBY");
         });
 
     } else {

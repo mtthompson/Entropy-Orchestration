@@ -1075,7 +1075,7 @@ function Scene({ worldState, trackData, setEngineRpm }) {
                 />
                 <ChromaticAberration
                     blendFunction={BlendFunction.NORMAL}
-                    offset={[0.002, 0.002]}
+                    offset={[0.0005, 0.0005]}
                 />
             </EffectComposer>
         </>

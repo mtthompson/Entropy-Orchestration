@@ -428,6 +428,11 @@ function getRandomTrack() {
     return TRACKS[Math.floor(Math.random() * TRACKS.length)];
 }
 
+function getRandomRaceTrack() {
+    const raceTracks = TRACKS.filter(t => t.type === 'race' && t.path);
+    return raceTracks[Math.floor(Math.random() * raceTracks.length)] || TRACKS[0];
+}
+
 function getThemeByTrackId(trackId) {
     return TRACK_THEMES[trackId] || TRACK_THEMES['track_01'];
 }
@@ -446,6 +451,7 @@ module.exports = {
     getAllTracks,
     getDefaultTrack,
     getRandomTrack,
+    getRandomRaceTrack,
     getThemeByTrackId,
     getTrackPath,
     getAllThemes,
