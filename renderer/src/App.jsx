@@ -862,6 +862,17 @@ function FlyingCamera({ trackData }) {
     const { camera } = useThree();
     const timeRef = useRef(0);
 
+    // Initialize camera position immediately on mount
+    useEffect(() => {
+        const trackWidth = trackData?.floorSize?.width || 250;
+        const trackDepth = trackData?.floorSize?.depth || 250;
+        const radius = Math.max(trackWidth, trackDepth) * 0.6;
+        
+        // Set initial position
+        camera.position.set(radius * 1.2, 30, 0);
+        camera.lookAt(0, 5, 0);
+    }, [camera, trackData]);
+
     useFrame((state, delta) => {
         timeRef.current += delta * 0.3; // Slow orbit speed
         const t = timeRef.current;
@@ -898,6 +909,24 @@ function CameraController({ players, gameState }) {
     const targetLookAt = useRef(new THREE.Vector3(0, 0, -30));
     // Smooth velocity for camera
     const smoothVel = useRef(new THREE.Vector3(0, 0, -1));
+    const initialized = useRef(false);
+
+    // Initialize camera position immediately when players are available
+    useEffect(() => {
+        const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
+        
+        if (activePlayers.length > 0 && !initialized.current) {
+            const sorted = activePlayers.sort((a, b) => a.position.z - b.position.z);
+            const topPack = sorted.slice(0, 3);
+            
+            const avgX = topPack.reduce((sum, p) => sum + p.position.x, 0) / topPack.length;
+            const avgZ = topPack.reduce((sum, p) => sum + p.position.z, 0) / topPack.length;
+            
+            camera.position.set(avgX, 25, avgZ + 35);
+            camera.lookAt(avgX, 0, avgZ);
+            initialized.current = true;
+        }
+    }, [players, camera]);
 
     useFrame((state, delta) => {
         // During demo mode, follow action even in LOBBY state

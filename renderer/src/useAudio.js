@@ -288,7 +288,9 @@ export function useAudio(connected) {
     const scheduleMeasure = (measureNum, ctx) => {
         if (!isPlayingRef.current || !ctx) return;
 
-        const BPM = 130;
+        // Get current track style
+        const style = currentStyleRef.current || TRACK_STYLES['track_01'];
+        const BPM = style.bpm || 130;
         const stepDuration = 60 / BPM / 4;
         const measureDuration = stepDuration * 16;
 
@@ -297,7 +299,7 @@ export function useAudio(connected) {
         const progression = PROGRESSIONS[barData.progIndex % PROGRESSIONS.length];
         const chordIndex = Math.floor((measureNum % 4)); // Change chord every bar
         const chord = progression[chordIndex % progression.length];
-        const intensity = barData.intensity || 1.0;
+        const intensity = (barData.intensity || 1.0) * (style.intensity || 1.0);
 
         // Schedule all 16 steps in this measure
         for (let step = 0; step < 16; step++) {
@@ -314,7 +316,7 @@ export function useAudio(connected) {
             for (const [offset, dur] of bassPattern) {
                 if (offset === step) {
                     const bassNote = CHORDS[chord][0]; // Root note
-                    scheduleBass(ctx, time, bassNote, dur * stepDuration, intensity);
+                    scheduleBass(ctx, time, bassNote, dur * stepDuration, intensity, style);
                 }
             }
 
@@ -322,13 +324,13 @@ export function useAudio(connected) {
             if (barData.leadEnabled && step === 0) {
                 const melody = generateMelody(chord, barData.section, measureNum);
                 for (const note of melody) {
-                    scheduleLead(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.5, intensity);
+                    scheduleLead(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.5, intensity, style);
                 }
             }
 
             // Chord pad
             if (barData.chordPad && step === 0) {
-                scheduleChordPad(ctx, time, chord, measureDuration * 0.95, intensity * 0.5);
+                scheduleChordPad(ctx, time, chord, measureDuration * 0.95, intensity * 0.5, style);
             }
         }
 
@@ -410,7 +412,7 @@ export function useAudio(connected) {
         noise.start(time);
     };
 
-    const scheduleBass = (ctx, time, note, duration, intensity) => {
+    const scheduleBass = (ctx, time, note, duration, intensity, style = {}) => {
         const freq = NOTE_FREQS[note];
         if (!freq) return;
 
@@ -418,11 +420,12 @@ export function useAudio(connected) {
         const gain = ctx.createGain();
         const filter = ctx.createBiquadFilter();
 
-        osc.type = 'square';
+        // Use track-specific bass type
+        osc.type = style.bassType || 'square';
         osc.frequency.value = freq;
 
         filter.type = 'lowpass';
-        filter.frequency.value = 500;
+        filter.frequency.value = 500 * (style.filterMod || 1.0);
 
         gain.gain.setValueAtTime(0.15 * intensity, time);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
@@ -434,7 +437,7 @@ export function useAudio(connected) {
         osc.stop(time + duration);
     };
 
-    const scheduleLead = (ctx, time, note, duration, intensity) => {
+    const scheduleLead = (ctx, time, note, duration, intensity, style = {}) => {
         const freq = NOTE_FREQS[note];
         if (!freq) return;
 
@@ -442,12 +445,14 @@ export function useAudio(connected) {
         const gain = ctx.createGain();
         const filter = ctx.createBiquadFilter();
 
-        osc.type = 'sawtooth';
+        // Use track-specific lead type
+        osc.type = style.leadType || 'sawtooth';
         osc.frequency.value = freq;
 
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(800 + Math.sin(time) * 400, time);
-        filter.frequency.linearRampToValueAtTime(400, time + duration);
+        const baseFreq = 800 * (style.filterMod || 1.0);
+        filter.frequency.setValueAtTime(baseFreq + Math.sin(time) * 400, time);
+        filter.frequency.linearRampToValueAtTime(baseFreq * 0.5, time + duration);
         filter.Q.value = 2;
 
         gain.gain.setValueAtTime(0.08 * intensity, time);
@@ -460,7 +465,7 @@ export function useAudio(connected) {
         osc.stop(time + duration);
     };
 
-    const scheduleChordPad = (ctx, time, chord, duration, intensity) => {
+    const scheduleChordPad = (ctx, time, chord, duration, intensity, style = {}) => {
         const notes = CHORDS[chord];
         if (!notes) return;
 
@@ -472,11 +477,12 @@ export function useAudio(connected) {
             const gain = ctx.createGain();
             const filter = ctx.createBiquadFilter();
 
-            osc.type = 'triangle';
+            // Chord pads use triangle/sine for softer sound
+            osc.type = style.leadType === 'sine' ? 'sine' : 'triangle';
             osc.frequency.value = freq;
 
             filter.type = 'lowpass';
-            filter.frequency.value = 600;
+            filter.frequency.value = 600 * (style.filterMod || 1.0);
 
             gain.gain.setValueAtTime(0, time);
             gain.gain.linearRampToValueAtTime(0.04 * intensity, time + 0.3);
@@ -610,7 +616,9 @@ export function useAudio(connected) {
         const style = TRACK_STYLES[trackId];
         if (style) {
             currentStyleRef.current = style;
-            console.log(`[AUDIO] Music style changed to: ${style.name} (${style.bpm} BPM)`);
+            console.log(`[AUDIO] Music style changed to: ${style.name} (${style.bpm} BPM, bass=${style.bassType}, lead=${style.leadType}, intensity=${style.intensity}, filterMod=${style.filterMod})`);
+        } else {
+            console.warn(`[AUDIO] Unknown track style: ${trackId}`);
         }
     }, []);
 
