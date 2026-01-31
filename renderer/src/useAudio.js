@@ -10,64 +10,64 @@ export function useAudio(connected) {
     // 12 Track-specific music styles with comprehensive instrument configurations
     const TRACK_STYLES = {
         'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.0, 
-            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'electronic', noiseLevel: 0.3,
+            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'basic', percStyle: 'electronic', noiseLevel: 0.3,
             progression: [0], melodyStyle: 'arpeggio', bassStyle: 'steady' },
         'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.4, filterMod: 0.7, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: true, useBells: false, useMetallic: true, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.7,
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: true, wobbleRate: 4, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.7,
             progression: [3], melodyStyle: 'staccato', bassStyle: 'aggressive' },
         'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.1, filterMod: 1.2, 
-            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: true, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
+            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
             progression: [2, 5], melodyStyle: 'driving', bassStyle: 'syncopated' },
         'track_04': { name: 'Dreamwave', bpm: 100, key: 'F', bassType: 'triangle', leadType: 'sine', intensity: 0.7, filterMod: 1.5, 
-            usePluck: false, useArp: false, useSubBass: false, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: false, useFormant: true, 
-            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'minimal', noiseLevel: 0.2,
+            useGranular: true, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 1, drumStyle: 'minimal', percStyle: 'minimal', noiseLevel: 0.2,
             progression: [4], melodyStyle: 'ambient', bassStyle: 'slow' },
         'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.5, filterMod: 0.5, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: true, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.8,
+            useGranular: false, useReverse: true, useWobble: true, useGrowl: true, wobbleRate: 8, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.8,
             progression: [3], melodyStyle: 'mechanical', bassStyle: 'aggressive' },
         'track_06': { name: 'Cyberpunk', bpm: 130, key: 'C', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.2, filterMod: 0.8, 
             usePluck: true, useArp: true, useSubBass: true, useDetuned: false, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.5,
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.5,
             progression: [1, 2], melodyStyle: 'glitch', bassStyle: 'funky' },
         'track_07': { name: 'Horror Synth', bpm: 90, key: 'Gm', bassType: 'sawtooth', leadType: 'triangle', intensity: 0.6, filterMod: 0.4, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: true, 
-            useGranular: true, useReverse: true, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.7,
+            useGranular: true, useReverse: true, useWobble: false, useGrowl: true, wobbleRate: 1, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.7,
             progression: [3], melodyStyle: 'dissonant', bassStyle: 'slow' },
         'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.3, 
-            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: false, useStabs: true, useBells: false, useMetallic: false, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: false, useStabs: true, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'live', noiseLevel: 0.3,
+            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'basic', percStyle: 'live', noiseLevel: 0.3,
             progression: [1, 4], melodyStyle: 'pop', bassStyle: 'steady' },
         'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.8, filterMod: 0.3, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.9,
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: true, wobbleRate: 8, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.9,
             progression: [3], melodyStyle: 'minimal', bassStyle: 'relentless' },
         'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.3, filterMod: 1.4, 
-            usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
+            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
             progression: [5, 2], melodyStyle: 'euphoric', bassStyle: 'funky' },
         'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassType: 'triangle', leadType: 'sine', intensity: 0.9, filterMod: 1.6, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: true, 
-            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.3,
+            useGranular: true, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.3,
             progression: [0, 4], melodyStyle: 'epic', bassStyle: 'slow' },
         'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.4, filterMod: 0.6, 
             usePluck: false, useArp: true, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: true, useReverse: true, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.6,
+            useGranular: true, useReverse: true, useWobble: true, useGrowl: true, wobbleRate: 4, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.6,
             progression: [3], melodyStyle: 'chaotic', bassStyle: 'aggressive' }
     };
 
@@ -528,7 +528,26 @@ export function useAudio(connected) {
             // Sub-bass layer for heavy tracks (every 4 steps)
             if (style.useSubBass && step % 4 === 0) {
                 const bassNote = CHORDS[chord][0];
-                scheduleSubBass(ctx, time, bassNote, stepDuration * 4, intensity * 0.5);
+                scheduleSubBass(ctx, time, bassNote, stepDuration * 4, intensity * 0.6);
+                
+                // Deep sub rumble on drops and choruses (every 8 steps)
+                if ((barData.section === 6 || barData.section === 3) && step % 8 === 0) {
+                    scheduleDeepSub(ctx, time, bassNote, stepDuration * 8, intensity * 0.5);
+                }
+            }
+
+            // Wobble bass - dubstep wobble on drops and choruses
+            if (style.useWobble && (barData.section === 6 || barData.section === 3)) {
+                if (step % 4 === 0) { // Every quarter note
+                    const bassNote = CHORDS[chord][0];
+                    scheduleWobbleBass(ctx, time, bassNote, stepDuration * 4, intensity * 0.5, style);
+                }
+            }
+
+            // Growl bass - aggressive modulated bass on intense sections
+            if (style.useGrowl && barData.section === 6 && step === 0) {
+                const bassNote = CHORDS[chord][0];
+                scheduleGrowlBass(ctx, time, bassNote, measureDuration * 0.9, intensity * 0.4, style);
             }
 
             // Lead melody - use track-specific melody style
@@ -633,18 +652,54 @@ export function useAudio(connected) {
     };
 
     // --- INSTRUMENT SCHEDULERS ---
+    // Enhanced kick for heavy dubstep - deeper pitch sweep and sub layer
     const scheduleKick = (ctx, time, intensity) => {
+        // Main kick oscillator with deeper pitch sweep
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
+        
+        // Sub layer for chest-rattling thump
+        const subOsc = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        
+        // Click transient for punch
+        const clickOsc = ctx.createOscillator();
+        const clickGain = ctx.createGain();
+
+        // Main kick - starts higher, sweeps lower for more impact
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(200 * intensity, time);
-        osc.frequency.exponentialRampToValueAtTime(30, time + 0.15);
-        gain.gain.setValueAtTime(0.7 * intensity, time);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+        osc.frequency.setValueAtTime(250 * intensity, time);
+        osc.frequency.exponentialRampToValueAtTime(40, time + 0.12);
+        gain.gain.setValueAtTime(0.6 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+
+        // Sub layer - very low frequency thump
+        subOsc.type = 'sine';
+        subOsc.frequency.setValueAtTime(60, time);
+        subOsc.frequency.exponentialRampToValueAtTime(30, time + 0.2);
+        subGain.gain.setValueAtTime(0.5 * intensity, time);
+        subGain.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
+
+        // Click transient - high frequency attack for definition
+        clickOsc.type = 'triangle';
+        clickOsc.frequency.setValueAtTime(1000, time);
+        clickOsc.frequency.exponentialRampToValueAtTime(200, time + 0.02);
+        clickGain.gain.setValueAtTime(0.15 * intensity, time);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+
         osc.connect(gain);
+        subOsc.connect(subGain);
+        clickOsc.connect(clickGain);
         gain.connect(ctx.destination);
+        subGain.connect(ctx.destination);
+        clickGain.connect(ctx.destination);
+
         osc.start(time);
-        osc.stop(time + 0.25);
+        subOsc.start(time);
+        clickOsc.start(time);
+        osc.stop(time + 0.3);
+        subOsc.stop(time + 0.35);
+        clickOsc.stop(time + 0.03);
     };
 
     const scheduleSnare = (ctx, time, intensity) => {
@@ -701,24 +756,36 @@ export function useAudio(connected) {
         if (!freq) return;
 
         const osc = ctx.createOscillator();
+        const osc2 = ctx.createOscillator(); // Second oscillator for fatness
         const gain = ctx.createGain();
         const filter = ctx.createBiquadFilter();
 
         // Use track-specific bass type
-        osc.type = style.bassType || 'square';
+        osc.type = style.bassType || 'triangle';
         osc.frequency.value = freq;
 
-        filter.type = 'lowpass';
-        filter.frequency.value = 500 * (style.filterMod || 1.0);
+        // Second oscillator slightly detuned for thickness
+        osc2.type = style.bassType || 'triangle';
+        osc2.frequency.value = freq * 1.005;
 
-        gain.gain.setValueAtTime(0.15 * intensity, time);
+        filter.type = 'lowpass';
+        filter.frequency.value = 600 * (style.filterMod || 1.0);
+        filter.Q.value = 2; // Slight resonance for punch
+
+        // Sidechain-style pump envelope - duck then swell
+        gain.gain.setValueAtTime(0.1 * intensity, time); // Start ducked
+        gain.gain.linearRampToValueAtTime(0.2 * intensity, time + 0.04); // Quick attack
+        gain.gain.setValueAtTime(0.2 * intensity, time + duration * 0.3);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
         osc.connect(filter);
+        osc2.connect(filter);
         filter.connect(gain);
         gain.connect(ctx.destination);
         osc.start(time);
+        osc2.start(time);
         osc.stop(time + duration);
+        osc2.stop(time + duration);
     };
 
     const scheduleLead = (ctx, time, note, duration, intensity, style = {}) => {
@@ -843,24 +910,228 @@ export function useAudio(connected) {
         }
     };
 
-    // Sub-bass - very low frequency for weight
+    // Sub-bass - enhanced for heavy dubstep weight
     const scheduleSubBass = (ctx, time, note, duration, intensity) => {
         const freq = NOTE_FREQS[note];
         if (!freq) return;
 
+        // Primary sub oscillator
         const osc = ctx.createOscillator();
+        // Secondary sub one octave lower for earthquake rumble
+        const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
 
         osc.type = 'sine';
-        osc.frequency.value = freq / 2; // Drop one octave
+        osc.frequency.value = freq / 2; // One octave down
 
-        gain.gain.setValueAtTime(0.25 * intensity, time);
+        osc2.type = 'sine';
+        osc2.frequency.value = freq / 4; // Two octaves down for deep rumble
+
+        // Sub-bass filter to prevent mud
+        filter.type = 'lowpass';
+        filter.frequency.value = 120;
+        filter.Q.value = 0.7;
+
+        // Increased gain and slower attack for weight
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.45 * intensity, time + 0.03);
+        gain.gain.setValueAtTime(0.45 * intensity, time + duration * 0.6);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
-        osc.connect(gain);
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gain);
         gain.connect(ctx.destination);
         osc.start(time);
+        osc2.start(time);
         osc.stop(time + duration);
+        osc2.stop(time + duration);
+    };
+
+    // Wobble bass - LFO-modulated filter for dubstep sound
+    const scheduleWobbleBass = (ctx, time, note, duration, intensity, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const osc2 = ctx.createOscillator(); // Second oscillator for thickness
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        const distortion = ctx.createWaveShaper();
+
+        // Main oscillator - sawtooth for gritty bass
+        osc.type = 'sawtooth';
+        osc.frequency.value = freq / 2; // Sub frequencies
+
+        // Second oscillator slightly detuned for fatness
+        osc2.type = 'sawtooth';
+        osc2.frequency.value = (freq / 2) * 1.01; // Slight detune
+
+        // LFO for wobble effect - rate based on track style
+        const wobbleRate = (style.wobbleRate || 4); // Wobbles per beat
+        lfo.type = 'sine';
+        lfo.frequency.value = wobbleRate * ((style.bpm || 130) / 60) / 4;
+
+        // Resonant lowpass filter - key to wobble sound
+        filter.type = 'lowpass';
+        filter.frequency.value = 200;
+        filter.Q.value = 12; // High resonance for squelchy growl
+
+        // LFO modulates filter cutoff (200 Hz to 2000 Hz)
+        lfoGain.gain.value = 900; // Modulation depth
+        lfo.connect(lfoGain);
+        lfoGain.connect(filter.frequency);
+
+        // Soft clipping distortion for extra grit
+        const curve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+            const x = (i / 128) - 1;
+            curve[i] = Math.tanh(x * 2);
+        }
+        distortion.curve = curve;
+
+        // Envelope with sidechain-style pump
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.35 * intensity, time + 0.02);
+        gain.gain.setValueAtTime(0.35 * intensity, time + duration * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        // Signal chain: oscillators -> filter -> distortion -> gain
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(distortion);
+        distortion.connect(gain);
+        gain.connect(ctx.destination);
+
+        lfo.start(time);
+        osc.start(time);
+        osc2.start(time);
+        lfo.stop(time + duration);
+        osc.stop(time + duration);
+        osc2.stop(time + duration);
+    };
+
+    // Growl bass - aggressive modulated bass with formant-like character
+    const scheduleGrowlBass = (ctx, time, note, duration, intensity, style = {}) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        // Three oscillators for maximum fatness
+        const oscs = [];
+        const gains = [];
+        const masterGain = ctx.createGain();
+        const filter1 = ctx.createBiquadFilter();
+        const filter2 = ctx.createBiquadFilter();
+        const lfo1 = ctx.createOscillator();
+        const lfo2 = ctx.createOscillator();
+        const lfoGain1 = ctx.createGain();
+        const lfoGain2 = ctx.createGain();
+
+        // Create 3 detuned oscillators
+        const detunes = [-15, 0, 15];
+        const types = ['sawtooth', 'sawtooth', 'triangle'];
+        for (let i = 0; i < 3; i++) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = types[i];
+            osc.frequency.value = freq / 2;
+            osc.detune.value = detunes[i];
+            gain.gain.value = 0.3;
+            osc.connect(gain);
+            oscs.push(osc);
+            gains.push(gain);
+        }
+
+        // Two bandpass filters for formant-like growl
+        filter1.type = 'bandpass';
+        filter1.frequency.value = 400;
+        filter1.Q.value = 3;
+
+        filter2.type = 'bandpass';
+        filter2.frequency.value = 1200;
+        filter2.Q.value = 2;
+
+        // LFOs modulate filter frequencies for evolving growl
+        const bpm = style.bpm || 130;
+        lfo1.type = 'sine';
+        lfo1.frequency.value = (bpm / 60) / 2; // Half note wobble
+        lfoGain1.gain.value = 300;
+        lfo1.connect(lfoGain1);
+        lfoGain1.connect(filter1.frequency);
+
+        lfo2.type = 'triangle';
+        lfo2.frequency.value = (bpm / 60) * 2; // Eighth note modulation
+        lfoGain2.gain.value = 600;
+        lfo2.connect(lfoGain2);
+        lfoGain2.connect(filter2.frequency);
+
+        // Master envelope
+        masterGain.gain.setValueAtTime(0, time);
+        masterGain.gain.linearRampToValueAtTime(0.4 * intensity, time + 0.01);
+        masterGain.gain.setValueAtTime(0.4 * intensity, time + duration * 0.8);
+        masterGain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        // Connect oscillators to both filters in parallel, then sum
+        for (const gain of gains) {
+            gain.connect(filter1);
+            gain.connect(filter2);
+        }
+        filter1.connect(masterGain);
+        filter2.connect(masterGain);
+        masterGain.connect(ctx.destination);
+
+        // Start everything
+        lfo1.start(time);
+        lfo2.start(time);
+        for (const osc of oscs) {
+            osc.start(time);
+            osc.stop(time + duration);
+        }
+        lfo1.stop(time + duration);
+        lfo2.stop(time + duration);
+    };
+
+    // Deep sub-bass rumble - extremely low frequencies for chest-rattling bass
+    const scheduleDeepSub = (ctx, time, note, duration, intensity) => {
+        const freq = NOTE_FREQS[note];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        // Fundamental at very low frequency
+        osc.type = 'sine';
+        osc.frequency.value = freq / 4; // Two octaves down (~30-60 Hz range)
+
+        // Second harmonic for definition
+        osc2.type = 'sine';
+        osc2.frequency.value = freq / 2; // One octave down
+
+        // Sub-bass filter to clean up
+        filter.type = 'lowpass';
+        filter.frequency.value = 100;
+        filter.Q.value = 1;
+
+        // Slow attack, sustained body
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.5 * intensity, time + 0.05);
+        gain.gain.setValueAtTime(0.5 * intensity, time + duration * 0.7);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(time);
+        osc2.start(time);
+        osc.stop(time + duration);
+        osc2.stop(time + duration);
     };
 
     // Detuned pad - multiple oscillators slightly detuned for richness
