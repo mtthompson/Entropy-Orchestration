@@ -19,6 +19,7 @@ const POWERUP_TYPES = ['Repair', 'Boost'];
 const httpServer = createServer();
 const io = new Server(httpServer, {
     cors: { origin: '*' }
+    // Default path is /socket.io - tailscale strips /api prefix when routing to backend
 });
 
 // =============================================================================

@@ -4,9 +4,13 @@ import { io } from 'socket.io-client';
 // =============================================================================
 // SOCKET CONNECTION
 // =============================================================================
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
-console.log('[DEBUG] Connecting to SERVER_URL:', SERVER_URL);
-const socket = io(SERVER_URL, { query: { role: 'controller' } });
+// In dev: connects to localhost:3000 with default /socket.io path
+// In prod: connects to same host with /api/socket.io path (tailscale strips /api, routes to server)
+const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const SERVER_URL = isDev ? 'http://localhost:3000' : window.location.origin;
+const socketPath = isDev ? '/socket.io' : '/api/socket.io';
+console.log('[DEBUG] Connecting to SERVER_URL:', SERVER_URL, 'path:', socketPath);
+const socket = io(SERVER_URL, { query: { role: 'controller' }, path: socketPath });
 socket.on('connect', () => console.log('[DEBUG] Socket connected! ID:', socket.id));
 socket.on('connect_error', (err) => console.error('[DEBUG] Socket connection error:', err.message));
 socket.on('disconnect', (reason) => console.log('[DEBUG] Socket disconnected:', reason));

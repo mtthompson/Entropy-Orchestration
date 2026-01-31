@@ -10,8 +10,12 @@ import QRCode from 'react-qr-code';
 // =============================================================================
 // SOCKET CONNECTION
 // =============================================================================
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
-const socket = io(SERVER_URL, { query: { role: 'admin' } });
+// In dev: connects to localhost:3000 with default /socket.io path
+// In prod: connects to same host with /api/socket.io path (tailscale strips /api, routes to server)
+const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const SERVER_URL = isDev ? 'http://localhost:3000' : window.location.origin;
+const socketPath = isDev ? '/socket.io' : '/api/socket.io';
+const socket = io(SERVER_URL, { query: { role: 'admin' }, path: socketPath });
 
 // =============================================================================
 // SYNTHWAVE GRID FLOOR

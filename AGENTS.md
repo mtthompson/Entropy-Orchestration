@@ -75,7 +75,9 @@ This is a 48-hour Game Jam project.
     * Touch throttle/brake controls.
     * Health bar display.
 * **Networking:**
-    * Tailscale serve configured for dev testing.
+    * Server uses default `/socket.io` path.
+    * Clients use `/socket.io` for localhost, `/api/socket.io` for production (tailscale strips `/api` prefix).
+    * Tailscale serve routes `/` → controller:5174, `/api` → server:3000.
     * Vite configs allow `.ts.net` and `jam.gimongous.net` hosts.
 
 ### 🚧 In Progress / TODO
@@ -90,5 +92,8 @@ This is a 48-hour Game Jam project.
 npm run dev:server      # Server on :3000
 npm run dev:renderer    # Renderer on :5173
 npm run dev:controller  # Controller on :5174
-tailscale serve --bg http://localhost:5174  # Expose controller
+
+# Tailscale dev setup (port 443):
+tailscale serve --bg http://localhost:5174            # Controller at /
+tailscale serve --bg --set-path /api http://localhost:3000  # Server at /api
 ```
