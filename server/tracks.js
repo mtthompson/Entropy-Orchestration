@@ -214,6 +214,7 @@ TRACKS.push({
     id: 'track_01',
     name: 'Stadium Oval',
     type: 'race',
+    path: OVAL_PATH,
     boundaries: createTrackFromPath(OVAL_PATH, 22, true),
     spawnPoints: generateAlignedSpawns(OVAL_PATH, 5, 12),
     powerupBounds: { minX: -55, maxX: 55, minZ: -80, maxZ: 80 },
@@ -248,6 +249,7 @@ TRACKS.push({
     id: 'track_03',
     name: 'The Switchback',
     type: 'race',
+    path: SWITCHBACK_PATH,
     boundaries: createTrackFromPath(SWITCHBACK_PATH, 18, true),
     spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 5, 8),
     powerupBounds: { minX: -70, maxX: 70, minZ: -100, maxZ: 80 },
@@ -270,6 +272,7 @@ TRACKS.push({
     id: 'track_04',
     name: 'Cloverleaf',
     type: 'race',
+    path: CLOVER_PATH,
     boundaries: createTrackFromPath(CLOVER_PATH, 20, true),
     spawnPoints: generateAlignedSpawns(CLOVER_PATH, 5, 8),
     powerupBounds: { minX: -70, maxX: 70, minZ: -90, maxZ: 90 },
@@ -304,6 +307,7 @@ TRACKS.push({
     id: 'track_06',
     name: "Dragon's Tail",
     type: 'race',
+    path: DRAGON_PATH,
     boundaries: createTrackFromPath(DRAGON_PATH, 16, true),
     spawnPoints: generateAlignedSpawns(DRAGON_PATH, 5, 8),
     powerupBounds: { minX: -80, maxX: 60, minZ: -110, maxZ: 100 },
@@ -340,6 +344,7 @@ TRACKS.push({
     id: 'track_08',
     name: 'Grand Prix',
     type: 'race',
+    path: GP_PATH,
     boundaries: createTrackFromPath(GP_PATH, 18, true),
     spawnPoints: generateAlignedSpawns(GP_PATH, 5, 8),
     powerupBounds: { minX: -70, maxX: 70, minZ: -90, maxZ: 90 },
@@ -371,6 +376,7 @@ TRACKS.push({
     id: 'track_10',
     name: 'Velocity Strip',
     type: 'race',
+    path: STRIP_PATH,
     boundaries: createTrackFromPath(STRIP_PATH, 35, true),
     spawnPoints: generateAlignedSpawns(STRIP_PATH, 5, 8),
     powerupBounds: { minX: -50, maxX: 50, minZ: -120, maxZ: 110 },
@@ -426,16 +432,22 @@ function getThemeByTrackId(trackId) {
     return TRACK_THEMES[trackId] || TRACK_THEMES['track_01'];
 }
 
+function getTrackPath(trackId) {
+    const track = getTrackById(trackId);
+    return track ? track.path || null : null;
+}
+
 function getAllThemes() {
     return TRACK_THEMES;
 }
 
-module.exports = { 
-    getTrackById, 
-    getAllTracks, 
-    getDefaultTrack, 
+module.exports = {
+    getTrackById,
+    getAllTracks,
+    getDefaultTrack,
     getRandomTrack,
     getThemeByTrackId,
+    getTrackPath,
     getAllThemes,
     TRACK_THEMES
 };

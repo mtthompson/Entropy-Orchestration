@@ -3,6 +3,7 @@ const { createServer } = require('http');
 const CANNON = require('cannon-es');
 const { v4: uuidv4 } = require('uuid');
 const { getDefaultTrack, getThemeByTrackId, getRandomTrack } = require('./tracks');
+const { getNextWaypoint, getArenaTarget, normalizeAngle } = require('./cpuPathfinding');
 
 // =============================================================================
 // CONFIGURATION
@@ -225,41 +226,52 @@ function spawnCPUOpponents(count) {
 }
 
 function updateCPUPhysics() {
-    const trackPath = activeTrack.boundaries;
-
     for (const [id, cpu] of cpuPlayers) {
         if (!cpu.body || cpu.hp <= 0) continue;
 
-        // Simple waypoint following AI
         const pos = cpu.body.position;
+        let target;
 
-        // Get a target point ahead on the track (simplified - just drive toward center)
-        const targetX = 0;
-        const targetZ = pos.z - 20; // Always try to go forward (negative Z)
+        // Different behavior for race tracks vs arenas
+        if (activeTrack.type === 'race' && activeTrack.path) {
+            // Race track: Follow waypoints
+            const result = getNextWaypoint(cpu, activeTrack.path);
+            target = { x: result.x, z: result.z };
+            cpu.waypointIndex = result.waypointIndex;
+        } else {
+            // Arena: Chase enemies or patrol center
+            target = getArenaTarget(cpu, players, cpuPlayers);
+        }
 
-        const dx = targetX - pos.x;
-        const dz = targetZ - pos.z;
+        const dx = target.x - pos.x;
+        const dz = target.z - pos.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
 
         if (dist > 0.1) {
-            // Calculate steering
+            // Calculate target angle (direction to target)
             const targetAngle = Math.atan2(dx, -dz);
-            const euler = new CANNON.Vec3();
-            cpu.body.quaternion.toEuler(euler);
+
+            // Get current heading from quaternion
+            const euler = { x: 0, y: 0, z: 0 };
+            const q = cpu.body.quaternion;
+            euler.y = Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x));
             const currentAngle = euler.y;
 
-            let angleDiff = targetAngle - currentAngle;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            // Calculate angle difference
+            let angleDiff = normalizeAngle(targetAngle - currentAngle);
 
-            // Apply steering
-            cpu.body.angularVelocity.y = angleDiff * 3;
+            // Apply steering proportional to angle difference
+            const steerStrength = 4.0;
+            cpu.body.angularVelocity.y = angleDiff * steerStrength;
 
-            // Apply throttle
+            // Apply throttle (reduce when turning sharply)
+            const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
+            const throttleStrength = 400 + 200 * turnFactor; // 400-600 based on turn
+
             const forward = new CANNON.Vec3(0, 0, -1);
             cpu.body.quaternion.vmult(forward, forward);
             const force = forward.clone();
-            force.scale(500, force); // Slightly slower than players
+            force.scale(throttleStrength, force);
             cpu.body.applyForce(force, cpu.body.position);
         }
 
