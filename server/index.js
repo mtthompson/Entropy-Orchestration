@@ -61,8 +61,8 @@ function spawnPlayer(id, name = 'Player') {
         mass: 50,
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(spawnX, 1, spawnZ),
-        linearDamping: 0.3,
-        angularDamping: 0.5,
+        linearDamping: 0.1,  // Reduced from 0.3 for less drag
+        angularDamping: 0.3, // Reduced from 0.5 for snappier rotation
         allowSleep: false  // Keep player bodies always awake
     });
 
@@ -263,14 +263,14 @@ io.on('connection', (socket) => {
             // Apply forces based on input
             const force = new CANNON.Vec3();
 
-            // Forward/backward
-            force.z = -throttle * 80;
+            // Forward/backward - increased for snappier acceleration
+            force.z = -throttle * 200;
 
             // Steering (rotate force direction)
             const angle = steering * 0.5;
             const rotatedX = force.x * Math.cos(angle) - force.z * Math.sin(angle);
             const rotatedZ = force.x * Math.sin(angle) + force.z * Math.cos(angle);
-            force.x = rotatedX + steering * 40;
+            force.x = rotatedX + steering * 100;
             force.z = rotatedZ;
 
             // Boost
