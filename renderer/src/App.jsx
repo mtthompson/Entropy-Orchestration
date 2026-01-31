@@ -33,10 +33,8 @@ function SynthwaveGrid() {
             color2: { value: new THREE.Color('#00ffff') }
         },
         vertexShader: `
-      varying vec2 vUv;
       varying vec3 vPosition;
       void main() {
-        vUv = uv;
         vPosition = position;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
@@ -45,44 +43,36 @@ function SynthwaveGrid() {
       uniform float time;
       uniform vec3 color1;
       uniform vec3 color2;
-      varying vec2 vUv;
       varying vec3 vPosition;
       
       void main() {
-        // Grid coordinates with scrolling
-        vec2 coord = vPosition.xz * 0.1;
-        coord.y -= time;
-        
-        // Calculate grid lines (stable calculation)
-        vec2 gridLines = abs(mod(coord, 1.0) - 0.5) * 2.0;
-        float lineX = smoothstep(0.95, 1.0, gridLines.x);
-        float lineY = smoothstep(0.95, 1.0, gridLines.y);
-        float line = max(lineX, lineY);
+        // Simple grid using sin waves - no fract/mod instability
+        float gridX = pow(abs(sin(vPosition.x * 3.14159)), 50.0);
+        float gridZ = pow(abs(sin((vPosition.z - time * 10.0) * 3.14159)), 50.0);
+        float grid = max(gridX, gridZ);
         
         // Distance fade
         float dist = length(vPosition.xz);
-        float fade = 1.0 - smoothstep(50.0, 100.0, dist);
+        float fade = clamp(1.0 - dist / 100.0, 0.0, 1.0);
         
         // Color gradient
-        vec3 color = mix(color1, color2, sin(dist * 0.02 + time) * 0.5 + 0.5);
+        vec3 color = mix(color1, color2, sin(dist * 0.05 + time) * 0.5 + 0.5);
         
-        // Base floor color (dark) + bright grid lines
+        // Dark base with grid lines - fully opaque
         vec3 baseColor = vec3(0.02, 0.0, 0.04);
-        vec3 finalColor = mix(baseColor, color, line);
+        vec3 finalColor = baseColor + color * grid * 0.8 * fade;
         
-        gl_FragColor = vec4(finalColor, fade);
+        gl_FragColor = vec4(finalColor, 1.0);
       }
     `
     }), []);
 
     return (
-        <mesh ref={gridRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+        <mesh ref={gridRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
             <planeGeometry args={[200, 200, 1, 1]} />
             <shaderMaterial
                 ref={materialRef}
                 {...gridShader}
-                transparent
-                side={THREE.DoubleSide}
             />
         </mesh>
     );

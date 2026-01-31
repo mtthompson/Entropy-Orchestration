@@ -237,19 +237,16 @@ function LobbyScreen({ onJoin }) {
 // DRIVING SCREEN
 // =============================================================================
 function DrivingScreen({ playerState }) {
-    const [isThrottling, setIsThrottling] = useState(false);
-    const [isBoosting, setIsBoosting] = useState(false);
-    const [steering, setSteering] = useState(0);
-    const lastInputRef = useRef({ steering: 0, throttle: 0, boost: false });
+    const [, forceUpdate] = useState(0);
+    const inputRef = useRef({ steering: 0, throttle: 0, boost: false });
+    const lastSentRef = useRef({ steering: 0, throttle: 0, boost: false });
 
     // Device orientation for steering
     useEffect(() => {
         const handleOrientation = (e) => {
-            // gamma is the left-to-right tilt in degrees
             const tilt = e.gamma || 0;
-            // Clamp to -30 to 30 degrees, normalize to -1 to 1
             const normalized = Math.max(-1, Math.min(1, tilt / 30));
-            setSteering(normalized);
+            inputRef.current.steering = normalized;
         };
 
         if (window.DeviceOrientationEvent) {
@@ -265,36 +262,32 @@ function DrivingScreen({ playerState }) {
     useEffect(() => {
         const keysPressed = new Set();
 
-        const updateFromKeys = () => {
-            // Throttle: W or ArrowUp
-            if (keysPressed.has('w') || keysPressed.has('arrowup')) {
-                setIsThrottling(true);
-            } else {
-                setIsThrottling(false);
-            }
-
-            // Boost: Space
-            if (keysPressed.has(' ')) {
-                setIsBoosting(true);
-            } else {
-                setIsBoosting(false);
-            }
-
-            // Steering: A/D or ArrowLeft/ArrowRight
-            let steer = 0;
-            if (keysPressed.has('a') || keysPressed.has('arrowleft')) steer -= 1;
-            if (keysPressed.has('d') || keysPressed.has('arrowright')) steer += 1;
-            setSteering(steer);
-        };
-
         const handleKeyDown = (e) => {
-            keysPressed.add(e.key.toLowerCase());
+            const key = e.key.toLowerCase();
+            keysPressed.add(key);
             updateFromKeys();
         };
 
         const handleKeyUp = (e) => {
-            keysPressed.delete(e.key.toLowerCase());
+            const key = e.key.toLowerCase();
+            keysPressed.delete(key);
             updateFromKeys();
+        };
+
+        const updateFromKeys = () => {
+            // Throttle
+            inputRef.current.throttle = (keysPressed.has('w') || keysPressed.has('arrowup')) ? 1 : 0;
+
+            // Boost
+            inputRef.current.boost = keysPressed.has(' ');
+
+            // Steering
+            let steer = 0;
+            if (keysPressed.has('a') || keysPressed.has('arrowleft')) steer -= 1;
+            if (keysPressed.has('d') || keysPressed.has('arrowright')) steer += 1;
+            inputRef.current.steering = steer;
+
+            forceUpdate(n => n + 1); // Update UI
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -306,54 +299,64 @@ function DrivingScreen({ playerState }) {
         };
     }, []);
 
-    // Send input at 30Hz
+    // Send input at 30Hz - runs once, uses refs
     useEffect(() => {
-        const interval = setInterval(() => {
-            const input = {
-                steering,
-                throttle: isThrottling ? 1 : 0,
-                boost: isBoosting
-            };
+        console.log('[CONTROLLER] Starting input loop');
 
-            // Only send if changed
-            if (
-                input.steering !== lastInputRef.current.steering ||
-                input.throttle !== lastInputRef.current.throttle ||
-                input.boost !== lastInputRef.current.boost
-            ) {
+        const interval = setInterval(() => {
+            const input = { ...inputRef.current };
+
+            // Always send while throttling/boosting, or if changed
+            const shouldSend = input.throttle > 0 || input.boost ||
+                input.steering !== lastSentRef.current.steering ||
+                input.throttle !== lastSentRef.current.throttle ||
+                input.boost !== lastSentRef.current.boost;
+
+            if (shouldSend) {
+                console.log('[CONTROLLER] Input:', input);
                 socket.emit('input', input);
-                lastInputRef.current = input;
+                lastSentRef.current = { ...input };
             }
         }, 33);
 
-        return () => clearInterval(interval);
-    }, [steering, isThrottling, isBoosting]);
+        return () => {
+            console.log('[CONTROLLER] Stopping input loop');
+            clearInterval(interval);
+        };
+    }, []); // Empty deps - runs once
 
     const handleThrottleStart = (e) => {
         e.preventDefault();
-        setIsThrottling(true);
+        inputRef.current.throttle = 1;
+        forceUpdate(n => n + 1);
         vibrate(10);
     };
 
     const handleThrottleEnd = (e) => {
         e.preventDefault();
-        setIsThrottling(false);
+        inputRef.current.throttle = 0;
+        forceUpdate(n => n + 1);
     };
 
     const handleBoostStart = (e) => {
         e.preventDefault();
-        setIsBoosting(true);
+        inputRef.current.boost = true;
+        forceUpdate(n => n + 1);
         vibrate([50, 30, 50]);
     };
 
     const handleBoostEnd = (e) => {
         e.preventDefault();
-        setIsBoosting(false);
+        inputRef.current.boost = false;
+        forceUpdate(n => n + 1);
     };
 
     const hp = playerState?.hp ?? 100;
     const boost = playerState?.boost ?? 100;
     const color = playerState?.color || '#ff00ff';
+    const isThrottling = inputRef.current.throttle > 0;
+    const isBoosting = inputRef.current.boost;
+    const steering = inputRef.current.steering;
 
     return (
         <div style={styles.container(color)}>
@@ -371,7 +374,7 @@ function DrivingScreen({ playerState }) {
 
             {/* Steering Indicator */}
             <div style={{ marginTop: 30, marginBottom: 20, textAlign: 'center' }}>
-                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>TILT TO STEER</div>
+                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>TILT TO STEER (or A/D keys)</div>
                 <div style={{
                     width: 100,
                     height: 10,

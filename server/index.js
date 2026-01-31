@@ -62,7 +62,8 @@ function spawnPlayer(id, name = 'Player') {
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(spawnX, 1, spawnZ),
         linearDamping: 0.3,
-        angularDamping: 0.5
+        angularDamping: 0.5,
+        allowSleep: false  // Keep player bodies always awake
     });
 
     world.addBody(body);
@@ -251,7 +252,13 @@ io.on('connection', (socket) => {
 
         socket.on('input', ({ steering, throttle, boost }) => {
             const player = players.get(socket.id);
-            if (!player || player.type !== 'driver' || !player.body) return;
+            if (!player || player.type !== 'driver' || !player.body) {
+                console.log(`[INPUT] Rejected - player: ${!!player}, type: ${player?.type}, body: ${!!player?.body}`);
+                return;
+            }
+
+            // Wake up the body in case it's sleeping
+            player.body.wakeUp();
 
             // Apply forces based on input
             const force = new CANNON.Vec3();
@@ -272,6 +279,11 @@ io.on('connection', (socket) => {
                 player.boost = Math.max(0, player.boost - 1);
             } else {
                 player.boost = Math.min(100, player.boost + 0.2);
+            }
+
+            // Log first few inputs for debugging
+            if (throttle > 0 || steering !== 0) {
+                console.log(`[INPUT] ${socket.id.slice(0, 6)} - throttle: ${throttle}, steering: ${steering.toFixed(2)}, force: (${force.x.toFixed(1)}, ${force.z.toFixed(1)})`);
             }
 
             player.body.applyForce(force, player.body.position);
