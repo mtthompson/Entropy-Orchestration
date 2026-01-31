@@ -214,7 +214,10 @@ function LobbyScreen({ onJoin }) {
             <button
                 style={styles.button('#ff00ff')}
                 onClick={handleJoin}
-                onTouchStart={handleJoin}
+                onTouchEnd={(e) => {
+                    e.preventDefault();
+                    handleJoin();
+                }}
             >
                 Join Race
             </button>
