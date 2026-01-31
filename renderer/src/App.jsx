@@ -16,12 +16,23 @@ const socket = io(SERVER_URL, { query: { role: 'admin' } });
 // =============================================================================
 // SYNTHWAVE GRID FLOOR
 // =============================================================================
-function SynthwaveGrid() {
+function SynthwaveGrid({ floorSize }) {
+    const width = floorSize?.width || 200;
+    const depth = floorSize?.depth || 200;
+
     return (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-            <planeGeometry args={[200, 200]} />
-            <meshBasicMaterial color="#1a0a2e" side={THREE.DoubleSide} />
-        </mesh>
+        <group>
+            {/* Dark base floor */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+                <planeGeometry args={[width, depth]} />
+                <meshBasicMaterial color="#1a0a2e" side={THREE.DoubleSide} />
+            </mesh>
+            {/* Grid lines */}
+            <gridHelper
+                args={[Math.max(width, depth), 40, '#ff00ff', '#3a1a5e']}
+                position={[0, 0.01, 0]}
+            />
+        </group>
     );
 }
 
@@ -192,6 +203,63 @@ function Trap({ position }) {
 }
 
 // =============================================================================
+// TRACK WALL COMPONENT
+// =============================================================================
+function TrackWall({ wall }) {
+    const meshRef = useRef();
+
+    // Calculate wall dimensions and position
+    const length = Math.sqrt(
+        Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+    );
+    const centerX = (wall.x1 + wall.x2) / 2;
+    const centerZ = (wall.z1 + wall.z2) / 2;
+    const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
+    const height = wall.height || 4;
+
+    // Animate glow
+    useFrame((state) => {
+        if (meshRef.current) {
+            meshRef.current.material.emissiveIntensity =
+                0.3 + Math.sin(state.clock.elapsedTime * 2) * 0.15;
+        }
+    });
+
+    return (
+        <mesh
+            ref={meshRef}
+            position={[centerX, height / 2, centerZ]}
+            rotation={[0, -angle, 0]}
+        >
+            <boxGeometry args={[length, height, 0.5]} />
+            <meshStandardMaterial
+                color="#4a1a8e"
+                emissive="#ff00ff"
+                emissiveIntensity={0.3}
+                transparent
+                opacity={0.6}
+                side={THREE.DoubleSide}
+            />
+        </mesh>
+    );
+}
+
+// =============================================================================
+// TRACK BOUNDARIES CONTAINER
+// =============================================================================
+function TrackBoundaries({ boundaries }) {
+    if (!boundaries || boundaries.length === 0) return null;
+
+    return (
+        <group>
+            {boundaries.map((wall, index) => (
+                <TrackWall key={index} wall={wall} />
+            ))}
+        </group>
+    );
+}
+
+// =============================================================================
 // CAMERA CONTROLLER - PACK LEADER CAM
 // =============================================================================
 function CameraController({ players }) {
@@ -222,7 +290,7 @@ function CameraController({ players }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState }) {
+function Scene({ worldState, trackData }) {
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
 
@@ -264,7 +332,10 @@ function Scene({ worldState }) {
 
             <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
 
-            <SynthwaveGrid />
+            <SynthwaveGrid floorSize={trackData?.floorSize} />
+
+            {/* Track Walls */}
+            <TrackBoundaries boundaries={trackData?.boundaries} />
 
             <CameraController players={worldState.players || {}} />
 
@@ -417,6 +488,7 @@ export default function App() {
         powerups: {},
         traps: {}
     });
+    const [trackData, setTrackData] = useState(null);
     const [connected, setConnected] = useState(false);
 
     useEffect(() => {
@@ -434,10 +506,16 @@ export default function App() {
             setWorldState(state);
         });
 
+        socket.on('trackData', (data) => {
+            console.log('Received track data:', data.name);
+            setTrackData(data);
+        });
+
         return () => {
             socket.off('connect');
             socket.off('disconnect');
             socket.off('worldState');
+            socket.off('trackData');
         };
     }, []);
 
@@ -447,7 +525,7 @@ export default function App() {
                 camera={{ position: [0, 20, 30], fov: 60 }}
                 gl={{ antialias: true, alpha: false }}
             >
-                <Scene worldState={worldState} />
+                <Scene worldState={worldState} trackData={trackData} />
             </Canvas>
 
             <QROverlay />

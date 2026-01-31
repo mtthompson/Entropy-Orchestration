@@ -2,6 +2,7 @@ const { Server } = require('socket.io');
 const { createServer } = require('http');
 const CANNON = require('cannon-es');
 const { v4: uuidv4 } = require('uuid');
+const { getDefaultTrack } = require('./tracks');
 
 // =============================================================================
 // CONFIGURATION
@@ -39,6 +40,41 @@ groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizont
 world.addBody(groundBody);
 
 // =============================================================================
+// TRACK SYSTEM
+// =============================================================================
+const activeTrack = getDefaultTrack();
+const trackWalls = [];
+
+// Create wall physics bodies from track boundaries
+function createTrackWalls() {
+    for (const wall of activeTrack.boundaries) {
+        // Calculate wall dimensions and position
+        const length = Math.sqrt(
+            Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+        );
+        const centerX = (wall.x1 + wall.x2) / 2;
+        const centerZ = (wall.z1 + wall.z2) / 2;
+        const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
+
+        // Wall thickness of 2 units
+        const wallBody = new CANNON.Body({
+            mass: 0, // Static
+            shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 1)),
+            position: new CANNON.Vec3(centerX, wall.height / 2, centerZ)
+        });
+        wallBody.quaternion.setFromEuler(0, -angle, 0);
+
+        world.addBody(wallBody);
+        trackWalls.push(wallBody);
+    }
+
+    console.log(`[TRACK] Created ${trackWalls.length} walls for "${activeTrack.name}"`);
+}
+
+createTrackWalls();
+
+
+// =============================================================================
 // GAME STATE
 // =============================================================================
 const players = new Map();       // id -> { body, hp, type, color, name }
@@ -54,8 +90,11 @@ const CAR_COLORS = [
 // PLAYER MANAGEMENT
 // =============================================================================
 function spawnPlayer(id, name = 'Player') {
-    const spawnX = (Math.random() - 0.5) * 20;
-    const spawnZ = (Math.random() - 0.5) * 20;
+    // Use track spawn points
+    const spawnIndex = players.size % activeTrack.spawnPoints.length;
+    const spawnPoint = activeTrack.spawnPoints[spawnIndex];
+    const spawnX = spawnPoint.x + (Math.random() - 0.5) * 2; // Slight randomization
+    const spawnZ = spawnPoint.z + (Math.random() - 0.5) * 2;
 
     const body = new CANNON.Body({
         mass: 50,
@@ -154,8 +193,10 @@ world.addEventListener('postStep', () => {
 function spawnPowerup() {
     const id = uuidv4();
     const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
-    const x = (Math.random() - 0.5) * 40;
-    const z = (Math.random() - 0.5) * 40;
+    // Use track bounds for powerup spawning
+    const bounds = activeTrack.powerupBounds;
+    const x = bounds.minX + Math.random() * (bounds.maxX - bounds.minX);
+    const z = bounds.minZ + Math.random() * (bounds.maxZ - bounds.minZ);
 
     const body = new CANNON.Body({
         mass: 0, // Static
@@ -235,6 +276,14 @@ function spawnTrap(x, z, ownerId) {
 io.on('connection', (socket) => {
     const role = socket.handshake.query.role || 'controller';
     console.log(`[CONNECT] ${socket.id} as ${role}`);
+
+    // Send track data to all clients on connection
+    socket.emit('trackData', {
+        id: activeTrack.id,
+        name: activeTrack.name,
+        boundaries: activeTrack.boundaries,
+        floorSize: activeTrack.floorSize
+    });
 
     if (role === 'admin') {
         // Renderer connection - just receives state
