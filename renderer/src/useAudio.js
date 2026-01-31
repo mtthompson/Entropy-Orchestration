@@ -2184,6 +2184,18 @@ export function useAudio(connected) {
             gain.gain.linearRampToValueAtTime(0, t + 0.15);
             osc.start(t);
             osc.stop(t + 0.15);
+        } else if (type === 'locate') {
+            // Radar-style ping for locate feature
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, t);
+            osc.frequency.setValueAtTime(1200, t + 0.05);
+            osc.frequency.setValueAtTime(1000, t + 0.1);
+            osc.frequency.setValueAtTime(800, t + 0.15);
+            gain.gain.setValueAtTime(0.08, t);
+            gain.gain.linearRampToValueAtTime(0.06, t + 0.1);
+            gain.gain.linearRampToValueAtTime(0, t + 0.3);
+            osc.start(t);
+            osc.stop(t + 0.3);
         }
     }, []);
 

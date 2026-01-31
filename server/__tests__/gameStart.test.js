@@ -114,17 +114,17 @@ describe('Player Join Logic', () => {
         expect(player.hp).toBe(100);
     });
 
-    test('player joins as drone in RACING', () => {
+    test('player joins as driver in RACING (late joiner)', () => {
         gameState = 'RACING';
-        // In actual implementation, drone HP is set to 0
+        // Late joiners now spawn as drivers behind the pack (targets)
         const player = createMockPlayer('player1', { 
-            type: 'drone', 
-            hp: 0  // Drones should have 0 HP
+            type: 'driver', 
+            hp: 100  // Late joiners are full health targets
         });
         players.set('player1', player);
 
-        expect(player.type).toBe('drone');
-        expect(player.hp).toBe(0);
+        expect(player.type).toBe('driver');
+        expect(player.hp).toBe(100);
     });
 
     test('player joins as drone in WINNER state', () => {

@@ -2,8 +2,9 @@ const { Server } = require('socket.io');
 const { createServer } = require('http');
 const CANNON = require('cannon-es');
 const { v4: uuidv4 } = require('uuid');
-const { getDefaultTrack, getThemeByTrackId, getRandomTrack, getRandomRaceTrack } = require('./tracks');
+const { getDefaultTrack, getThemeByTrackId, getRandomTrack, getRandomRaceTrack, getAllTracks, getAllThemes } = require('./tracks');
 const { getNextWaypoint, getArenaTarget, normalizeAngle, findNearestWaypointIndex } = require('./cpuPathfinding');
+const { generateHeightMap, getTerrainHeight, getTerrainPreset } = require('./terrain');
 
 // =============================================================================
 // CONFIGURATION
@@ -79,56 +80,149 @@ groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizont
 world.addBody(groundBody);
 
 // =============================================================================
-// TRACK SYSTEM
+// TRACK SYSTEM - Pre-built walls for all tracks at startup
 // =============================================================================
 let activeTrack = getDefaultTrack();
-const trackWalls = [];
+const trackWalls = []; // Currently active walls in physics world
+const prebuiltTrackWalls = new Map(); // trackId -> array of CANNON.Body (inactive until needed)
+let activeHeightMap = null; // Current terrain height data
+let terrainBody = null; // Heightfield physics body
 
-// Select random track
+// Pre-build all track walls at startup for instant track switching
+function preloadAllTrackWalls() {
+    console.log('[TRACK] Pre-building physics walls for all tracks...');
+    const allTracks = getAllTracks();
+    
+    for (const track of allTracks) {
+        const walls = [];
+        for (const wall of track.boundaries) {
+            const length = Math.sqrt(
+                Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+            );
+            const centerX = (wall.x1 + wall.x2) / 2;
+            const centerZ = (wall.z1 + wall.z2) / 2;
+            const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
+
+            const wallBody = new CANNON.Body({
+                mass: 0,
+                shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 2.5)),
+                position: new CANNON.Vec3(centerX, wall.height / 2, centerZ),
+                material: wallMaterial,
+                collisionResponse: false // Disabled until track is active
+            });
+            wallBody.quaternion.setFromEuler(0, -angle, 0);
+            walls.push(wallBody);
+        }
+        prebuiltTrackWalls.set(track.id, walls);
+        console.log(`[TRACK] Pre-built ${walls.length} walls for "${track.name}"`);
+    }
+    console.log(`[TRACK] Finished pre-building walls for ${allTracks.length} tracks`);
+}
+
+// Select random track - now just swaps pre-built walls instead of creating new ones
 function selectRandomTrack() {
-    const { getRandomTrack } = require('./tracks');
     activeTrack = getRandomTrack();
     console.log(`[TRACK] Selected: ${activeTrack.name}`);
+    activateTrackWalls(activeTrack.id);
+    createTerrainHeightfield(); // Update terrain for new track
+}
 
-    // Clear existing walls
+// Activate pre-built walls for a specific track
+function activateTrackWalls(trackId) {
+    // Disable current walls
     for (const wall of trackWalls) {
+        wall.collisionResponse = false;
         world.removeBody(wall);
     }
     trackWalls.length = 0;
 
-    // Create new walls
-    createTrackWalls();
-}
-
-// Create wall physics bodies from track boundaries
-function createTrackWalls() {
-    for (const wall of activeTrack.boundaries) {
-        // Calculate wall dimensions and position
-        const length = Math.sqrt(
-            Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
-        );
-        const centerX = (wall.x1 + wall.x2) / 2;
-        const centerZ = (wall.z1 + wall.z2) / 2;
-        const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
-
-        // Wall thickness of 2 units
-        // Wall thickness increased to prevents tunneling
-        const wallBody = new CANNON.Body({
-            mass: 0, // Static
-            shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 2.5)), // 5 units thick (2.5 half-extents)
-            position: new CANNON.Vec3(centerX, wall.height / 2, centerZ),
-            material: wallMaterial
-        });
-        wallBody.quaternion.setFromEuler(0, -angle, 0);
-
-        world.addBody(wallBody);
-        trackWalls.push(wallBody);
+    // Activate new track's walls
+    const newWalls = prebuiltTrackWalls.get(trackId);
+    if (newWalls) {
+        for (const wall of newWalls) {
+            wall.collisionResponse = true;
+            world.addBody(wall);
+            trackWalls.push(wall);
+        }
+        console.log(`[TRACK] Activated ${trackWalls.length} pre-built walls for track ${trackId}`);
+    } else {
+        console.error(`[TRACK] No pre-built walls found for track ${trackId}`);
     }
-
-    console.log(`[TRACK] Created ${trackWalls.length} walls for "${activeTrack.name}"`);
 }
 
-createTrackWalls();
+// Legacy function for compatibility - now uses pre-built walls
+function createTrackWalls() {
+    activateTrackWalls(activeTrack.id);
+}
+
+// Pre-build all walls on startup
+preloadAllTrackWalls();
+
+// Activate default track walls
+activateTrackWalls(activeTrack.id);
+
+// =============================================================================
+// TERRAIN HEIGHTFIELD SYSTEM
+// =============================================================================
+
+// Create terrain heightfield from track data
+function createTerrainHeightfield() {
+    // Remove old terrain body if exists
+    if (terrainBody) {
+        world.removeBody(terrainBody);
+        terrainBody = null;
+    }
+    
+    const floorSize = activeTrack.floorSize || { width: 300, depth: 300 };
+    const preset = getTerrainPreset(activeTrack.id, activeTrack.type);
+    
+    // Generate height map with slightly larger area than floor
+    const terrainWidth = floorSize.width * 1.2;
+    const terrainDepth = floorSize.depth * 1.2;
+    
+    activeHeightMap = generateHeightMap(
+        terrainWidth,
+        terrainDepth,
+        preset.resolution,
+        {
+            hillScale: preset.hillScale,
+            hillFrequency: preset.hillFrequency,
+            trackPath: activeTrack.path,
+            trackWidth: 55 // Width of flat track surface
+        }
+    );
+    
+    // Create Cannon.js Heightfield
+    const heightfieldShape = new CANNON.Heightfield(activeHeightMap.matrix, {
+        elementSize: activeHeightMap.elementSize
+    });
+    
+    terrainBody = new CANNON.Body({
+        mass: 0, // Static
+        material: groundMaterial
+    });
+    
+    // Position heightfield - cannon-es heightfield origin is at corner
+    // Need to offset so center of heightfield is at world origin
+    const offsetX = -activeHeightMap.width / 2;
+    const offsetZ = -activeHeightMap.depth / 2;
+    
+    // Heightfield is added in XY plane, rotated to XZ
+    terrainBody.addShape(heightfieldShape, new CANNON.Vec3(offsetX, offsetZ, 0));
+    terrainBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    
+    world.addBody(terrainBody);
+    console.log(`[TERRAIN] Created heightfield ${activeHeightMap.gridWidth}x${activeHeightMap.gridDepth}, scale=${preset.hillScale}`);
+}
+
+// Get spawn height at position (for placing cars on terrain)
+function getSpawnHeight(x, z) {
+    if (!activeHeightMap) return 1;
+    return getTerrainHeight(activeHeightMap, x, z) + 1;
+}
+
+// Initialize terrain for default track
+createTerrainHeightfield();
 
 
 // =============================================================================
@@ -216,11 +310,12 @@ function spawnCPUOpponents(count) {
         // Spawn CPUs far behind players to prevent instant collision
         const xOffset = ((i % 2) * 2 - 1) * (6 + Math.floor(i / 2) * 4); // -6, +6, -10, +10, etc
         const zOffset = -30 - (i * 12); // Start 30 units back, then 12 units apart
+        const spawnY = getSpawnHeight(spawn.x + xOffset, spawn.z + zOffset);
 
         const body = new CANNON.Body({
             mass: 50,
             shape: new CANNON.Sphere(1),
-            position: new CANNON.Vec3(spawn.x + xOffset, 1, spawn.z + zOffset),
+            position: new CANNON.Vec3(spawn.x + xOffset, spawnY, spawn.z + zOffset),
             linearDamping: 0.3, // Reduced damping for more momentum
             angularDamping: 0.3,
             allowSleep: false,
@@ -436,7 +531,7 @@ function updateProjectiles() {
 
                 // Check if player died
                 if (player.hp <= 0) {
-                    handlePlayerDeath(playerId);
+                    switchToDrone(playerId);
                 }
                 break;
             }
@@ -943,7 +1038,7 @@ world.addEventListener('postStep', () => {
 // =============================================================================
 // POWER-UPS
 // =============================================================================
-const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon']; // Weighted
+const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon', '67Meme']; // Weighted
 
 function spawnPowerup() {
     // Prevent accumulation - cap at MAX_POWERUPS
@@ -1009,6 +1104,10 @@ function checkPowerupCollisions() {
                     player.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
                     console.log(`[POWERUP] ${player.name} picked up Weapon (${player.weaponType}, ${player.ammo} ammo)`);
                     io.to(playerId).emit('powerup', { type: 'Weapon', ammo: player.ammo, weaponType: player.weaponType });
+                } else if (powerup.type === '67Meme') {
+                    player.hp = Math.min(100, player.hp + 67);
+                    console.log(`[POWERUP] ${player.name} picked up 67Meme - 6 7`);
+                    io.to(playerId).emit('powerup', { type: '67Meme' });
                 } else {
                     console.log(`[POWERUP] ${player.name} picked up ${powerup.type}`);
                     io.to(playerId).emit('powerup', { type: powerup.type });
@@ -1160,9 +1259,21 @@ function startDemoMode() {
     }
     trackWalls.length = 0;
     createTrackWalls();
+    createTerrainHeightfield(); // Generate terrain for demo track
 
     // Broadcast track data so renderer displays correct track and music plays
-    io.emit('trackData', activeTrack);
+    io.emit('trackData', {
+        ...activeTrack,
+        heightMap: activeHeightMap ? {
+            width: activeHeightMap.width,
+            depth: activeHeightMap.depth,
+            gridWidth: activeHeightMap.gridWidth,
+            gridDepth: activeHeightMap.gridDepth,
+            elementSize: activeHeightMap.elementSize,
+            matrix: activeHeightMap.matrix,
+            hillScale: activeHeightMap.hillScale
+        } : null
+    });
     io.emit('trackStyle', { 
         trackId: activeTrack.id, 
         trackName: activeTrack.name,
@@ -1300,6 +1411,9 @@ function resetGame() {
         player.isJuggernaut = false;
         player.ammo = 0;
         player.weaponType = null;
+        player.lapsCompleted = 0;
+        player.waypointIndex = 0;
+        player.input = { steering: 0, throttle: 0, boost: false };
 
         // Create new body
         const spawnIndex = spawnCounter % activeTrack.spawnPoints.length;
@@ -1411,12 +1525,42 @@ function checkWinCondition() {
     }
 }
 
+// Helper to find spawn position behind the pack for late joiners
+function getPackRearPosition() {
+    const drivers = [...players.values()].filter(p => p.type === 'driver' && p.body);
+    const cpuDrivers = [...cpuPlayers.values()].filter(c => c.body && c.hp > 0);
+    const allDrivers = [...drivers, ...cpuDrivers];
+    
+    if (allDrivers.length === 0) {
+        // No active drivers, use first spawn point
+        const spawn = activeTrack.spawnPoints?.[0] || { x: 0, z: 0, rotation: 0 };
+        return { x: spawn.x, z: spawn.z, rotation: spawn.rotation || 0 };
+    }
+    
+    // Find the rearmost driver (highest Z value since -Z is forward)
+    let rearmost = allDrivers[0];
+    for (const driver of allDrivers) {
+        if (driver.body.position.z > rearmost.body.position.z) {
+            rearmost = driver;
+        }
+    }
+    
+    // Spawn 10 units behind the rearmost player with random X offset
+    const xOffset = (Math.random() - 0.5) * 4; // ±2 units
+    return {
+        x: rearmost.body.position.x + xOffset,
+        z: rearmost.body.position.z + 10, // Behind (higher Z)
+        rotation: 0 // Facing forward (-Z direction)
+    };
+}
+
 // Helper to separate body creation logic
 function createPlayerBody(player, x, z, rotation = 0) {
+    const spawnY = getSpawnHeight(x, z); // Account for terrain height
     const body = new CANNON.Body({
         mass: 50,
         shape: new CANNON.Sphere(1),
-        position: new CANNON.Vec3(x, 1, z),
+        position: new CANNON.Vec3(x, spawnY, z),
         linearDamping: 0.5,
         angularDamping: 0.5,
         allowSleep: false,
@@ -1455,7 +1599,18 @@ io.on('connection', (socket) => {
         id: activeTrack.id,
         name: activeTrack.name,
         boundaries: activeTrack.boundaries,
-        floorSize: activeTrack.floorSize
+        floorSize: activeTrack.floorSize,
+        path: activeTrack.path,
+        type: activeTrack.type,
+        heightMap: activeHeightMap ? {
+            width: activeHeightMap.width,
+            depth: activeHeightMap.depth,
+            gridWidth: activeHeightMap.gridWidth,
+            gridDepth: activeHeightMap.gridDepth,
+            elementSize: activeHeightMap.elementSize,
+            matrix: activeHeightMap.matrix,
+            hillScale: activeHeightMap.hillScale
+        } : null
     });
 
     // Send initial game state
@@ -1468,10 +1623,21 @@ io.on('connection', (socket) => {
         // Renderer connection - receives state + can send admin commands
         socket.join('renderers');
 
+        // Send ALL track data for preloading (eliminates lag on track change)
+        const allTracks = getAllTracks();
+        const allThemes = getAllThemes();
+        socket.emit('allTracks', allTracks.map(t => ({
+            id: t.id,
+            name: t.name,
+            type: t.type,
+            boundaries: t.boundaries,
+            floorSize: t.floorSize,
+            theme: allThemes[t.id] || allThemes['track_01']
+        })));
+
         // Send track list and CPU count on connect
-        const { getAllTracks, getThemeByTrackId } = require('./tracks');
-        socket.emit('trackList', getAllTracks().map(t => {
-            const theme = getThemeByTrackId(t.id);
+        socket.emit('trackList', allTracks.map(t => {
+            const theme = allThemes[t.id] || allThemes['track_01'];
             return {
                 id: t.id,
                 name: t.name,
@@ -1514,25 +1680,31 @@ io.on('connection', (socket) => {
             if (newTrack) {
                 console.log(`[ADMIN] Changing track to: ${newTrack.name}`);
 
-                // Remove existing walls
-                for (const wall of trackWalls) {
-                    world.removeBody(wall);
-                }
-                trackWalls.length = 0;
-
                 // Remove all CPUs
                 removeCPUOpponents();
 
-                // Set new track and rebuild
+                // Set new track and activate pre-built walls
                 activeTrack = newTrack;
-                createTrackWalls();
+                activateTrackWalls(activeTrack.id);
+                createTerrainHeightfield(); // Generate terrain for new track
 
                 // Broadcast new track data
                 io.emit('trackData', {
                     id: activeTrack.id,
                     name: activeTrack.name,
                     boundaries: activeTrack.boundaries,
-                    floorSize: activeTrack.floorSize
+                    floorSize: activeTrack.floorSize,
+                    path: activeTrack.path,
+                    type: activeTrack.type,
+                    heightMap: activeHeightMap ? {
+                        width: activeHeightMap.width,
+                        depth: activeHeightMap.depth,
+                        gridWidth: activeHeightMap.gridWidth,
+                        gridDepth: activeHeightMap.gridDepth,
+                        elementSize: activeHeightMap.elementSize,
+                        matrix: activeHeightMap.matrix,
+                        hillScale: activeHeightMap.hillScale
+                    } : null
                 });
                 io.emit('trackStyle', { 
                     trackId: activeTrack.id, 
@@ -1603,10 +1775,14 @@ io.on('connection', (socket) => {
             // Reset demo timer (prevents demo from starting while player is present)
             resetDemoTimer();
 
-            // Determine spawn type
+            // Determine spawn type - late joiners spawn as drivers behind the pack
             let type = 'driver';
-            if (gameState === 'RACING' || gameState === 'WINNER') {
-                type = 'drone';
+            let lateJoiner = false;
+            if (gameState === 'WINNER') {
+                type = 'drone'; // Can't join during winner screen
+            } else if (gameState === 'RACING') {
+                type = 'driver'; // Late joiners spawn as targets behind the pack
+                lateJoiner = true;
             }
 
             // Create player object
@@ -1624,26 +1800,37 @@ io.on('connection', (socket) => {
                 isGhost: false,
                 isJuggernaut: false,
                 lapsCompleted: 0,
-                waypointIndex: 0
+                waypointIndex: 0,
+                input: { steering: 0, throttle: 0, boost: false } // Initialize input for game loop
             };
             players.set(socket.id, newPlayer);
             // ...
 
             // If Driver, spawn body
             if (type === 'driver') {
-                // Ensure track has spawn points
-                if (!activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
-                    console.error('[ERROR] No spawn points available on track!');
-                    activeTrack.spawnPoints = [{ x: 0, z: 0, rotation: 0 }]; // Fallback
+                if (lateJoiner) {
+                    // Late joiner: spawn behind the pack as a target
+                    const rearPos = getPackRearPosition();
+                    createPlayerBody(newPlayer, rearPos.x, rearPos.z, rearPos.rotation);
+                    console.log(`[LATE JOIN] ${name} spawned behind pack at (${rearPos.x.toFixed(1)}, ${rearPos.z.toFixed(1)})`);
+                    
+                    // Announce fresh meat to other players
+                    io.emit('lateJoiner', { name: name || 'Player' });
+                } else {
+                    // Normal join: use spawn points
+                    if (!activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
+                        console.error('[ERROR] No spawn points available on track!');
+                        activeTrack.spawnPoints = [{ x: 0, z: 0, rotation: 0 }]; // Fallback
+                    }
+                    
+                    const spawnIndex = (players.size - 1) % activeTrack.spawnPoints.length;
+                    const spawnPoint = activeTrack.spawnPoints[spawnIndex];
+                    createPlayerBody(newPlayer,
+                        spawnPoint.x + (Math.random() - 0.5) * 2,
+                        spawnPoint.z + (Math.random() - 0.5) * 2,
+                        spawnPoint.rotation || 0
+                    );
                 }
-                
-                const spawnIndex = (players.size - 1) % activeTrack.spawnPoints.length;
-                const spawnPoint = activeTrack.spawnPoints[spawnIndex];
-                createPlayerBody(newPlayer,
-                    spawnPoint.x + (Math.random() - 0.5) * 2,
-                    spawnPoint.z + (Math.random() - 0.5) * 2,
-                    spawnPoint.rotation || 0
-                );
             }
 
             socket.emit('joined', {
@@ -1679,37 +1866,16 @@ io.on('connection', (socket) => {
         socket.on('input', ({ steering, throttle, boost }) => {
             const player = players.get(socket.id);
             if (!player || player.type !== 'driver' || !player.body) {
-                // ... (Keep existing rejection logic) ...
                 return;
             }
 
-            // Wake up the body in case it's sleeping
-            player.body.wakeUp();
-
-            // Apply forces based on input
-            const force = new CANNON.Vec3();
-
-            // Forward/backward - increased for punchy acceleration
-            force.z = -throttle * 600;
-
-            // Steering (rotate force direction) - sharper response
-            const angle = steering * 0.8;
-            const rotatedX = force.x * Math.cos(angle) - force.z * Math.sin(angle);
-            const rotatedZ = force.x * Math.sin(angle) + force.z * Math.cos(angle);
-
-            // Lateral force helper - helps turn the car by pushing it sideways
-            force.x = rotatedX + steering * 400;
-            force.z = rotatedZ;
-
-            // Boost
-            if (boost && player.boost > 0) {
-                force.scale(2, force);
-                player.boost = Math.max(0, player.boost - 1);
-            } else {
-                player.boost = Math.min(100, player.boost + 0.2);
+            // Only process input during RACING state
+            if (gameState !== 'RACING') {
+                return;
             }
 
-            player.body.applyForce(force, player.body.position);
+            // Store input for game loop processing (no duplicate force application)
+            player.input = { steering, throttle, boost };
         });
 
         socket.on('spawnTrap', ({ x, z }) => {
@@ -1747,6 +1913,14 @@ io.on('connection', (socket) => {
                 type: projType
             });
         });
+
+        // LOCATE MY CAR - broadcast to renderer
+        socket.on('locateMe', () => {
+            const player = players.get(socket.id);
+            if (!player || player.type !== 'driver') return;
+            
+            io.emit('playerLocating', { id: socket.id });
+        });
     }
 
     socket.on('disconnect', () => {
@@ -1760,9 +1934,47 @@ io.on('connection', (socket) => {
 // ... Keep GameLoop ...
 
 // =============================================================================
-// GAME LOOP
+// GAME LOOP - Optimized with delta compression
 // =============================================================================
 const timestep = 1 / TICK_RATE;
+
+// Delta compression state
+let tickCounter = 0;
+const FULL_STATE_INTERVAL = 60; // Send full state every 60 ticks (1 second)
+const previousPlayerState = new Map(); // Track previous values for delta detection
+
+// Pre-allocated world state object to avoid GC pressure
+const worldStatePool = {
+    players: {},
+    powerups: {},
+    traps: {}
+};
+
+// Pre-allocated position/velocity objects per player
+const playerStatePool = new Map();
+
+function getOrCreatePlayerState(id) {
+    if (!playerStatePool.has(id)) {
+        playerStatePool.set(id, {
+            position: { x: 0, y: 0, z: 0 },
+            velocity: { x: 0, y: 0, z: 0 },
+            hp: 100,
+            type: 'driver',
+            maskType: 'Classic',
+            color: '#ffffff',
+            name: '',
+            boost: 100,
+            isShielded: false,
+            isGhost: false,
+            isJuggernaut: false,
+            lapsCompleted: 0,
+            waypointIndex: 0,
+            raceProgress: 0,
+            isCPU: false
+        });
+    }
+    return playerStatePool.get(id);
+}
 
 function gameLoop() {
     // Step physics
@@ -1772,6 +1984,13 @@ function gameLoop() {
     if (gameState === 'RACING' || gameState === 'DEMO') {
         updateCPUPhysics();
         updateProjectiles();
+        
+        // Update human player physics using stored input
+        for (const [id, player] of players) {
+            if (player.type === 'driver' && player.body && player.input) {
+                updatePlayerPhysics(player, player.input);
+            }
+        }
     }
 
     // Safety: Clamp velocities and enforce boundaries
@@ -1793,78 +2012,203 @@ function gameLoop() {
     // Check powerup collisions
     checkPowerupCollisions();
 
-    // Build world state
-    const worldState = {
-        players: {},
-        powerups: {},
-        traps: {}
-    };
+    // Build world state using pooled objects (reduces GC)
+    // Clear old player references
+    for (const key of Object.keys(worldStatePool.players)) {
+        if (!players.has(key) && !cpuPlayers.has(key)) {
+            delete worldStatePool.players[key];
+            playerStatePool.delete(key);
+        }
+    }
 
+    // Update player states in-place
     for (const [id, player] of players) {
-        worldState.players[id] = {
-            position: player.body ? {
-                x: player.body.position.x,
-                y: player.body.position.y,
-                z: player.body.position.z
-            } : null,
-            velocity: player.body ? {
-                x: player.body.velocity.x,
-                y: player.body.velocity.y,
-                z: player.body.velocity.z
-            } : null,
-            hp: player.hp,
-            type: player.type,
-            maskType: player.maskType,
-            color: player.color,
-            name: player.name,
-            boost: player.boost,
-            isShielded: player.isShielded || false,
-            isGhost: player.isGhost || false,
-            isJuggernaut: player.isJuggernaut || false
-        };
+        const state = getOrCreatePlayerState(id);
+        
+        if (player.body) {
+            state.position.x = player.body.position.x;
+            state.position.y = player.body.position.y;
+            state.position.z = player.body.position.z;
+            state.velocity.x = player.body.velocity.x;
+            state.velocity.y = player.body.velocity.y;
+            state.velocity.z = player.body.velocity.z;
+        } else {
+            state.position = null;
+            state.velocity = null;
+        }
+        
+        state.hp = player.hp;
+        state.type = player.type;
+        state.maskType = player.maskType;
+        state.color = player.color;
+        state.name = player.name;
+        state.boost = player.boost;
+        state.isShielded = player.isShielded || false;
+        state.isGhost = player.isGhost || false;
+        state.isJuggernaut = player.isJuggernaut || false;
+        state.lapsCompleted = player.lapsCompleted || 0;
+        state.waypointIndex = player.waypointIndex || 0;
+        state.raceProgress = (player.lapsCompleted || 0) * (activeTrack?.path?.length || 1) + (player.waypointIndex || 0);
+        state.isCPU = false;
+        
+        worldStatePool.players[id] = state;
     }
 
-    // Include CPU players in world state (for demo mode camera to follow)
+    // Include CPU players in world state using pooled objects
     for (const [id, cpu] of cpuPlayers) {
-        worldState.players[id] = {
-            position: cpu.body ? {
-                x: cpu.body.position.x,
-                y: cpu.body.position.y,
-                z: cpu.body.position.z
-            } : null,
-            velocity: cpu.body ? {
-                x: cpu.body.velocity.x,
-                y: cpu.body.velocity.y,
-                z: cpu.body.velocity.z
-            } : null,
-            hp: cpu.hp,
-            type: cpu.type,
-            maskType: 'Classic', // CPUs use classic mask
-            color: cpu.color,
-            name: cpu.name,
-            boost: cpu.boost || 100,
-            isCPU: true,
-            isShielded: false,
-            isGhost: false,
-            isJuggernaut: false
-        };
+        const state = getOrCreatePlayerState(id);
+        
+        if (cpu.body) {
+            state.position.x = cpu.body.position.x;
+            state.position.y = cpu.body.position.y;
+            state.position.z = cpu.body.position.z;
+            state.velocity.x = cpu.body.velocity.x;
+            state.velocity.y = cpu.body.velocity.y;
+            state.velocity.z = cpu.body.velocity.z;
+        } else {
+            state.position = null;
+            state.velocity = null;
+        }
+        
+        state.hp = cpu.hp;
+        state.type = cpu.type;
+        state.maskType = 'Classic';
+        state.color = cpu.color;
+        state.name = cpu.name;
+        state.boost = cpu.boost || 100;
+        state.isCPU = true;
+        state.isShielded = false;
+        state.isGhost = false;
+        state.isJuggernaut = false;
+        state.lapsCompleted = cpu.lapsCompleted || 0;
+        state.waypointIndex = cpu.waypointIndex || 0;
+        state.raceProgress = (cpu.lapsCompleted || 0) * (activeTrack?.path?.length || 1) + (cpu.waypointIndex || 0);
+        
+        worldStatePool.players[id] = state;
     }
 
+    // Clear and rebuild powerups (small objects, less critical)
+    worldStatePool.powerups = {};
     for (const [id, powerup] of powerups) {
-        worldState.powerups[id] = {
+        worldStatePool.powerups[id] = {
             position: powerup.position,
             type: powerup.type
         };
     }
 
+    // Clear and rebuild traps
+    worldStatePool.traps = {};
     for (const [id, trap] of traps) {
-        worldState.traps[id] = {
+        worldStatePool.traps[id] = {
             position: trap.position
         };
     }
 
-    // Broadcast to all clients
-    io.emit('worldState', worldState);
+    // Delta compression: send full state every FULL_STATE_INTERVAL ticks
+    tickCounter++;
+    const sendFullState = tickCounter >= FULL_STATE_INTERVAL;
+    if (sendFullState) tickCounter = 0;
+
+    if (sendFullState) {
+        // Full state - includes everything, mark with isFull flag
+        const fullState = {
+            isFull: true,
+            players: {},
+            powerups: worldStatePool.powerups,
+            traps: worldStatePool.traps
+        };
+        
+        // Build full player state and cache for delta comparison
+        for (const [id, state] of Object.entries(worldStatePool.players)) {
+            fullState.players[id] = {
+                p: state.position ? [state.position.x, state.position.y, state.position.z] : null,
+                v: state.velocity ? [state.velocity.x, state.velocity.y, state.velocity.z] : null,
+                hp: state.hp,
+                type: state.type,
+                maskType: state.maskType,
+                color: state.color,
+                name: state.name,
+                boost: state.boost,
+                isShielded: state.isShielded,
+                isGhost: state.isGhost,
+                isJuggernaut: state.isJuggernaut,
+                lapsCompleted: state.lapsCompleted,
+                waypointIndex: state.waypointIndex,
+                raceProgress: state.raceProgress,
+                isCPU: state.isCPU
+            };
+            
+            // Cache for delta comparison
+            previousPlayerState.set(id, {
+                hp: state.hp,
+                boost: state.boost,
+                type: state.type,
+                isShielded: state.isShielded,
+                isGhost: state.isGhost,
+                isJuggernaut: state.isJuggernaut
+            });
+        }
+        
+        io.emit('worldState', fullState);
+    } else {
+        // Delta state - only position/velocity arrays + changed properties
+        const deltaState = {
+            isFull: false,
+            players: {},
+            powerups: worldStatePool.powerups,
+            traps: worldStatePool.traps
+        };
+        
+        for (const [id, state] of Object.entries(worldStatePool.players)) {
+            const prev = previousPlayerState.get(id);
+            const delta = {
+                p: state.position ? [state.position.x, state.position.y, state.position.z] : null,
+                v: state.velocity ? [state.velocity.x, state.velocity.y, state.velocity.z] : null
+            };
+            
+            // Only include properties that changed
+            if (!prev || prev.hp !== state.hp) delta.hp = state.hp;
+            if (!prev || prev.boost !== state.boost) delta.boost = state.boost;
+            if (!prev || prev.type !== state.type) delta.type = state.type;
+            if (!prev || prev.isShielded !== state.isShielded) delta.isShielded = state.isShielded;
+            if (!prev || prev.isGhost !== state.isGhost) delta.isGhost = state.isGhost;
+            if (!prev || prev.isJuggernaut !== state.isJuggernaut) delta.isJuggernaut = state.isJuggernaut;
+            
+            // New player? Include all static data
+            if (!prev) {
+                delta.maskType = state.maskType;
+                delta.color = state.color;
+                delta.name = state.name;
+                delta.isCPU = state.isCPU;
+            }
+            
+            // Always include race progress for race position calculations
+            delta.lapsCompleted = state.lapsCompleted;
+            delta.waypointIndex = state.waypointIndex;
+            delta.raceProgress = state.raceProgress;
+            
+            deltaState.players[id] = delta;
+            
+            // Update cache
+            if (prev) {
+                prev.hp = state.hp;
+                prev.boost = state.boost;
+                prev.type = state.type;
+                prev.isShielded = state.isShielded;
+                prev.isGhost = state.isGhost;
+                prev.isJuggernaut = state.isJuggernaut;
+            }
+        }
+        
+        io.emit('worldState', deltaState);
+    }
+    
+    // Clean up stale entries from previous state cache
+    for (const id of previousPlayerState.keys()) {
+        if (!worldStatePool.players[id]) {
+            previousPlayerState.delete(id);
+        }
+    }
 }
 
 setInterval(gameLoop, 1000 / TICK_RATE);

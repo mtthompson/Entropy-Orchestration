@@ -196,14 +196,15 @@ function vibrate(pattern) {
 // =============================================================================
 // LOBBY SCREEN
 // =============================================================================
-// =============================================================================
-// LOBBY SCREEN
-// =============================================================================
 const MASKS = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
 
-function LobbyScreen({ onJoin }) {
-    const [name, setName] = useState('');
-    const [maskIndex, setMaskIndex] = useState(0);
+function LobbyScreen({ onJoin, savedIdentity = {} }) {
+    const [name, setName] = useState(savedIdentity.name || '');
+    const [maskIndex, setMaskIndex] = useState(() => {
+        const savedMask = savedIdentity.maskType || 'Classic';
+        const idx = MASKS.indexOf(savedMask);
+        return idx >= 0 ? idx : 0;
+    });
 
     const handleJoin = () => {
         if (name.trim()) {
@@ -271,8 +272,24 @@ function LobbyScreen({ onJoin }) {
 // =============================================================================
 function DrivingScreen({ playerState }) {
     const [, forceUpdate] = useState(0);
+    const [locateCooldown, setLocateCooldown] = useState(0);
     const inputRef = useRef({ steering: 0, throttle: 0, boost: false });
     const lastSentRef = useRef({ steering: 0, throttle: 0, boost: false });
+
+    // Locate cooldown timer
+    useEffect(() => {
+        if (locateCooldown > 0) {
+            const timer = setTimeout(() => setLocateCooldown(c => c - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [locateCooldown]);
+
+    const handleLocate = () => {
+        if (locateCooldown > 0) return;
+        socket.emit('locateMe');
+        setLocateCooldown(5);
+        vibrate([100, 50, 100]);
+    };
 
     // Device orientation for steering
     useEffect(() => {
@@ -418,21 +435,51 @@ function DrivingScreen({ playerState }) {
                 <div style={styles.boostMeter.fill(boost)} />
             </div>
 
-            {/* Ammo Display */}
-            {ammo > 0 && (
-                <div style={{
-                    marginTop: 10,
-                    padding: '8px 16px',
-                    background: weaponType === 'missile' ? 'rgba(255,100,0,0.3)' : 'rgba(0,200,255,0.3)',
-                    borderRadius: 8,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10
-                }}>
-                    <span style={{ fontSize: 20 }}>{weaponType === 'missile' ? '🚀' : '⚡'}</span>
-                    <span style={{ fontWeight: 700 }}>{ammo}</span>
+            {/* Ammo & Locate Row */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 12,
+                marginTop: 10
+            }}>
+                {/* Ammo Display */}
+                {ammo > 0 && (
+                    <div style={{
+                        padding: '8px 16px',
+                        background: weaponType === 'missile' ? 'rgba(255,100,0,0.3)' : 'rgba(0,200,255,0.3)',
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10
+                    }}>
+                        <span style={{ fontSize: 20 }}>{weaponType === 'missile' ? '🚀' : '⚡'}</span>
+                        <span style={{ fontWeight: 700 }}>{ammo}</span>
+                    </div>
+                )}
+
+                {/* Locate Button */}
+                <div
+                    style={{
+                        padding: '8px 14px',
+                        background: locateCooldown > 0 
+                            ? 'rgba(100, 100, 100, 0.5)' 
+                            : 'linear-gradient(135deg, #ffaa00 0%, #ff6600 100%)',
+                        borderRadius: 8,
+                        border: '2px solid #ffaa00',
+                        cursor: locateCooldown > 0 ? 'not-allowed' : 'pointer',
+                        opacity: locateCooldown > 0 ? 0.6 : 1,
+                        fontWeight: 700,
+                        fontSize: 13,
+                        boxShadow: locateCooldown > 0 ? 'none' : '0 0 10px rgba(255, 170, 0, 0.4)',
+                        transition: 'all 0.2s ease'
+                    }}
+                    onTouchStart={(e) => { e.preventDefault(); handleLocate(); }}
+                    onClick={handleLocate}
+                >
+                    📍 {locateCooldown > 0 ? locateCooldown : 'FIND'}
                 </div>
-            )}
+            </div>
 
             {/* Steering Indicator */}
             <div style={{ marginTop: 30, marginBottom: 20, textAlign: 'center' }}>
@@ -594,18 +641,120 @@ function DroneScreen() {
 }
 
 // =============================================================================
+// RESULTS SCREEN - Shown when game ends (WINNER state)
+// =============================================================================
+function ResultsScreen({ winner, countdown, onBackToLobby }) {
+    return (
+        <div style={styles.container('#ffd700')}>
+            <div style={{
+                fontSize: 64,
+                marginBottom: 20
+            }}>
+                🏆
+            </div>
+
+            <h2 style={{
+                fontSize: 28,
+                fontWeight: 700,
+                marginBottom: 10,
+                textTransform: 'uppercase',
+                letterSpacing: 2,
+                textShadow: '0 0 20px #ffd700'
+            }}>
+                GAME OVER
+            </h2>
+
+            {winner && (
+                <div style={{
+                    fontSize: 22,
+                    fontWeight: 600,
+                    marginBottom: 30,
+                    color: '#ffd700',
+                    textShadow: '0 0 10px #ffd700'
+                }}>
+                    Winner: {winner}
+                </div>
+            )}
+
+            <p style={{
+                fontSize: 16,
+                opacity: 0.7,
+                marginBottom: 20
+            }}>
+                Returning to lobby in {countdown}s...
+            </p>
+
+            <button
+                style={{
+                    ...styles.button('#ffd700'),
+                    marginTop: 20
+                }}
+                onClick={onBackToLobby}
+                onTouchEnd={(e) => {
+                    e.preventDefault();
+                    onBackToLobby();
+                }}
+            >
+                Back to Lobby
+            </button>
+        </div>
+    );
+}
+
+// =============================================================================
 // MAIN APP
 // =============================================================================
 export default function App() {
-    const [gameState, setGameState] = useState('lobby'); // lobby, driving, drone
+    const [gameState, setGameState] = useState('lobby'); // lobby, driving, drone, results
     const [playerState, setPlayerState] = useState(null);
     const [playerId, setPlayerId] = useState(null);
+    const [winner, setWinner] = useState(null);
+    const [resultsCountdown, setResultsCountdown] = useState(5);
+    const [demoMessage, setDemoMessage] = useState(null);
+    const missingTicksRef = useRef(0); // Track consecutive ticks where player is missing
+
+    // Load saved name/mask from localStorage for pre-fill
+    const getSavedIdentity = () => {
+        try {
+            return {
+                name: localStorage.getItem('entropy_lastName') || '',
+                maskType: localStorage.getItem('entropy_lastMask') || 'Classic'
+            };
+        } catch {
+            return { name: '', maskType: 'Classic' };
+        }
+    };
+
+    // Reset to lobby state
+    const resetToLobby = useCallback((message = null) => {
+        setGameState('lobby');
+        setPlayerId(null);
+        setPlayerState(null);
+        setWinner(null);
+        setResultsCountdown(5);
+        missingTicksRef.current = 0;
+        if (message) {
+            setDemoMessage(message);
+            setTimeout(() => setDemoMessage(null), 3000);
+        }
+    }, []);
+
+    // Results countdown timer
+    useEffect(() => {
+        if (gameState === 'results' && resultsCountdown > 0) {
+            const timer = setTimeout(() => setResultsCountdown(c => c - 1), 1000);
+            return () => clearTimeout(timer);
+        } else if (gameState === 'results' && resultsCountdown === 0) {
+            resetToLobby();
+        }
+    }, [gameState, resultsCountdown, resetToLobby]);
 
     useEffect(() => {
         socket.on('joined', ({ id, color, hp }) => {
             setPlayerId(id);
             setPlayerState({ color, hp, boost: 100 });
             setGameState('driving');
+            missingTicksRef.current = 0;
             vibrate(100);
         });
 
@@ -630,14 +779,40 @@ export default function App() {
             vibrate(duration);
         });
 
-        socket.on('worldState', (state) => {
-            if (playerId && state.players[playerId]) {
-                const player = state.players[playerId];
-                setPlayerState(prev => ({
-                    ...prev,
-                    hp: player.hp,
-                    boost: player.boost
-                }));
+        // Handle server game state changes (LOBBY, COUNTDOWN, RACING, WINNER)
+        socket.on('gameState', ({ state, winner: gameWinner }) => {
+            console.log('[CONTROLLER] Server gameState:', state, 'winner:', gameWinner);
+            
+            if (state === 'WINNER') {
+                // Show results screen with winner info
+                setWinner(gameWinner || 'Unknown');
+                setResultsCountdown(5);
+                setGameState('results');
+                vibrate([100, 100, 100, 100, 300]);
+            } else if (state === 'LOBBY') {
+                // Server returned to lobby - reset controller if we were in game
+                if (gameState !== 'lobby' && gameState !== 'results') {
+                    resetToLobby();
+                }
+            }
+            // COUNTDOWN and RACING states don't require controller action
+        });
+
+        // Handle demo mode activation
+        socket.on('demoMode', ({ active }) => {
+            console.log('[CONTROLLER] Demo mode:', active);
+            if (active && (gameState === 'driving' || gameState === 'drone')) {
+                // Demo mode started while player was in game - return to lobby
+                resetToLobby('Demo mode started - rejoin to play!');
+            }
+        });
+
+        // Handle socket disconnect - reset to lobby
+        socket.on('disconnect', (reason) => {
+            console.log('[CONTROLLER] Disconnected:', reason);
+            // Only reset if we were in-game (not already in lobby)
+            if (gameState !== 'lobby') {
+                resetToLobby('Connection lost - please rejoin');
             }
         });
 
@@ -646,22 +821,96 @@ export default function App() {
             socket.off('damage');
             socket.off('powerup');
             socket.off('becameDrone');
-            socket.off('worldState');
+            socket.off('wallHit');
+            socket.off('gameState');
+            socket.off('demoMode');
+            socket.off('disconnect');
         };
-    }, [playerId]);
+    }, [gameState, resetToLobby]);
+
+    // Separate useEffect for worldState to properly track playerId changes
+    useEffect(() => {
+        const handleWorldState = (state) => {
+            if (playerId && (gameState === 'driving' || gameState === 'drone')) {
+                if (state.players[playerId]) {
+                    // Player found - update state and reset missing counter
+                    const player = state.players[playerId];
+                    setPlayerState(prev => ({
+                        ...prev,
+                        hp: player.hp,
+                        boost: player.boost
+                    }));
+                    missingTicksRef.current = 0;
+                } else {
+                    // Player not in worldState - increment missing counter
+                    missingTicksRef.current++;
+                    
+                    // After 3 ticks (~150ms at 60Hz), assume player is gone
+                    if (missingTicksRef.current >= 3) {
+                        console.log('[CONTROLLER] Player missing from worldState for 3+ ticks, resetting');
+                        resetToLobby();
+                    }
+                }
+            }
+        };
+
+        socket.on('worldState', handleWorldState);
+        return () => socket.off('worldState', handleWorldState);
+    }, [playerId, gameState, resetToLobby]);
 
     const handleJoin = (name, maskType) => {
+        // Save to localStorage for pre-fill on reconnect
+        try {
+            localStorage.setItem('entropy_lastName', name);
+            localStorage.setItem('entropy_lastMask', maskType);
+        } catch { /* ignore storage errors */ }
+        
         socket.emit('join', { name, maskType });
+    };
+
+    // Render demo message toast if present
+    const renderDemoToast = () => {
+        if (!demoMessage) return null;
+        return (
+            <div style={{
+                position: 'fixed',
+                top: 20,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(255, 100, 0, 0.9)',
+                color: '#fff',
+                padding: '12px 24px',
+                borderRadius: 8,
+                fontWeight: 600,
+                zIndex: 1000,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+            }}>
+                {demoMessage}
+            </div>
+        );
     };
 
     switch (gameState) {
         case 'lobby':
-            return <LobbyScreen onJoin={handleJoin} />;
+            return (
+                <>
+                    {renderDemoToast()}
+                    <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} />
+                </>
+            );
         case 'driving':
             return <DrivingScreen playerState={playerState} />;
         case 'drone':
             return <DroneScreen />;
+        case 'results':
+            return (
+                <ResultsScreen 
+                    winner={winner} 
+                    countdown={resultsCountdown}
+                    onBackToLobby={() => resetToLobby()}
+                />
+            );
         default:
-            return <LobbyScreen onJoin={handleJoin} />;
+            return <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} />;
     }
 }

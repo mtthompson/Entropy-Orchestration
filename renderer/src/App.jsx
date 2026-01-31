@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
 import { Scenery } from './Scenery';
+import { Audience } from './Audience';
+import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail } from './ParticleEffects';
 import { GameUI } from './GameUI';
 import { useAudio } from './useAudio';
 import { ToastNotification } from './ToastNotification';
@@ -83,11 +85,96 @@ function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
 }
 
 // =============================================================================
+// TRACK SURFACE OVERLAY - Renders track path with distinct surface
+// =============================================================================
+function TrackSurface({ trackData, theme }) {
+    const pathPoints = trackData?.path;
+    if (!pathPoints || pathPoints.length < 3) return null;
+
+    const trackWidth = trackData?.trackWidth || 20;
+    const primaryColor = theme?.primaryColor || '#ff00ff';
+    const secondaryColor = theme?.secondaryColor || '#00ffff';
+
+    // Create track surface shape from path
+    const shape = useMemo(() => {
+        if (!pathPoints || pathPoints.length < 3) return null;
+
+        const shape = new THREE.Shape();
+        const innerPoints = [];
+        const outerPoints = [];
+
+        for (let i = 0; i < pathPoints.length; i++) {
+            const curr = pathPoints[i];
+            const next = pathPoints[(i + 1) % pathPoints.length];
+            const prev = pathPoints[(i - 1 + pathPoints.length) % pathPoints.length];
+
+            // Calculate perpendicular direction
+            const dx = next.x - prev.x;
+            const dz = next.z - prev.z;
+            const len = Math.sqrt(dx * dx + dz * dz) || 1;
+            const perpX = -dz / len;
+            const perpZ = dx / len;
+
+            const halfWidth = trackWidth / 2;
+            innerPoints.push({ x: curr.x - perpX * halfWidth, z: curr.z - perpZ * halfWidth });
+            outerPoints.push({ x: curr.x + perpX * halfWidth, z: curr.z + perpZ * halfWidth });
+        }
+
+        // Build shape from outer points, then inner points (reversed for hole)
+        shape.moveTo(outerPoints[0].x, outerPoints[0].z);
+        for (let i = 1; i < outerPoints.length; i++) {
+            shape.lineTo(outerPoints[i].x, outerPoints[i].z);
+        }
+        shape.lineTo(outerPoints[0].x, outerPoints[0].z);
+
+        // Create hole with inner points (reversed)
+        const hole = new THREE.Path();
+        hole.moveTo(innerPoints[0].x, innerPoints[0].z);
+        for (let i = innerPoints.length - 1; i >= 0; i--) {
+            hole.lineTo(innerPoints[i].x, innerPoints[i].z);
+        }
+        shape.holes.push(hole);
+
+        return shape;
+    }, [pathPoints, trackWidth]);
+
+    if (!shape) return null;
+
+    return (
+        <group>
+            {/* Track surface with different material */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+                <shapeGeometry args={[shape]} />
+                <meshStandardMaterial
+                    color="#1a1a2e"
+                    metalness={0.6}
+                    roughness={0.4}
+                    transparent
+                    opacity={0.8}
+                />
+            </mesh>
+
+            {/* Track edge glow - inner */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
+                <shapeGeometry args={[shape]} />
+                <meshBasicMaterial
+                    color={primaryColor}
+                    wireframe
+                    transparent
+                    opacity={0.3}
+                />
+            </mesh>
+        </group>
+    );
+}
+
+// =============================================================================
 // CAR COMPONENT WITH TRAIL
 // =============================================================================
-function Car({ position, velocity, color, hp, isDying, maskType }) {
+function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
     const meshRef = useRef();
     const targetPos = useRef(new THREE.Vector3(...position));
+    const beaconRef = useRef();
 
     useEffect(() => {
         targetPos.current.set(position[0], position[1], position[2]);
@@ -96,11 +183,30 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
     useFrame((state, delta) => {
         if (meshRef.current) {
             meshRef.current.position.lerp(targetPos.current, 0.3);
-            if (hp < 30) {
-                // Flash whole group?
+            
+            // Locate effect: scale up and pulse emissive
+            if (isLocating) {
+                const pulse = Math.sin(state.clock.elapsedTime * 10) * 0.5 + 1.5;
+                meshRef.current.scale.setScalar(1.5);
                 meshRef.current.children.forEach(c => {
-                    if (c.material) c.material.emissiveIntensity = Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1;
+                    if (c.material) c.material.emissiveIntensity = pulse;
                 });
+                // Animate beacon
+                if (beaconRef.current) {
+                    beaconRef.current.material.opacity = Math.sin(state.clock.elapsedTime * 8) * 0.3 + 0.5;
+                }
+            } else {
+                meshRef.current.scale.setScalar(1);
+                if (hp < 30) {
+                    // Flash whole group?
+                    meshRef.current.children.forEach(c => {
+                        if (c.material) c.material.emissiveIntensity = Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1;
+                    });
+                } else {
+                    meshRef.current.children.forEach(c => {
+                        if (c.material) c.material.emissiveIntensity = 0.5;
+                    });
+                }
             }
             // Rotate based on movement 
             if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
@@ -237,6 +343,10 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
         }
     });
 
+    // Calculate if car is moving fast enough for tire effects
+    const speed = velocity ? Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) : 0;
+    const showTireEffects = speed > 5;
+
     return (
         <Trail width={3} length={10} color={trailColor} attenuation={(t) => t * t}>
             <group ref={meshRef} position={position} castShadow receiveShadow>
@@ -261,6 +371,29 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
                     intensity={0.8}
                     distance={6}
                 />
+
+                {/* Tire Smoke when moving */}
+                {showTireEffects && (
+                    <>
+                        <TireSmoke position={[0.8, 0, 0.8]} active={true} color={color} />
+                        <TireSmoke position={[-0.8, 0, 0.8]} active={true} color={color} />
+                    </>
+                )}
+
+                {/* Locate Beacon - vertical light beam when locating */}
+                {isLocating && (
+                    <mesh ref={beaconRef} position={[0, 10, 0]}>
+                        <cylinderGeometry args={[0.4, 0.8, 20, 8]} />
+                        <meshStandardMaterial
+                            color={color}
+                            emissive={color}
+                            emissiveIntensity={3}
+                            transparent
+                            opacity={0.6}
+                            side={THREE.DoubleSide}
+                        />
+                    </mesh>
+                )}
             </group>
         </Trail>
     );
@@ -322,7 +455,8 @@ function Powerup({ position, type }) {
         'Shield': '#00ffff',
         'Ghost': '#ffffff',
         'Juggernaut': '#ff0066',
-        'Weapon': '#ff6600'
+        'Weapon': '#ff6600',
+        '67Meme': '#67ff67'
     };
     const color = POWERUP_COLORS[type] || '#ff00ff';
 
@@ -688,45 +822,56 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
 }
 
 // =============================================================================
-// TRACK WALL COMPONENT
+// TRACK WALL COMPONENT - Memoized for performance (NO useFrame per wall!)
 // =============================================================================
-function TrackWall({ wall, theme }) {
+const TrackWall = React.memo(function TrackWall({ wall, theme }) {
     const wallColor = theme?.wallColor || '#ff00ff';
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
-    const meshRef = useRef();
-    const scanRef = useRef();
 
-    // Calculate wall dimensions and position
-    const length = Math.sqrt(
-        Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+    // Use pre-computed values if available, otherwise compute (for backwards compatibility)
+    const { length, centerX, centerZ, angle, height } = useMemo(() => {
+        if (wall.length !== undefined) {
+            // Pre-computed values from cache
+            return {
+                length: wall.length,
+                centerX: wall.centerX,
+                centerZ: wall.centerZ,
+                angle: wall.angle,
+                height: wall.height || 5
+            };
+        }
+        // Fallback computation
+        const len = Math.sqrt(
+            Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+        );
+        return {
+            length: len,
+            centerX: (wall.x1 + wall.x2) / 2,
+            centerZ: (wall.z1 + wall.z2) / 2,
+            angle: Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1),
+            height: wall.height || 5
+        };
+    }, [wall]);
+
+    // Memoize materials to prevent recreation
+    const darkWallColor = useMemo(() => 
+        '#' + new THREE.Color(wallColor).offsetHSL(0, 0, -0.3).getHexString(),
+        [wallColor]
     );
-    const centerX = (wall.x1 + wall.x2) / 2;
-    const centerZ = (wall.z1 + wall.z2) / 2;
-    const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
-    const height = wall.height || 5;
 
-    // Animate glow and scan line
-    useFrame((state) => {
-        if (meshRef.current) {
-            meshRef.current.material.emissiveIntensity =
-                0.5 + Math.sin(state.clock.elapsedTime * 2) * 0.3;
-        }
-        if (scanRef.current) {
-            // Scan line moves up and down
-            scanRef.current.position.y = (Math.sin(state.clock.elapsedTime * 3) * 0.4 + 0.5) * height;
-        }
-    });
+    // REMOVED: useFrame animation per wall - was causing 6000+ callbacks/sec
+    // Animation now handled by TrackBoundaries with a single shared useFrame
 
     return (
         <group position={[centerX, 0, centerZ]} rotation={[0, -angle, 0]}>
-            {/* Main wall panel */}
-            <mesh ref={meshRef} position={[0, height / 2, 0]}>
+            {/* Main wall panel - static emissive intensity */}
+            <mesh position={[0, height / 2, 0]}>
                 <boxGeometry args={[length, height, 0.08]} />
                 <meshStandardMaterial
-                    color={'#' + new THREE.Color(wallColor).offsetHSL(0, 0, -0.3).getHexString()}
+                    color={darkWallColor}
                     emissive={wallColor}
-                    emissiveIntensity={0.5}
+                    emissiveIntensity={0.6}
                     metalness={0.8}
                     roughness={0.2}
                     side={THREE.DoubleSide}
@@ -744,38 +889,30 @@ function TrackWall({ wall, theme }) {
                 <boxGeometry args={[length + 0.1, 0.15, 0.12]} />
                 <meshBasicMaterial color={secondaryColor} />
             </mesh>
-
-            {/* Animated scan line */}
-            <mesh ref={scanRef} position={[0, height / 2, 0.05]}>
-                <planeGeometry args={[length - 0.2, 0.1]} />
-                <meshBasicMaterial color="#ffffff" transparent opacity={0.8} />
-            </mesh>
-
-            {/* Glow light */}
-            <pointLight
-                position={[0, height / 2, 0.5]}
-                color={primaryColor}
-                intensity={0.3}
-                distance={8}
-            />
         </group>
     );
-}
+});
 
 
 // =============================================================================
-// TRACK BOUNDARIES - Container for all walls
+// TRACK BOUNDARIES - Container for all walls (Memoized)
 // =============================================================================
-function TrackBoundaries({ boundaries, theme }) {
+const TrackBoundaries = React.memo(function TrackBoundaries({ boundaries, theme }) {
     if (!boundaries) return null;
     return (
         <group>
             {boundaries.map((wall, i) => (
-                <TrackWall key={i} wall={wall} theme={theme} />
+                <TrackWall key={`${wall.x1}-${wall.z1}-${wall.x2}-${wall.z2}`} wall={wall} theme={theme} />
             ))}
         </group>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison - only re-render if boundaries array reference changes or theme changes
+    return prevProps.boundaries === nextProps.boundaries && 
+           prevProps.theme?.wallColor === nextProps.theme?.wallColor &&
+           prevProps.theme?.primaryColor === nextProps.theme?.primaryColor &&
+           prevProps.theme?.secondaryColor === nextProps.theme?.secondaryColor;
+});
 
 // =============================================================================
 // CAMERA SHAKE EFFECT
@@ -953,7 +1090,8 @@ function CameraController({ players, gameState }) {
         const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
         
         if (activePlayers.length > 0 && !initialized.current) {
-            const sorted = activePlayers.sort((a, b) => a.position.z - b.position.z);
+            // Sort by race progress (laps + waypoints), highest first = leader
+            const sorted = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
             const topPack = sorted.slice(0, 3);
             
             const avgX = topPack.reduce((sum, p) => sum + p.position.x, 0) / topPack.length;
@@ -973,11 +1111,12 @@ function CameraController({ players, gameState }) {
             return;
         }
 
-        // Get top 3 players by Z position
+        // Get top 3 players by race progress (leader = highest raceProgress)
         const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
 
         if (activePlayers.length > 0) {
-            const sorted = activePlayers.sort((a, b) => a.position.z - b.position.z);
+            // Sort by race progress descending - leader has most laps + waypoints completed
+            const sorted = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
             const topPack = sorted.slice(0, 3);
 
             // Calculate center of pack
@@ -1047,7 +1186,7 @@ function CameraController({ players, gameState }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate }) {
+function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers }) {
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
     const { gl } = useThree();
@@ -1203,7 +1342,17 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
             <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
 
             <SynthwaveGrid floorSize={trackData?.floorSize} graphicsSettings={graphicsSettings} theme={theme} />
-            <Scenery trackData={trackData} graphicsSettings={graphicsSettings} />
+            
+            {/* Track Surface Overlay - distinguishes track from outer area */}
+            <TrackSurface trackData={trackData} theme={theme} />
+            
+            <Scenery trackData={trackData} graphicsSettings={graphicsSettings} theme={theme} />
+            
+            {/* Mii-like Audience around the track */}
+            <Audience trackData={trackData} theme={theme} />
+            
+            {/* Ambient Particle Effects */}
+            <AmbientParticles theme={theme} />
 
             {/* Track Walls */}
             <TrackBoundaries boundaries={trackData?.boundaries} theme={theme} />
@@ -1241,6 +1390,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                         color={player.color}
                         hp={player.hp}
                         maskType={player.maskType}
+                        isLocating={locatingPlayers?.[id] || false}
                     />
                 );
             })}
@@ -1474,6 +1624,7 @@ export default function App() {
     const [demoMode, setDemoMode] = useState(false);
     const [eliminations, setEliminations] = useState([]);
     const [screenShake, setScreenShake] = useState(0); // 0-1 intensity
+    const [locatingPlayers, setLocatingPlayers] = useState({}); // Track which players are being located
     const [trackTheme, setTrackTheme] = useState({
         primaryColor: '#ff00ff',
         secondaryColor: '#00ffff',
@@ -1488,6 +1639,9 @@ export default function App() {
     const [trackList, setTrackList] = useState([]);
     const [cpuCount, setCpuCount] = useState(0);
     const [toasts, setToasts] = useState([]);
+    
+    // Track preloading cache for instant track switching (eliminates lag)
+    const preloadedTracksRef = useRef(new Map()); // trackId -> { boundaries, theme, geometries }
 
     // Graphics Settings with localStorage persistence
     const [graphicsSettings, setGraphicsSettings] = useState(() => {
@@ -1581,7 +1735,74 @@ export default function App() {
         });
 
         socket.on('worldState', (state) => {
-            setWorldState(state);
+            // Delta compression handling
+            if (state.isFull) {
+                // Full state - expand compressed arrays to objects and cache
+                const expanded = {
+                    players: {},
+                    powerups: state.powerups,
+                    traps: state.traps
+                };
+                
+                for (const [id, player] of Object.entries(state.players)) {
+                    expanded.players[id] = {
+                        position: player.p ? { x: player.p[0], y: player.p[1], z: player.p[2] } : null,
+                        velocity: player.v ? { x: player.v[0], y: player.v[1], z: player.v[2] } : null,
+                        hp: player.hp,
+                        type: player.type,
+                        maskType: player.maskType,
+                        color: player.color,
+                        name: player.name,
+                        boost: player.boost,
+                        isShielded: player.isShielded,
+                        isGhost: player.isGhost,
+                        isJuggernaut: player.isJuggernaut,
+                        lapsCompleted: player.lapsCompleted,
+                        waypointIndex: player.waypointIndex,
+                        raceProgress: player.raceProgress,
+                        isCPU: player.isCPU
+                    };
+                }
+                
+                // Store for delta merging
+                window.__playerCache = expanded.players;
+                setWorldState(expanded);
+            } else {
+                // Delta state - merge with cached full state
+                setWorldState(prev => {
+                    const cache = window.__playerCache || prev.players || {};
+                    const merged = {
+                        players: {},
+                        powerups: state.powerups,
+                        traps: state.traps
+                    };
+                    
+                    for (const [id, delta] of Object.entries(state.players)) {
+                        const cached = cache[id] || {};
+                        merged.players[id] = {
+                            position: delta.p ? { x: delta.p[0], y: delta.p[1], z: delta.p[2] } : null,
+                            velocity: delta.v ? { x: delta.v[0], y: delta.v[1], z: delta.v[2] } : null,
+                            hp: delta.hp !== undefined ? delta.hp : cached.hp,
+                            type: delta.type !== undefined ? delta.type : cached.type,
+                            maskType: delta.maskType !== undefined ? delta.maskType : cached.maskType,
+                            color: delta.color !== undefined ? delta.color : cached.color,
+                            name: delta.name !== undefined ? delta.name : cached.name,
+                            boost: delta.boost !== undefined ? delta.boost : cached.boost,
+                            isShielded: delta.isShielded !== undefined ? delta.isShielded : cached.isShielded,
+                            isGhost: delta.isGhost !== undefined ? delta.isGhost : cached.isGhost,
+                            isJuggernaut: delta.isJuggernaut !== undefined ? delta.isJuggernaut : cached.isJuggernaut,
+                            lapsCompleted: delta.lapsCompleted,
+                            waypointIndex: delta.waypointIndex,
+                            raceProgress: delta.raceProgress,
+                            isCPU: delta.isCPU !== undefined ? delta.isCPU : cached.isCPU
+                        };
+                    }
+                    
+                    // Update cache with merged data
+                    window.__playerCache = merged.players;
+                    return merged;
+                });
+            }
         });
 
         socket.on('gameState', (state) => {
@@ -1628,6 +1849,44 @@ export default function App() {
             setTrackList(data);
         });
 
+        // Preload ALL track data for instant switching (no lag on game start)
+        socket.on('allTracks', (tracks) => {
+            console.log(`[PRELOAD] Received ${tracks.length} tracks for preloading`);
+            const cache = preloadedTracksRef.current;
+            
+            for (const track of tracks) {
+                // Pre-compute wall geometries and cache them
+                const precomputedWalls = track.boundaries.map(wall => {
+                    const length = Math.sqrt(
+                        Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+                    );
+                    const centerX = (wall.x1 + wall.x2) / 2;
+                    const centerZ = (wall.z1 + wall.z2) / 2;
+                    const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
+                    const height = wall.height || 5;
+                    
+                    return {
+                        ...wall,
+                        length,
+                        centerX,
+                        centerZ,
+                        angle,
+                        height
+                    };
+                });
+                
+                cache.set(track.id, {
+                    id: track.id,
+                    name: track.name,
+                    boundaries: track.boundaries,
+                    precomputedWalls,
+                    floorSize: track.floorSize,
+                    theme: track.theme
+                });
+            }
+            console.log(`[PRELOAD] Cached ${cache.size} tracks`);
+        });
+
         socket.on('cpuCount', (count) => {
             console.log('Received CPU count:', count);
             setCpuCount(count);
@@ -1644,12 +1903,32 @@ export default function App() {
             }]);
         });
 
+        socket.on('powerup', (data) => {
+            if (data.type === '67Meme') {
+                showToast('6 7', 'success');
+            }
+        });
+
         socket.on('damage', (data) => {
             playSfx('crash');
             // Trigger screen shake based on damage amount
             const intensity = Math.min(1, (data?.damage || 20) / 50);
             setScreenShake(intensity);
             setTimeout(() => setScreenShake(0), 200);
+        });
+
+        // Player locate feature - flash and scale car
+        socket.on('playerLocating', (data) => {
+            playSfx('locate');
+            setLocatingPlayers(prev => ({ ...prev, [data.id]: true }));
+            // Clear after 2.5 seconds
+            setTimeout(() => {
+                setLocatingPlayers(prev => {
+                    const updated = { ...prev };
+                    delete updated[data.id];
+                    return updated;
+                });
+            }, 2500);
         });
 
         return () => {
@@ -1665,6 +1944,8 @@ export default function App() {
             socket.off('damage');
             socket.off('trackList');
             socket.off('cpuCount');
+            socket.off('allTracks');
+            socket.off('playerLocating');
         };
     }, [playSfx, setMusicStyle]);
 
@@ -1742,6 +2023,7 @@ export default function App() {
                     isDemo={gameState.isDemo}
                     graphicsSettings={graphicsSettings}
                     onPerformanceUpdate={setPerformanceStats}
+                    locatingPlayers={locatingPlayers}
                 />
             </Canvas>
 
