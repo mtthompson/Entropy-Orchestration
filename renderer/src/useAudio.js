@@ -1776,6 +1776,119 @@ export function useAudio(connected) {
         osc.stop(time + duration);
     };
 
+    // Schedule lead with note name (for complete melodies)
+    const scheduleLeadNote = (ctx, time, noteName, duration, intensity, style = {}) => {
+        const freq = NOTE_FREQS[noteName];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        // Use track-specific lead type
+        osc.type = style.leadType || 'sawtooth';
+        osc.frequency.value = freq;
+        osc2.type = 'triangle'; // Softer doubling
+        osc2.frequency.value = freq * 1.002; // Subtle detune
+
+        filter.type = 'lowpass';
+        const baseFreq = 1200 * (style.filterMod || 1.0);
+        filter.frequency.setValueAtTime(baseFreq, time);
+        filter.frequency.exponentialRampToValueAtTime(baseFreq * 0.4, time + duration * 0.8);
+        filter.Q.value = 1.5;
+
+        // Smooth envelope with sustain
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.1 * intensity, time + 0.02);
+        gain.gain.setValueAtTime(0.08 * intensity, time + duration * 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        osc.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGainRef.current || ctx.destination);
+        osc.start(time);
+        osc2.start(time);
+        osc.stop(time + duration);
+        osc2.stop(time + duration);
+    };
+
+    // Schedule pluck with note name
+    const schedulePluckNote = (ctx, time, noteName, style = {}) => {
+        const freq = NOTE_FREQS[noteName];
+        if (!freq) return;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2000, time);
+        filter.frequency.exponentialRampToValueAtTime(200, time + 0.3);
+        filter.Q.value = 5;
+
+        gain.gain.setValueAtTime(0.12 * (style.intensity || 1.0), time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGainRef.current || ctx.destination);
+        osc.start(time);
+        osc.stop(time + 0.5);
+    };
+
+    // Portamento with frequencies
+    const schedulePortamentoFreq = (ctx, time, freq1, freq2, duration, intensity, style = {}) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = style.leadType || 'sawtooth';
+        osc.frequency.setValueAtTime(freq1, time);
+        osc.frequency.exponentialRampToValueAtTime(freq2, time + duration * 0.6);
+
+        filter.type = 'lowpass';
+        filter.frequency.value = 1500;
+        filter.Q.value = 2;
+
+        gain.gain.setValueAtTime(0.08 * intensity, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGainRef.current || ctx.destination);
+        osc.start(time);
+        osc.stop(time + duration);
+    };
+
+    // Harmony with frequency
+    const scheduleHarmonyFreq = (ctx, time, freq, duration, intensity, style = {}) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+
+        filter.type = 'lowpass';
+        filter.frequency.value = 1000;
+        filter.Q.value = 1;
+
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.06 * intensity, time + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGainRef.current || ctx.destination);
+        osc.start(time);
+        osc.stop(time + duration);
+    };
+
     // Hook melody - bright, memorable, cuts through the mix
     const scheduleHook = (ctx, time, note, duration, intensity, style = {}) => {
         const freq = NOTE_FREQS[note];
