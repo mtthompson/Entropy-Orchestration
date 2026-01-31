@@ -1024,19 +1024,20 @@ function checkPowerupCollisions() {
                     applyPowerupState(player, 'Ghost', 5000);
                 } else if (powerup.type === 'Juggernaut') {
                     applyPowerupState(player, 'Juggernaut', 10000);
+                } else if (powerup.type === 'Weapon') {
+                    player.ammo = (player.ammo || 0) + 5;
+                    player.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
+                    console.log(`[POWERUP] ${player.name} picked up Weapon (${player.weaponType}, ${player.ammo} ammo)`);
+                    io.to(playerId).emit('powerup', { type: 'Weapon', ammo: player.ammo, weaponType: player.weaponType });
+                } else {
+                    console.log(`[POWERUP] ${player.name} picked up ${powerup.type}`);
+                    io.to(playerId).emit('powerup', { type: powerup.type });
                 }
-
-                console.log(`[POWERUP] ${player.name} picked up ${powerup.type}`);
-                io.to(playerId).emit('powerup', { type: powerup.type });
 
                 // Remove powerup
                 world.removeBody(powerup.body);
                 powerups.delete(pId);
                 break;
-            } else if (pup.type === 'Weapon') {
-                player.ammo = (player.ammo || 0) + 5;
-                player.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
-                io.to(playerId).emit('powerup', { type: 'Weapon', ammo: player.ammo, weaponType: player.weaponType });
             }
         }
     }
@@ -1232,8 +1233,17 @@ function broadcastGameState() {
 function startCountdown() {
     if (gameState !== 'LOBBY') return;
 
+    console.log('[GAME] Starting countdown...');
+
     // Select random track for this round
     selectRandomTrack();
+
+    // Validate track was loaded
+    if (!activeTrack || !activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
+        console.error('[ERROR] Track not properly initialized, resetting to default');
+        activeTrack = getDefaultTrack();
+        createTrackWalls();
+    }
 
     gameState = 'COUNTDOWN';
     gameTimer = 3;
@@ -1250,11 +1260,20 @@ function startCountdown() {
 }
 
 function startRace() {
+    console.log('[GAME] Starting race!');
     gameState = 'RACING';
     gameTimer = 0;
 
     // Remove any existing CPU
     removeCPUOpponents();
+
+    // Validate track before starting
+    if (!activeTrack || !activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
+        console.error('[ERROR] Cannot start race - invalid track configuration');
+        gameState = 'LOBBY';
+        broadcastGameState();
+        return;
+    }
 
     // Count human drivers
     let humanDrivers = 0;
@@ -1280,6 +1299,7 @@ function startRace() {
 
 function resetGame() {
     // Respawn all players
+    let spawnCounter = 0;
     for (const [id, player] of players) {
         removePlayerBody(player); // Helper to clear old body
 
@@ -1290,15 +1310,17 @@ function resetGame() {
         player.isShielded = false;
         player.isGhost = false;
         player.isJuggernaut = false;
+        player.ammo = 0;
+        player.weaponType = null;
 
         // Create new body
-        // Use logic from spawnPlayer but force creation
-        const spawnIndex = players.size % activeTrack.spawnPoints.length;
+        const spawnIndex = spawnCounter % activeTrack.spawnPoints.length;
         const spawnPoint = activeTrack.spawnPoints[spawnIndex];
         const spawnX = spawnPoint.x + (Math.random() - 0.5) * 5;
         const spawnZ = spawnPoint.z + (Math.random() - 0.5) * 5;
 
         createPlayerBody(player, spawnX, spawnZ, spawnPoint.rotation || 0);
+        spawnCounter++;
 
         io.to(id).emit('joined', {
             id: id,
@@ -1617,7 +1639,13 @@ io.on('connection', (socket) => {
 
             // If Driver, spawn body
             if (type === 'driver') {
-                const spawnIndex = players.size % activeTrack.spawnPoints.length;
+                // Ensure track has spawn points
+                if (!activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
+                    console.error('[ERROR] No spawn points available on track!');
+                    activeTrack.spawnPoints = [{ x: 0, z: 0, rotation: 0 }]; // Fallback
+                }
+                
+                const spawnIndex = (players.size - 1) % activeTrack.spawnPoints.length;
                 const spawnPoint = activeTrack.spawnPoints[spawnIndex];
                 createPlayerBody(newPlayer,
                     spawnPoint.x + (Math.random() - 0.5) * 2,
