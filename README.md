@@ -14,11 +14,14 @@ Players use their **phones as controllers** to drive neon cars on a shared big s
 
 - 🚗 **12 Unique Tracks** with themes (Stadium, Industrial, Volcanic, etc.)
 - 🎵 **Dynamic Music** with 12 track-specific styles (90-160 BPM)
-- 🔫 **Weapons System** - Missiles and Lasers
-- 🤖 **AI Opponents** - CPU cars when <3 players
-- 🎭 **5 Mask Types** - Classic, Oni, Tech, Clown, Skull
-- 🏆 **Leaderboard** - Wins, kills, deaths tracking
-- 📺 **Demo Mode** - Auto-starts after 60s with no players
+- 🔫 **Weapons System** - Missiles (40 dmg) and Lasers (20 dmg)
+- 🤖 **AI Opponents** - 1-3 CPU cars spawn when <3 players
+- 🎭 **5 Mask Types** - Classic, Oni (+15% resist), Tech (+50% boost regen), Clown (bursts), Skull (+10% speed)
+- 🏆 **Leaderboard** - Wins, kills, deaths, games played tracking
+- 📺 **Demo Mode** - Auto-starts after 60s with no players (4-6 CPU battle)
+- 🛡️ **Powerups** - Repair, Boost, Shield, Ghost, Juggernaut, Weapon, 67Meme
+- 💥 **Combat** - Directional ramming with damage modifiers
+- 🏎️ **Race Mode** - 3 laps to win with waypoint-based pathfinding
 
 ## 🏗️ Architecture
 
@@ -56,7 +59,7 @@ cd server
 npm test
 ```
 
-26 tests covering: Physics, Boundaries, Leaderboard, Demo Mode, Tracks, Weapons, Damage, Masks, Audio.
+Comprehensive test suite covering: Physics, Boundaries, Leaderboard, Demo Mode, Tracks, Weapons, Damage, Masks, Audio, CPU Pathfinding, Game Flow, Camera, Powerups, Spawn Safety.
 
 ## 🎨 Tech Stack
 

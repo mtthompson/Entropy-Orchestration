@@ -98,22 +98,31 @@ The "mask" theme is interpreted as digital identity:
 ## Development Status (Updated: 2026-01-31)
 
 ### ✅ Fully Implemented
-* Project scaffold with npm workspaces
-* Server with 60Hz physics, collision damage, boundary enforcement
-* 12 race tracks with unique themes
-* CPU opponents with AI steering
-* Weapons system (missiles/lasers)
-* Demo mode (60s auto-trigger)
-* Leaderboard system (wins/kills/deaths)
-* Enhanced powerup visuals
-* Projectile rendering
-* Jest testing framework
+* Project scaffold with npm workspaces (server, renderer, controller)
+* Server with 60Hz physics tick rate using cannon-es
+* 12 race tracks with unique themes and terrain heightfields
+* CPU opponents with advanced pathfinding (waypoints, arena targeting)
+* Weapons system (missiles 40dmg, lasers 20dmg)
+* Demo mode (60s auto-trigger with 4-6 CPU battle)
+* Leaderboard system (wins/kills/deaths/gamesPlayed)
+* Full powerup system (Repair, Boost, Shield, Ghost, Juggernaut, Weapon, 67Meme)
+* Directional ramming mechanics (1.2x/0.7x damage modifiers)
+* Mask abilities system (Oni resistance, Tech boost regen, Skull speed, Clown bursts)
+* Lap tracking for race mode (3 laps to win)
+* Boundary enforcement with auto-respawn
+* Pre-built physics walls for instant track switching
+* Terrain heightfield generation per track
+* Jest testing framework with comprehensive test suite
+
+### 🎮 Game States
+* LOBBY → COUNTDOWN (3s) → RACING → WINNER (10s) → LOBBY
+* DEMO mode runs when no players for 60s
 
 ### 🚧 In Progress
-* Particle effects (speed lines, impacts)
+* Particle effects refinement
 * Dynamic audio mixing
-* Creative mask theme visuals
-* Camera enhancements
+* Mobile haptic feedback polish
+* Mask selector UI in controller
 
 ---
 

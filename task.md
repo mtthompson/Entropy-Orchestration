@@ -33,31 +33,35 @@
 
 ### ⚔️ Advanced Mechanics (PvP)
 - [x] **Directional Ramming**
-    - [x] Frontend hits deal 1.5x damage, self takes 0.5x
+    - [x] Frontend hits deal 1.2x damage, self takes 0.7x
     - [x] Apply knockback impulse based on velocity
 - [x] **New Power-ups**
     - [x] **Shield:** 5s Invulnerability (Blue Bubble)
     - [x] **Phase Shift/Ghost:** 5s Pass-through (Mask Theme)
     - [x] **Juggernaut:** 10s Double Mass + Red Glow
-- [ ] **Refine Spawning:** Ensure items only spawn on track surface
-- [ ] **Server Game Loop Manager:**
-    - [ ] Handle States: `LOBBY` -> `COUNTDOWN` -> `RACE` -> `WINNER` -> `LOBBY`
-    - [ ] **Dynamic Handling:**
-        - [ ] Mid-game Joiners -> Spawn as **Drone** (Spectator).
-        - [ ] Disconnects -> Remove Body & Trigger Win Check immediately.
-    - [ ] Reset Physics World on Restart
-    - [ ] Broadcast Timer/State changes
+    - [x] **Weapon:** Missiles (40dmg) and Lasers (20dmg)
+    - [x] **67Meme:** Easter egg +67 HP repair
+- [x] **Spawning:** Items spawn within track powerupBounds
+- [x] **Server Game Loop Manager:**
+    - [x] Handle States: `LOBBY` -> `COUNTDOWN` -> `RACING` -> `WINNER` -> `LOBBY`
+    - [x] **Dynamic Handling:**
+        - [x] Mid-game Joiners -> Spawn as **Drone** (Spectator).
+        - [x] Disconnects -> Remove Body & Trigger Win Check immediately.
+    - [x] Reset Physics World on Restart
+    - [x] Broadcast Timer/State changes
 
 ### 🏁 Content Expansion
-- [x] **Track Builder Helper:** `createTrackFromPath(points)`
+- [x] **Track Builder Helper:** Pre-built walls for instant switching
 - [x] **12 Unique Tracks:**
-    - [x] Race Circuits (accessbile)
-    - [x] Arenas (Chaos bowls)
-    - [x] Survival (Holes/Hazards)
+    - [x] Race Circuits (with waypoint paths)
+    - [x] Arenas (chaos bowls with center targeting)
+    - [x] Terrain heightfields per track
 
 ### ✨ Polish & UX
 - [x] **Scenery System:** Instanced Palms/Buildings for performance
 - [x] **Game Loop UI:** 
     - [x] "Waiting for Players" / Tutorial Overlay
     - [x] "Winner" Celebration Screen
+    - [x] Countdown timer display
+- [x] **Leaderboard System:** Top 10 with wins/kills/deaths
 - [ ] **Mobile Polish:** Reconnection handling & Haptics
