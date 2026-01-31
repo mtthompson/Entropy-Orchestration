@@ -1290,36 +1290,36 @@ export function useAudio(connected) {
         gain.connect(ctx.destination);
 
         if (type === 'crash') {
-            osc.type = 'square';
+            osc.type = 'sine'; // Softer than square
             osc.frequency.setValueAtTime(150, t);
             osc.frequency.exponentialRampToValueAtTime(40, t + 0.4);
-            gain.gain.setValueAtTime(0.5, t);
+            gain.gain.setValueAtTime(0.08, t); // Reduced from 0.5
             gain.gain.linearRampToValueAtTime(0, t + 0.4);
             osc.start(t);
             osc.stop(t + 0.4);
         } else if (type === 'boost') {
-            osc.type = 'sawtooth';
+            osc.type = 'sine'; // Softer than sawtooth
             osc.frequency.setValueAtTime(200, t);
             osc.frequency.linearRampToValueAtTime(600, t + 0.8);
-            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.setValueAtTime(0.05, t); // Reduced from 0.2
             gain.gain.linearRampToValueAtTime(0, t + 0.8);
             osc.start(t);
             osc.stop(t + 0.8);
         } else if (type === 'missile') {
             // Whoosh + explosion
-            osc.type = 'sawtooth';
+            osc.type = 'triangle'; // Softer than sawtooth
             osc.frequency.setValueAtTime(800, t);
             osc.frequency.exponentialRampToValueAtTime(200, t + 0.3);
-            gain.gain.setValueAtTime(0.4, t);
+            gain.gain.setValueAtTime(0.08, t); // Reduced from 0.4
             gain.gain.linearRampToValueAtTime(0, t + 0.3);
             osc.start(t);
             osc.stop(t + 0.3);
         } else if (type === 'laser') {
             // Zap sound
-            osc.type = 'square';
+            osc.type = 'triangle'; // Softer than square
             osc.frequency.setValueAtTime(1200, t);
             osc.frequency.exponentialRampToValueAtTime(300, t + 0.15);
-            gain.gain.setValueAtTime(0.25, t);
+            gain.gain.setValueAtTime(0.06, t); // Reduced from 0.25
             gain.gain.linearRampToValueAtTime(0, t + 0.15);
             osc.start(t);
             osc.stop(t + 0.15);
@@ -1330,16 +1330,16 @@ export function useAudio(connected) {
             osc.frequency.setValueAtTime(400, t + 0.1);
             osc.frequency.setValueAtTime(600, t + 0.2);
             osc.frequency.setValueAtTime(800, t + 0.3);
-            gain.gain.setValueAtTime(0.15, t);
+            gain.gain.setValueAtTime(0.06, t); // Reduced from 0.15
             gain.gain.linearRampToValueAtTime(0, t + 0.4);
             osc.start(t);
             osc.stop(t + 0.4);
         } else if (type === 'explosion') {
             // Big boom
-            osc.type = 'sawtooth';
+            osc.type = 'triangle'; // Softer than sawtooth
             osc.frequency.setValueAtTime(100, t);
             osc.frequency.exponentialRampToValueAtTime(20, t + 0.8);
-            gain.gain.setValueAtTime(0.6, t);
+            gain.gain.setValueAtTime(0.12, t); // Reduced from 0.6
             gain.gain.linearRampToValueAtTime(0, t + 0.8);
             osc.start(t);
             osc.stop(t + 0.8);
@@ -1347,16 +1347,16 @@ export function useAudio(connected) {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(500, t);
             osc.frequency.setValueAtTime(1000, t + 0.1);
-            gain.gain.setValueAtTime(0.1, t);
+            gain.gain.setValueAtTime(0.04, t); // Reduced from 0.1
             gain.gain.linearRampToValueAtTime(0, t + 0.4);
             osc.start(t);
             osc.stop(t + 0.4);
         } else if (type === 'countdown') {
-            // Countdown beep - ascending pitch
-            osc.type = 'square';
+            // Countdown beep - softer and less harsh
+            osc.type = 'sine'; // Changed from square (much softer)
             osc.frequency.setValueAtTime(440, t);
-            osc.frequency.setValueAtTime(880, t + 0.08);
-            gain.gain.setValueAtTime(0.2, t);
+            osc.frequency.setValueAtTime(660, t + 0.08); // Less dramatic jump (was 880)
+            gain.gain.setValueAtTime(0.04, t); // Reduced from 0.2
             gain.gain.linearRampToValueAtTime(0, t + 0.15);
             osc.start(t);
             osc.stop(t + 0.15);
