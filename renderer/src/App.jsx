@@ -900,8 +900,10 @@ function CameraController({ players, gameState }) {
     const smoothVel = useRef(new THREE.Vector3(0, 0, -1));
 
     useFrame((state, delta) => {
-        // Skip pack-following logic if not in active game states
-        if (gameState !== 'PLAYING' && gameState !== 'COUNTDOWN') {
+        // During demo mode, follow action even in LOBBY state
+        // Otherwise, only follow during active game states
+        const shouldFollow = gameState === 'PLAYING' || gameState === 'COUNTDOWN';
+        if (!shouldFollow) {
             return;
         }
 
@@ -979,7 +981,7 @@ function CameraController({ players, gameState }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, trackData, setEngineRpm, gameState }) {
+function Scene({ worldState, trackData, setEngineRpm, gameState, isDemo }) {
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
 
@@ -1061,8 +1063,8 @@ function Scene({ worldState, trackData, setEngineRpm, gameState }) {
                 />
             )}
 
-            {/* Camera system - Flying camera for lobby, pack-following for active game */}
-            {gameState === 'LOBBY' ? (
+            {/* Camera system - Flying camera for lobby (non-demo), pack-following for active game and demo mode */}
+            {gameState === 'LOBBY' && !isDemo ? (
                 <FlyingCamera trackData={trackData} />
             ) : (
                 <CameraController players={worldState.players || {}} gameState={gameState} />
@@ -1469,6 +1471,7 @@ export default function App() {
                     trackData={trackData} 
                     setEngineRpm={setEngineRpm}
                     gameState={gameState.state}
+                    isDemo={gameState.isDemo}
                 />
             </Canvas>
 
