@@ -192,8 +192,12 @@ function LobbyScreen({ onJoin }) {
     const [name, setName] = useState('');
 
     const handleJoin = () => {
+        console.log('[DEBUG] handleJoin called, name:', name, 'trimmed:', name.trim());
         if (name.trim()) {
+            console.log('[DEBUG] Calling onJoin with:', name.trim());
             onJoin(name.trim());
+        } else {
+            console.log('[DEBUG] Name is empty, not joining');
         }
     };
 
