@@ -245,8 +245,8 @@ function DrivingScreen({ playerState }) {
     useEffect(() => {
         const handleOrientation = (e) => {
             const tilt = e.gamma || 0;
-            // Sharper steering: only 20 degrees tilt for full turn (was 30)
-            const normalized = Math.max(-1, Math.min(1, tilt / 20));
+            // Full 180° tilt range: 90 degrees left/right for full steering
+            const normalized = Math.max(-1, Math.min(1, tilt / 90));
             inputRef.current.steering = normalized;
         };
 
