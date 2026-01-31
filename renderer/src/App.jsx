@@ -6,6 +6,9 @@ import { BlendFunction, GlitchMode } from 'postprocessing';
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
+import { Scenery } from './Scenery';
+import { GameUI } from './GameUI';
+import { useAudio } from './useAudio';
 
 // =============================================================================
 // SOCKET CONNECTION
@@ -18,24 +21,53 @@ const socketPath = isDev ? '/socket.io' : '/api/socket.io';
 const socket = io(SERVER_URL, { query: { role: 'admin' }, path: socketPath });
 
 // =============================================================================
-// SYNTHWAVE GRID FLOOR
+// SYNTHWAVE GRID FLOOR - Enhanced with Shader
 // =============================================================================
 function SynthwaveGrid({ floorSize }) {
-    const width = floorSize?.width || 200;
-    const depth = floorSize?.depth || 200;
+    const width = floorSize?.width || 250;
+    const depth = floorSize?.depth || 250;
+    const meshRef = useRef();
+    const gridRef = useRef();
+
+    // Animated grid scroll effect
+    useFrame((state) => {
+        if (gridRef.current) {
+            gridRef.current.position.z = (state.clock.elapsedTime * 5) % 10 - 5;
+        }
+    });
 
     return (
         <group>
-            {/* Dark base floor */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-                <planeGeometry args={[width, depth]} />
-                <meshBasicMaterial color="#1a0a2e" side={THREE.DoubleSide} />
+            {/* Reflective base floor */}
+            <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+                <planeGeometry args={[width * 1.5, depth * 1.5, 64, 64]} />
+                <meshStandardMaterial
+                    color="#0a051a"
+                    metalness={0.9}
+                    roughness={0.1}
+                    envMapIntensity={0.5}
+                />
             </mesh>
-            {/* Grid lines */}
+
+            {/* Animated grid lines - multiple layers for depth */}
+            <group ref={gridRef}>
+                <gridHelper
+                    args={[Math.max(width, depth) * 1.5, 60, '#ff00ff', '#3a1a5e']}
+                    position={[0, 0.02, 0]}
+                />
+            </group>
+
+            {/* Secondary grid for parallax effect */}
             <gridHelper
-                args={[Math.max(width, depth), 40, '#ff00ff', '#3a1a5e']}
-                position={[0, 0.01, 0]}
+                args={[Math.max(width, depth), 30, '#00ffff', '#1a1a3e']}
+                position={[0, 0.03, 0]}
             />
+
+            {/* Fog floor edge glow */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
+                <ringGeometry args={[Math.max(width, depth) * 0.5, Math.max(width, depth) * 0.8, 64]} />
+                <meshBasicMaterial color="#ff00ff" transparent opacity={0.1} side={THREE.DoubleSide} />
+            </mesh>
         </group>
     );
 }
@@ -43,7 +75,7 @@ function SynthwaveGrid({ floorSize }) {
 // =============================================================================
 // CAR COMPONENT WITH TRAIL
 // =============================================================================
-function Car({ position, velocity, color, hp, isDying }) {
+function Car({ position, velocity, color, hp, isDying, maskType }) {
     const meshRef = useRef();
     const targetPos = useRef(new THREE.Vector3(...position));
 
@@ -54,33 +86,158 @@ function Car({ position, velocity, color, hp, isDying }) {
     useFrame((state, delta) => {
         if (meshRef.current) {
             meshRef.current.position.lerp(targetPos.current, 0.3);
-
-            // Damage flicker when low HP
             if (hp < 30) {
-                meshRef.current.material.emissiveIntensity = Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1;
+                // Flash whole group?
+                meshRef.current.children.forEach(c => {
+                    if (c.material) c.material.emissiveIntensity = Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1;
+                });
+            }
+            // Rotate based on movement 
+            if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
+                meshRef.current.rotation.y = Math.atan2(velocity.x, velocity.z);
             }
         }
     });
 
     const trailColor = new THREE.Color(color);
 
+    // MASK GEOMETRY SWITCHER
+    const GeometricModel = () => {
+        const mat = <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} metalness={0.6} roughness={0.2} />;
+        const blackMat = <meshStandardMaterial color="#222" metalness={0.1} roughness={0.9} />;
+
+        const Wheels = () => (
+            <>
+                <mesh position={[0.8, -0.3, 0.8]} rotation={[0, 0, Math.PI / 2]}>
+                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
+                    {blackMat}
+                </mesh>
+                <mesh position={[-0.8, -0.3, 0.8]} rotation={[0, 0, Math.PI / 2]}>
+                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
+                    {blackMat}
+                </mesh>
+                <mesh position={[0.8, -0.3, -0.8]} rotation={[0, 0, Math.PI / 2]}>
+                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
+                    {blackMat}
+                </mesh>
+                <mesh position={[-0.8, -0.3, -0.8]} rotation={[0, 0, Math.PI / 2]}>
+                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
+                    {blackMat}
+                </mesh>
+            </>
+        );
+
+        switch (maskType) {
+            case 'Oni': // Spiky Aggressive
+                return (
+                    <group>
+                        {/* Body */}
+                        <mesh position={[0, 0, 0]}>
+                            <boxGeometry args={[1.6, 0.6, 2.5]} />
+                            {mat}
+                        </mesh>
+                        {/* Horns */}
+                        <mesh position={[0.5, 0.5, 1]} rotation={[Math.PI / 4, 0, 0]}>
+                            <coneGeometry args={[0.2, 0.8, 8]} />
+                            {mat}
+                        </mesh>
+                        <mesh position={[-0.5, 0.5, 1]} rotation={[Math.PI / 4, 0, 0]}>
+                            <coneGeometry args={[0.2, 0.8, 8]} />
+                            {mat}
+                        </mesh>
+                        <Wheels />
+                    </group>
+                );
+            case 'Tech': // Boxy Cyberpunk
+                return (
+                    <group>
+                        <mesh position={[0, 0, 0]}>
+                            <boxGeometry args={[1.4, 0.5, 3]} />
+                            {mat}
+                        </mesh>
+                        <mesh position={[0, 0.4, -0.5]}>
+                            <boxGeometry args={[1.0, 0.4, 1.2]} />
+                            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} />
+                        </mesh>
+                        <Wheels />
+                    </group>
+                );
+            case 'Clown': // Wacky Round
+                return (
+                    <group>
+                        <mesh position={[0, 0, 0]}>
+                            <capsuleGeometry args={[0.7, 1.5, 4, 8]} rotation={[Math.PI / 2, 0, 0]} /> {/* Capsule need latest drei or three? three has it. */}
+                            {/* Fallback to cylinder/sphere if capsule fails: Sphere scale */}
+                            <sphereGeometry args={[1, 16, 16]} />
+                            {mat}
+                        </mesh>
+                        <mesh position={[0, 0.8, 0]}>
+                            <sphereGeometry args={[0.4]} />
+                            <meshStandardMaterial color="red" emissive="red" />
+                        </mesh>
+                        <Wheels />
+                    </group>
+                );
+            case 'Classic':
+            default: // Arcade Racer
+                return (
+                    <group>
+                        <mesh position={[0, -0.2, 0]}>
+                            <boxGeometry args={[1.6, 0.5, 3]} />
+                            {mat}
+                        </mesh>
+                        <mesh position={[0, 0.3, -0.2]}>
+                            <boxGeometry args={[1.2, 0.5, 1.5]} />
+                            {mat}
+                        </mesh>
+                        {/* Spoiler */}
+                        <mesh position={[0, 0.6, 1.2]}>
+                            <boxGeometry args={[1.6, 0.1, 0.4]} />
+                            {mat}
+                        </mesh>
+                        <Wheels />
+                    </group>
+                );
+        }
+    };
+
+    // Calculate speed for visual effects
+    const [engineFlame, setEngineFlame] = useState(0);
+
+    useFrame((state) => {
+        if (meshRef.current && velocity) {
+            // Pulse effect based on speed
+            const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+            setEngineFlame(Math.min(1, speed / 20));
+        }
+    });
+
     return (
-        <Trail
-            width={2}
-            length={8}
-            color={trailColor}
-            attenuation={(t) => t * t}
-        >
-            <mesh ref={meshRef} position={position}>
-                <sphereGeometry args={[1, 16, 16]} />
-                <meshStandardMaterial
+        <Trail width={3} length={10} color={trailColor} attenuation={(t) => t * t}>
+            <group ref={meshRef} position={position}>
+                <GeometricModel />
+
+                {/* Engine Flame Effect */}
+                {engineFlame > 0.1 && (
+                    <mesh position={[0, 0.1, 1.5]} scale={[0.4 + engineFlame * 0.3, 0.3 + engineFlame * 0.2, 0.5 + engineFlame * 1.5]}>
+                        <coneGeometry args={[1, 2, 8]} />
+                        <meshBasicMaterial
+                            color="#ff6600"
+                            transparent
+                            opacity={0.6 + engineFlame * 0.3}
+                            blending={THREE.AdditiveBlending}
+                        />
+                    </mesh>
+                )}
+
+                {/* Underglow */}
+                <pointLight
+                    position={[0, -0.5, 0]}
                     color={color}
-                    emissive={color}
-                    emissiveIntensity={0.5}
-                    metalness={0.8}
-                    roughness={0.2}
+                    intensity={0.8 + engineFlame * 0.5}
+                    distance={6}
                 />
-            </mesh>
+            </group>
         </Trail>
     );
 }
@@ -88,68 +245,26 @@ function Car({ position, velocity, color, hp, isDying }) {
 // =============================================================================
 // EXPLOSION PARTICLES
 // =============================================================================
+// =============================================================================
+// EXPLOSION PARTICLES (SPRITE BASED)
+// =============================================================================
 function Explosion({ position, color, onComplete }) {
-    const particlesRef = useRef();
-    const [particles] = useState(() => {
-        const count = 50;
-        const positions = new Float32Array(count * 3);
-        const velocities = [];
-
-        for (let i = 0; i < count; i++) {
-            positions[i * 3] = position[0];
-            positions[i * 3 + 1] = position[1];
-            positions[i * 3 + 2] = position[2];
-
-            velocities.push({
-                x: (Math.random() - 0.5) * 20,
-                y: Math.random() * 15,
-                z: (Math.random() - 0.5) * 20
-            });
-        }
-
-        return { positions, velocities, count };
-    });
-
+    const texture = useMemo(() => new THREE.TextureLoader().load('/explosion.png'), []);
     const [life, setLife] = useState(1);
 
     useFrame((state, delta) => {
-        if (particlesRef.current && life > 0) {
-            const positions = particlesRef.current.geometry.attributes.position.array;
-
-            for (let i = 0; i < particles.count; i++) {
-                positions[i * 3] += particles.velocities[i].x * delta;
-                positions[i * 3 + 1] += particles.velocities[i].y * delta;
-                positions[i * 3 + 2] += particles.velocities[i].z * delta;
-                particles.velocities[i].y -= 20 * delta; // Gravity
-            }
-
-            particlesRef.current.geometry.attributes.position.needsUpdate = true;
-            particlesRef.current.material.opacity = life;
-
-            setLife(l => l - delta * 0.8);
-
-            if (life <= 0) onComplete?.();
-        }
+        setLife(l => l - delta * 2);
+        if (life <= 0) onComplete?.();
     });
 
+    if (life <= 0) return null;
+
     return (
-        <points ref={particlesRef}>
-            <bufferGeometry>
-                <bufferAttribute
-                    attach="attributes-position"
-                    count={particles.count}
-                    array={particles.positions}
-                    itemSize={3}
-                />
-            </bufferGeometry>
-            <pointsMaterial
-                size={0.5}
-                color={color}
-                transparent
-                opacity={life}
-                blending={THREE.AdditiveBlending}
-            />
-        </points>
+        <group position={position}>
+            <sprite scale={[5 + (1 - life) * 5, 5 + (1 - life) * 5, 1]}>
+                <spriteMaterial map={texture} color={color} transparent opacity={life} blending={THREE.AdditiveBlending} />
+            </sprite>
+        </group>
     );
 }
 
@@ -158,25 +273,80 @@ function Explosion({ position, color, onComplete }) {
 // =============================================================================
 function Powerup({ position, type }) {
     const meshRef = useRef();
-    const color = type === 'Repair' ? '#00ff00' : '#ffff00';
+    const glowRef = useRef();
+    const beaconRef = useRef();
+
+    // Color based on powerup type
+    const POWERUP_COLORS = {
+        'Repair': '#00ff00',
+        'Boost': '#ffff00',
+        'Shield': '#00ffff',
+        'Ghost': '#ffffff',
+        'Juggernaut': '#ff0066',
+        'Weapon': '#ff6600'
+    };
+    const color = POWERUP_COLORS[type] || '#ff00ff';
 
     useFrame((state) => {
+        const t = state.clock.elapsedTime;
         if (meshRef.current) {
-            meshRef.current.rotation.y = state.clock.elapsedTime * 2;
-            meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 3) * 0.3;
+            meshRef.current.rotation.y = t * 3;
+            meshRef.current.rotation.x = Math.sin(t * 2) * 0.3;
+            meshRef.current.position.y = position[1] + Math.sin(t * 3) * 0.5 + 0.5;
+        }
+        if (glowRef.current) {
+            glowRef.current.scale.setScalar(1.5 + Math.sin(t * 6) * 0.3);
+            glowRef.current.material.opacity = 0.3 + Math.sin(t * 8) * 0.2;
+        }
+        if (beaconRef.current) {
+            beaconRef.current.material.opacity = 0.15 + Math.sin(t * 4) * 0.1;
         }
     });
 
     return (
-        <mesh ref={meshRef} position={position}>
-            <octahedronGeometry args={[0.8, 0]} />
-            <meshStandardMaterial
-                color={color}
-                emissive={color}
-                emissiveIntensity={1}
-                wireframe
-            />
-        </mesh>
+        <group position={position}>
+            {/* Main pickup mesh */}
+            <mesh ref={meshRef}>
+                <octahedronGeometry args={[0.9, 0]} />
+                <meshStandardMaterial
+                    color={color}
+                    emissive={color}
+                    emissiveIntensity={2}
+                    wireframe
+                />
+            </mesh>
+
+            {/* Outer pulsing glow */}
+            <mesh ref={glowRef}>
+                <sphereGeometry args={[1.2, 16, 16]} />
+                <meshBasicMaterial
+                    color={color}
+                    transparent
+                    opacity={0.3}
+                    blending={THREE.AdditiveBlending}
+                />
+            </mesh>
+
+            {/* Beacon ray shooting upward */}
+            <mesh ref={beaconRef} position={[0, 10, 0]}>
+                <cylinderGeometry args={[0.1, 0.5, 20, 8]} />
+                <meshBasicMaterial
+                    color={color}
+                    transparent
+                    opacity={0.2}
+                    blending={THREE.AdditiveBlending}
+                />
+            </mesh>
+
+            {/* Animated rings */}
+            <mesh position={[0, 0.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[1.5, 1.7, 16]} />
+                <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} />
+            </mesh>
+
+            {/* Point light for area effect */}
+            <pointLight color={color} intensity={1.5} distance={8} />
+        </group>
     );
 }
 
@@ -264,6 +434,7 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
 // =============================================================================
 function TrackWall({ wall }) {
     const meshRef = useRef();
+    const scanRef = useRef();
 
     // Calculate wall dimensions and position
     const length = Math.sqrt(
@@ -272,32 +443,61 @@ function TrackWall({ wall }) {
     const centerX = (wall.x1 + wall.x2) / 2;
     const centerZ = (wall.z1 + wall.z2) / 2;
     const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
-    const height = wall.height || 4;
+    const height = wall.height || 5;
 
-    // Animate glow
+    // Animate glow and scan line
     useFrame((state) => {
         if (meshRef.current) {
             meshRef.current.material.emissiveIntensity =
-                0.3 + Math.sin(state.clock.elapsedTime * 2) * 0.15;
+                0.5 + Math.sin(state.clock.elapsedTime * 2) * 0.3;
+        }
+        if (scanRef.current) {
+            // Scan line moves up and down
+            scanRef.current.position.y = (Math.sin(state.clock.elapsedTime * 3) * 0.4 + 0.5) * height;
         }
     });
 
     return (
-        <mesh
-            ref={meshRef}
-            position={[centerX, height / 2, centerZ]}
-            rotation={[0, -angle, 0]}
-        >
-            <boxGeometry args={[length, height, 0.05]} />
-            <meshStandardMaterial
-                color="#4a1a8e"
-                emissive="#ff00ff"
-                emissiveIntensity={0.3}
-                transparent={false}
-                opacity={1}
-                side={THREE.DoubleSide}
+        <group position={[centerX, 0, centerZ]} rotation={[0, -angle, 0]}>
+            {/* Main wall panel */}
+            <mesh ref={meshRef} position={[0, height / 2, 0]}>
+                <boxGeometry args={[length, height, 0.08]} />
+                <meshStandardMaterial
+                    color="#2a0a4e"
+                    emissive="#ff00ff"
+                    emissiveIntensity={0.5}
+                    metalness={0.8}
+                    roughness={0.2}
+                    side={THREE.DoubleSide}
+                />
+            </mesh>
+
+            {/* Neon edge frame - top */}
+            <mesh position={[0, height, 0]}>
+                <boxGeometry args={[length + 0.1, 0.15, 0.12]} />
+                <meshBasicMaterial color="#ff00ff" />
+            </mesh>
+
+            {/* Neon edge frame - bottom */}
+            <mesh position={[0, 0.08, 0]}>
+                <boxGeometry args={[length + 0.1, 0.15, 0.12]} />
+                <meshBasicMaterial color="#00ffff" />
+            </mesh>
+
+            {/* Animated scan line */}
+            <mesh ref={scanRef} position={[0, height / 2, 0.05]}>
+                <planeGeometry args={[length - 0.2, 0.1]} />
+                <meshBasicMaterial color="#ffffff" transparent opacity={0.8} />
+            </mesh>
+
+            {/* Glow light */}
+            <pointLight
+                position={[0, height / 2, 0.5]}
+                color="#ff00ff"
+                intensity={0.3}
+                distance={8}
             />
-        </mesh>
+        </group>
     );
 }
 
@@ -438,7 +638,7 @@ function Scene({ worldState, trackData }) {
     return (
         <>
             <color attach="background" args={['#0a0012']} />
-            <fog attach="fog" args={['#0a0012', 30, 100]} />
+            <fog attach="fog" args={['#0a0012', 30, 250]} />
 
             <ambientLight intensity={0.2} />
             <pointLight position={[0, 50, 0]} intensity={1} color="#ff00ff" />
@@ -447,6 +647,7 @@ function Scene({ worldState, trackData }) {
             <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
 
             <SynthwaveGrid floorSize={trackData?.floorSize} />
+            <Scenery />
 
             {/* Track Walls */}
             <TrackBoundaries boundaries={trackData?.boundaries} />
@@ -478,6 +679,7 @@ function Scene({ worldState, trackData }) {
                         velocity={player.velocity}
                         color={player.color}
                         hp={player.hp}
+                        maskType={player.maskType}
                     />
                 );
             })}
@@ -509,16 +711,18 @@ function Scene({ worldState, trackData }) {
                 />
             ))}
 
-            {/* Post Processing */}
-            <EffectComposer>
+            {/* Post Processing - RTX 4070 Enhanced */}
+            <EffectComposer multisampling={8}>
                 <Bloom
-                    intensity={0.8}
-                    luminanceThreshold={0.4}
-                    luminanceSmoothing={0.9}
+                    intensity={1.2}
+                    luminanceThreshold={0.3}
+                    luminanceSmoothing={0.8}
+                    mipmapBlur={true}
+                    radius={0.8}
                 />
                 <ChromaticAberration
                     blendFunction={BlendFunction.NORMAL}
-                    offset={[0.001, 0.001]}
+                    offset={[0.002, 0.002]}
                 />
             </EffectComposer>
         </>
@@ -617,13 +821,22 @@ export default function App() {
         powerups: {},
         traps: {}
     });
+    const [gameState, setGameState] = useState({
+        state: 'LOBBY',
+        timer: 0,
+        winner: null
+    });
     const [trackData, setTrackData] = useState(null);
     const [connected, setConnected] = useState(false);
+
+    // Audio Hook
+    const { initAudio, playSfx } = useAudio(connected);
 
     useEffect(() => {
         socket.on('connect', () => {
             console.log('Connected to server');
             setConnected(true);
+            playSfx('join');
         });
 
         socket.on('disconnect', () => {
@@ -635,25 +848,31 @@ export default function App() {
             setWorldState(state);
         });
 
+        socket.on('gameState', (state) => {
+            setGameState(state);
+            if (state.state === 'COUNTDOWN') playSfx('join'); // Ping on countdown
+            if (state.state === 'WINNER') playSfx('boost'); // Victory sound
+        });
+
         socket.on('trackData', (data) => {
             console.log('Received track data:', data.name);
             setTrackData(data);
         });
 
+        socket.on('damage', () => playSfx('crash'));
+
         return () => {
-            // Cleanup socket listeners on unmount
             socket.off('trackData');
-            // We don't remove other listeners here because they are set up outside this effect? 
-            // Actually, looking at previous code, they were inside.
-            // But let's follow the pattern.
             socket.off('connect');
             socket.off('disconnect');
             socket.off('worldState');
+            socket.off('gameState');
+            socket.off('damage');
         };
-    }, []);
+    }, [playSfx]);
 
     return (
-        <div style={{ width: '100vw', height: '100vh' }}>
+        <div style={{ width: '100vw', height: '100vh' }} onClick={initAudio}>
             <Canvas
                 camera={{ position: [0, 20, 30], fov: 60 }}
                 gl={{ antialias: true, alpha: false }}
@@ -661,6 +880,7 @@ export default function App() {
                 <Scene worldState={worldState} trackData={trackData} />
             </Canvas>
 
+            <GameUI gameState={gameState.state} gameTimer={gameState.timer} winner={gameState.winner} />
             <QROverlay />
             <PlayerList players={worldState.players} />
 

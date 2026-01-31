@@ -23,8 +23,8 @@
 ### 🎨 Core Assets & Theme
 - [ ] **Assets:** Source/Generate 3-4 "Mask" Car Models (Oni, Tech, Clown)
 - [ ] **Assets:** Animation Sprites (Explosion, Smoke, Boost, N64 style)
-- [ ] **Assets:** Scenery Elements (Neon Palms, Mountains, Sun, Buildings)
-- [ ] **Audio:** N64-style Background Music (Loopable) & SFX
+- [x] **Assets:** Scenery Elements (Neon Palms, Mountains, Sun, Buildings)
+- [x] **Audio:** N64-style Background Music (Loopable) & SFX
 - [ ] **Theme Integration ("Mask")**
     - [ ] **Controller:** Add Mask Selector to Lobby
     - [ ] **Controller:** Add Haptic Feedback (Vibration)
@@ -32,13 +32,13 @@
     - [ ] **Renderer:** Render specific models per player
 
 ### ⚔️ Advanced Mechanics (PvP)
-- [ ] **Directional Ramming**
-    - [ ] Frontend hits deal 1.5x damage, self takes 0.5x
-    - [ ] Apply knockback impulse based on velocity
-- [ ] **New Power-ups**
-    - [ ] **Shield:** 5s Invulnerability (Blue Bubble)
-    - [ ] **Phase Shift/Ghost:** 5s Pass-through (Mask Theme)
-    - [ ] **Juggernaut:** 10s Double Mass + Red Glow
+- [x] **Directional Ramming**
+    - [x] Frontend hits deal 1.5x damage, self takes 0.5x
+    - [x] Apply knockback impulse based on velocity
+- [x] **New Power-ups**
+    - [x] **Shield:** 5s Invulnerability (Blue Bubble)
+    - [x] **Phase Shift/Ghost:** 5s Pass-through (Mask Theme)
+    - [x] **Juggernaut:** 10s Double Mass + Red Glow
 - [ ] **Refine Spawning:** Ensure items only spawn on track surface
 - [ ] **Server Game Loop Manager:**
     - [ ] Handle States: `LOBBY` -> `COUNTDOWN` -> `RACE` -> `WINNER` -> `LOBBY`
@@ -49,15 +49,15 @@
     - [ ] Broadcast Timer/State changes
 
 ### 🏁 Content Expansion
-- [ ] **Track Builder Helper:** `createTrackFromPath(points)`
-- [ ] **12 Unique Tracks:**
-    - [ ] Race Circuits (accessbile)
-    - [ ] Arenas (Chaos bowls)
-    - [ ] Survival (Holes/Hazards)
+- [x] **Track Builder Helper:** `createTrackFromPath(points)`
+- [x] **12 Unique Tracks:**
+    - [x] Race Circuits (accessbile)
+    - [x] Arenas (Chaos bowls)
+    - [x] Survival (Holes/Hazards)
 
 ### ✨ Polish & UX
-- [ ] **Scenery System:** Instanced Palms/Buildings for performance
-- [ ] **Game Loop UI:** 
-    - [ ] "Waiting for Players" / Tutorial Overlay
-    - [ ] "Winner" Celebration Screen
+- [x] **Scenery System:** Instanced Palms/Buildings for performance
+- [x] **Game Loop UI:** 
+    - [x] "Waiting for Players" / Tutorial Overlay
+    - [x] "Winner" Celebration Screen
 - [ ] **Mobile Polish:** Reconnection handling & Haptics

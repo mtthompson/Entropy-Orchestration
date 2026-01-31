@@ -77,8 +77,24 @@ world.addBody(groundBody);
 // =============================================================================
 // TRACK SYSTEM
 // =============================================================================
-const activeTrack = getDefaultTrack();
+let activeTrack = getDefaultTrack();
 const trackWalls = [];
+
+// Select random track
+function selectRandomTrack() {
+    const { getRandomTrack } = require('./tracks');
+    activeTrack = getRandomTrack();
+    console.log(`[TRACK] Selected: ${activeTrack.name}`);
+
+    // Clear existing walls
+    for (const wall of trackWalls) {
+        world.removeBody(wall);
+    }
+    trackWalls.length = 0;
+
+    // Create new walls
+    createTrackWalls();
+}
 
 // Create wall physics bodies from track boundaries
 function createTrackWalls() {
@@ -115,6 +131,8 @@ createTrackWalls();
 // GAME STATE
 // =============================================================================
 const players = new Map();       // id -> { body, hp, type, color, name }
+const cpuPlayers = new Map();    // id -> { body, waypointIndex, ... }
+const projectiles = new Map();   // id -> { body, ownerId, type, damage }
 const powerups = new Map();      // id -> { body, type }
 const traps = new Map();         // id -> { body }
 
@@ -123,45 +141,230 @@ const CAR_COLORS = [
     '#FF0066', '#6600FF', '#FFFF00', '#00FF99'
 ];
 
+const CPU_NAMES = ['NEON', 'RAZOR', 'VOLT', 'BLAZE', 'CYBER', 'TURBO'];
+let cpuIdCounter = 0;
+let projectileIdCounter = 0;
+
+// =============================================================================
+// BOUNDARY ENFORCEMENT
+// =============================================================================
+function getTrackBounds() {
+    const bounds = activeTrack.powerupBounds;
+    return {
+        minX: bounds.minX - 10,
+        maxX: bounds.maxX + 10,
+        minZ: bounds.minZ - 10,
+        maxZ: bounds.maxZ + 10
+    };
+}
+
+function enforceBoundaries(body) {
+    const bounds = getTrackBounds();
+    let teleported = false;
+
+    if (body.position.x < bounds.minX || body.position.x > bounds.maxX ||
+        body.position.z < bounds.minZ || body.position.z > bounds.maxZ) {
+        // Find closest spawn point
+        const spawn = activeTrack.spawnPoints[0];
+        body.position.set(spawn.x, 1, spawn.z);
+        body.velocity.set(0, 0, 0);
+        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.rotation || 0);
+        teleported = true;
+    }
+
+    // Also prevent falling through floor
+    if (body.position.y < -5) {
+        const spawn = activeTrack.spawnPoints[0];
+        body.position.set(spawn.x, 1, spawn.z);
+        body.velocity.set(0, 0, 0);
+        teleported = true;
+    }
+
+    return teleported;
+}
+
+// =============================================================================
+// CPU OPPONENT SYSTEM
+// =============================================================================
+function spawnCPUOpponents(count) {
+    for (let i = 0; i < count; i++) {
+        const cpuId = `cpu_${cpuIdCounter++}`;
+        const spawnIndex = i % activeTrack.spawnPoints.length;
+        const spawn = activeTrack.spawnPoints[spawnIndex];
+
+        const cpu = {
+            id: cpuId,
+            name: CPU_NAMES[i % CPU_NAMES.length],
+            color: CAR_COLORS[(i + 3) % CAR_COLORS.length],
+            hp: 100,
+            type: 'driver',
+            isCPU: true,
+            waypointIndex: 0,
+            boost: 100
+        };
+
+        const body = new CANNON.Body({
+            mass: 50,
+            shape: new CANNON.Sphere(1),
+            position: new CANNON.Vec3(spawn.x + (i * 3), 1, spawn.z),
+            linearDamping: 0.5,
+            angularDamping: 0.5,
+            allowSleep: false,
+            material: carMaterial
+        });
+        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.rotation || 0);
+
+        world.addBody(body);
+        cpu.body = body;
+        cpuPlayers.set(cpuId, cpu);
+    }
+    console.log(`[CPU] Spawned ${count} CPU opponents`);
+}
+
+function updateCPUPhysics() {
+    const trackPath = activeTrack.boundaries;
+
+    for (const [id, cpu] of cpuPlayers) {
+        if (!cpu.body || cpu.hp <= 0) continue;
+
+        // Simple waypoint following AI
+        const pos = cpu.body.position;
+
+        // Get a target point ahead on the track (simplified - just drive toward center)
+        const targetX = 0;
+        const targetZ = pos.z - 20; // Always try to go forward (negative Z)
+
+        const dx = targetX - pos.x;
+        const dz = targetZ - pos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist > 0.1) {
+            // Calculate steering
+            const targetAngle = Math.atan2(dx, -dz);
+            const euler = new CANNON.Vec3();
+            cpu.body.quaternion.toEuler(euler);
+            const currentAngle = euler.y;
+
+            let angleDiff = targetAngle - currentAngle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+            // Apply steering
+            cpu.body.angularVelocity.y = angleDiff * 3;
+
+            // Apply throttle
+            const forward = new CANNON.Vec3(0, 0, -1);
+            cpu.body.quaternion.vmult(forward, forward);
+            const force = forward.clone();
+            force.scale(500, force); // Slightly slower than players
+            cpu.body.applyForce(force, cpu.body.position);
+        }
+
+        // Enforce boundaries for CPU too
+        enforceBoundaries(cpu.body);
+    }
+}
+
+function removeCPUOpponents() {
+    for (const [id, cpu] of cpuPlayers) {
+        if (cpu.body) world.removeBody(cpu.body);
+    }
+    cpuPlayers.clear();
+}
+
+// =============================================================================
+// PROJECTILE SYSTEM
+// =============================================================================
+function createProjectile(ownerId, type, position, direction) {
+    const projId = `proj_${projectileIdCounter++}`;
+
+    const speed = type === 'missile' ? 80 : 120; // Missiles slower but stronger
+    const damage = type === 'missile' ? 40 : 20;
+
+    const body = new CANNON.Body({
+        mass: 1,
+        shape: new CANNON.Sphere(0.3),
+        position: new CANNON.Vec3(position.x, position.y, position.z),
+        linearDamping: 0,
+        angularDamping: 0
+    });
+
+    body.velocity.set(direction.x * speed, 0, direction.z * speed);
+    world.addBody(body);
+
+    const projectile = {
+        id: projId,
+        body,
+        ownerId,
+        type,
+        damage,
+        createdAt: Date.now()
+    };
+
+    projectiles.set(projId, projectile);
+
+    // Auto-destroy after 3 seconds
+    setTimeout(() => {
+        if (projectiles.has(projId)) {
+            world.removeBody(projectiles.get(projId).body);
+            projectiles.delete(projId);
+        }
+    }, 3000);
+
+    return projId;
+}
+
+function updateProjectiles() {
+    const now = Date.now();
+
+    for (const [projId, proj] of projectiles) {
+        // Check collision with players
+        for (const [playerId, player] of players) {
+            if (playerId === proj.ownerId) continue; // Can't hit yourself
+            if (!player.body || player.type !== 'driver') continue;
+
+            const dist = proj.body.position.distanceTo(player.body.position);
+            if (dist < 2) {
+                // Hit!
+                player.hp -= proj.damage;
+                io.to(playerId).emit('damage', { amount: proj.damage, source: 'projectile' });
+
+                // Remove projectile
+                world.removeBody(proj.body);
+                projectiles.delete(projId);
+
+                // Check if player died
+                if (player.hp <= 0) {
+                    handlePlayerDeath(playerId);
+                }
+                break;
+            }
+        }
+
+        // Check collision with CPU
+        for (const [cpuId, cpu] of cpuPlayers) {
+            if (!cpu.body) continue;
+
+            const dist = proj.body.position.distanceTo(cpu.body.position);
+            if (dist < 2) {
+                cpu.hp -= proj.damage;
+                world.removeBody(proj.body);
+                projectiles.delete(projId);
+
+                if (cpu.hp <= 0) {
+                    world.removeBody(cpu.body);
+                    cpuPlayers.delete(cpuId);
+                }
+                break;
+            }
+        }
+    }
+}
+
 // =============================================================================
 // PLAYER MANAGEMENT
 // =============================================================================
-function spawnPlayer(id, name = 'Player') {
-    // Use track spawn points
-    const spawnIndex = players.size % activeTrack.spawnPoints.length;
-    const spawnPoint = activeTrack.spawnPoints[spawnIndex];
-    const spawnX = spawnPoint.x + (Math.random() - 0.5) * 2; // Slight randomization
-    const spawnZ = spawnPoint.z + (Math.random() - 0.5) * 2;
-
-    const body = new CANNON.Body({
-        mass: 50,
-        shape: new CANNON.Sphere(1),
-        position: new CANNON.Vec3(spawnX, 1, spawnZ),
-        linearDamping: 0.5,  // Increased drag for better control (was 0.1)
-        angularDamping: 0.5, // Reduced spin (was 0.3)
-        allowSleep: false,  // Keep player bodies always awake
-        material: carMaterial,
-        // Continuous Collision Detection settings
-        ccdSpeedThreshold: 1, // Enable CCD if moving faster than 1 unit/tick
-        ccdIterations: 5      // Check 5 times between steps
-    });
-
-    world.addBody(body);
-
-    const color = CAR_COLORS[players.size % CAR_COLORS.length];
-
-    players.set(id, {
-        body,
-        hp: 100,
-        type: 'driver',
-        color,
-        name,
-        boost: 100
-    });
-
-    console.log(`[SPAWN] Player ${name} (${id}) spawned at (${spawnX.toFixed(1)}, ${spawnZ.toFixed(1)})`);
-    return players.get(id);
-}
+// spawnPlayer removed - logic handled in socket connection
 
 function removePlayer(id) {
     const player = players.get(id);
@@ -197,62 +400,149 @@ function updatePlayerPhysics(player, input) {
     // Wake up body
     player.body.wakeUp();
 
-    // 1. Update Heading (Steering)
-    // Instead of applying torque, we rotate the car's intended direction
-    // Retrieve current heading from quaternion (approximate)
-    // actually, let's just use angular velocity to turn the car
-    // Apply torque for rotation
-    const turnSpeed = 8.0; // How fast it turns
-    player.body.angularVelocity.y = -steering * turnSpeed;
+    // Get current speed
+    const speed = player.body.velocity.length();
+
+    // 1. STEERING - Only allow turning when moving
+    // Steering sensitivity decreases at high speed (prevents spinouts)
+    const minSpeedToTurn = 2;
+    const turnSpeed = 6.0;
+    const speedFactor = Math.min(1, speed / 15); // Full turn at speed 15+
+    const highSpeedDampen = Math.max(0.3, 1 - speed / 50); // Reduce turn at very high speed
+
+    if (speed > minSpeedToTurn) {
+        player.body.angularVelocity.y = -steering * turnSpeed * speedFactor * highSpeedDampen;
+    } else {
+        player.body.angularVelocity.y *= 0.9; // Dampen rotation when stationary
+    }
 
     // 2. Calculate Forward Direction based on current rotation
     const quaternion = player.body.quaternion;
-    const forward = new CANNON.Vec3(0, 0, 1);
-    quaternion.vmult(forward, forward); // Rotate forward vector by body rotation
+    const forward = new CANNON.Vec3(0, 0, -1); // NEGATIVE Z is forward
+    quaternion.vmult(forward, forward);
 
     // 3. Apply Throttle Force (Aligned with heading)
-    const driveForce = 600;
+    const driveForce = 800;
     const force = forward.clone();
-    force.scale(-throttle * driveForce, force); // -z is forward in our local space usually
+    force.scale(throttle * driveForce, force);
 
-    // Boost
+    // Boost multiplier
     if (boost && player.boost > 0) {
-        force.scale(2, force);
-        player.boost = Math.max(0, player.boost - 1);
+        force.scale(1.8, force);
+        player.boost = Math.max(0, player.boost - 1.5);
     } else {
-        player.boost = Math.min(100, player.boost + 0.2);
+        player.boost = Math.min(100, player.boost + 0.3);
     }
 
     player.body.applyForce(force, player.body.position);
 
-    // 4. Lateral Friction (Grip)
-    // Get velocity relative to car
-    // We want to kill sideways velocity
+    // 4. Lateral Friction (Anti-drift grip)
     const velocity = player.body.velocity;
     const right = new CANNON.Vec3(1, 0, 0);
     quaternion.vmult(right, right);
 
     const lateralVelocity = velocity.dot(right);
 
-    // Apply opposing impulse to cancel lateral slide
-    // Grip factor: 0.0 = ice, 1.0 = tracks
-    const grip = 0.85;
+    // Apply STRONG opposing force to cancel sideways slide
+    // Higher grip = more like a car, lower = more like ice
+    const grip = 0.92; // Increased grip
     const correctionForce = right.clone();
-    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 5, correctionForce); // *5 to make it stiff
+    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 8, correctionForce);
 
     player.body.applyForce(correctionForce, player.body.position);
+
+    // 5. Speed cap to prevent runaway
+    const maxSpeed = 45;
+    if (speed > maxSpeed) {
+        player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
+    }
+}
+
+// =============================================================================
+// PLAYER STATE HELPERS
+// =============================================================================
+function applyPowerupState(player, type, durationMs) {
+    if (!player) return;
+
+    // Clear existing timeouts if overwriting
+    if (player.powerupTimeout) clearTimeout(player.powerupTimeout);
+
+    // Reset stats to default before applying new one
+    if (player.body) {
+        player.body.mass = 50;
+        player.body.collisionFilterGroup = 1;
+        player.body.collisionFilterMask = 1; // Collide with everything
+        player.body.updateMassProperties();
+    }
+    player.isShielded = false;
+    player.isGhost = false;
+    player.isJuggernaut = false;
+
+    // Apply new state
+    if (type === 'Shield') {
+        player.isShielded = true;
+    } else if (type === 'Ghost') {
+        player.isGhost = true;
+        if (player.body) {
+            // Filter Group 2: Ghosts. Mask 2: Only walls/ground (not 1: Players).
+            // Actually, we'll just handle logic in collision loop to skip damage
+            // But true pass-through requires collision filters.
+            // Let's rely on the manual overlap check in postStep for now to disable damage/bounce.
+        }
+    } else if (type === 'Juggernaut') {
+        player.isJuggernaut = true;
+        if (player.body) {
+            player.body.mass = 100; // Double mass
+            player.body.updateMassProperties();
+        }
+    }
+
+    // Set expiration
+    player.powerupTimeout = setTimeout(() => {
+        if (player.body) {
+            player.body.mass = 50;
+        }
+        player.isShielded = false;
+        player.isGhost = false;
+        player.isJuggernaut = false;
+        io.to(player.id).emit('powerupEnd');
+        console.log(`[POWERUP] ${player.name} effect expired`);
+    }, durationMs);
 }
 
 // =============================================================================
 // COLLISION HANDLING
 // =============================================================================
 world.addEventListener('postStep', () => {
+    // --- WALL COLLISION DETECTION ---
+    for (const [id, player] of players) {
+        if (!player.body || player.type !== 'driver') continue;
+
+        // Check contacts with walls
+        for (const contact of world.contacts) {
+            const isPlayerBody = contact.bi === player.body || contact.bj === player.body;
+            const otherBody = contact.bi === player.body ? contact.bj : contact.bi;
+            const isWall = trackWalls.includes(otherBody);
+
+            if (isPlayerBody && isWall) {
+                // Wall collision detected!
+                const impactSpeed = player.body.velocity.length();
+                if (impactSpeed > 5) {
+                    io.to(id).emit('wallHit', { intensity: Math.min(1, impactSpeed / 20) });
+                }
+            }
+        }
+    }
+
     // Check collisions between players
     for (const [id1, p1] of players) {
         if (p1.type !== 'driver' || !p1.body) continue;
 
         for (const [id2, p2] of players) {
             if (id1 >= id2 || p2.type !== 'driver' || !p2.body) continue;
+
+            // Ghost Logic: If either is Ghost, ignore collision
+            if (p1.isGhost || p2.isGhost) continue;
 
             // Check if bodies are colliding
             const dist = p1.body.position.distanceTo(p2.body.position);
@@ -262,20 +552,79 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    const damage = Math.floor(impactSpeed * 2);
+                    let damage1 = Math.floor(impactSpeed * 2); // Damage TO p1
+                    let damage2 = Math.floor(impactSpeed * 2); // Damage TO p2
+                    let knockback1 = 1.0;
+                    let knockback2 = 1.0;
 
-                    p1.hp -= damage;
-                    p2.hp -= damage;
+                    // RAMMING LOGIC
+                    // Calculate attack angles
+                    // Vector from 1 to 2
+                    const v1to2 = new CANNON.Vec3();
+                    p2.body.position.vsub(p1.body.position, v1to2);
+                    v1to2.normalize();
 
-                    console.log(`[COLLISION] ${id1} <-> ${id2} | Impact: ${impactSpeed.toFixed(1)} | Damage: ${damage}`);
+                    // P1's forward vector
+                    const p1Forward = new CANNON.Vec3(0, 0, 1);
+                    p1.body.quaternion.vmult(p1Forward, p1Forward);
+
+                    // P2's forward vector
+                    const p2Forward = new CANNON.Vec3(0, 0, 1);
+                    p2.body.quaternion.vmult(p2Forward, p2Forward);
+
+                    // Dot products (> 0.7 is roughly < 45 degrees)
+                    const p1FacingP2 = p1Forward.dot(v1to2);
+                    const p2FacingP1 = p2Forward.dot(v1to2.negate()); // v2to1 is needed? v1to2.negate() is v2to1
+
+                    // Check P1 Ramming P2
+                    if (p1FacingP2 > 0.7) {
+                        // P1 is hitting P2 frontally
+                        damage2 *= 1.5; // P2 takes more
+                        damage1 *= 0.5; // P1 takes less
+                        knockback2 = 2.0; // P2 gets punted
+                        console.log(`[COMBAT] ${p1.name} RAMMED ${p2.name}!`);
+                    }
+
+                    // Check P2 Ramming P1
+                    if (p2FacingP1 > 0.7) {
+                        // P2 is hitting P1 frontally
+                        damage1 *= 1.5;
+                        damage2 *= 0.5;
+                        knockback1 = 2.0;
+                        console.log(`[COMBAT] ${p2.name} RAMMED ${p1.name}!`);
+                    }
+
+                    // Juggernaut Logic
+                    if (p1.isJuggernaut) { damage1 *= 0.2; damage2 *= 1.5; knockback2 *= 1.5; }
+                    if (p2.isJuggernaut) { damage2 *= 0.2; damage1 *= 1.5; knockback1 *= 1.5; }
+
+                    // Shield Logic
+                    if (p1.isShielded) damage1 = 0;
+                    if (p2.isShielded) damage2 = 0;
+
+                    // Apply Knockback Impulse
+                    // ... (Simplistic impulse already handled by physics engine restitution, 
+                    // but we can add extra "Juice" here if needed. 
+                    // For now, reliance on physics + mass diffs (Juggernaut) is safer).
+
+                    p1.hp -= Math.floor(damage1);
+                    p2.hp -= Math.floor(damage2);
+
+                    console.log(`[COLLISION] ${p1.name} (-${damage1}) <-> ${p2.name} (-${damage2}) | Speed: ${impactSpeed.toFixed(1)}`);
 
                     // Emit damage events
-                    io.to(id1).emit('damage', { hp: p1.hp, damage });
-                    io.to(id2).emit('damage', { hp: p2.hp, damage });
+                    io.to(id1).emit('damage', { hp: p1.hp, damage: damage1 });
+                    io.to(id2).emit('damage', { hp: p2.hp, damage: damage2 });
 
                     // Check for deaths
-                    if (p1.hp <= 0) switchToDrone(id1);
-                    if (p2.hp <= 0) switchToDrone(id2);
+                    if (p1.hp <= 0) {
+                        switchToDrone(id1);
+                        checkWinCondition();
+                    }
+                    if (p2.hp <= 0) {
+                        switchToDrone(id2);
+                        checkWinCondition();
+                    }
                 }
             }
         }
@@ -285,9 +634,11 @@ world.addEventListener('postStep', () => {
 // =============================================================================
 // POWER-UPS
 // =============================================================================
+const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon']; // Weighted
+
 function spawnPowerup() {
     const id = uuidv4();
-    const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+    const type = EXTENDED_POWERUP_TYPES[Math.floor(Math.random() * EXTENDED_POWERUP_TYPES.length)];
     // Use track bounds for powerup spawning
     const bounds = activeTrack.powerupBounds;
     const x = bounds.minX + Math.random() * (bounds.maxX - bounds.minX);
@@ -316,21 +667,32 @@ function checkPowerupCollisions() {
                 // Apply effect
                 if (powerup.type === 'Repair') {
                     player.hp = Math.min(100, player.hp + 50);
-                    console.log(`[POWERUP] ${playerId} picked up Repair -> HP: ${player.hp}`);
                 } else if (powerup.type === 'Boost') {
+                    player.boost = 100; // Refill boost
+                    // Impulse
                     const dir = player.body.velocity.clone();
                     dir.normalize();
-                    dir.scale(30, dir);
+                    dir.scale(50, dir);
                     player.body.velocity.vadd(dir, player.body.velocity);
-                    console.log(`[POWERUP] ${playerId} picked up Boost`);
+                } else if (powerup.type === 'Shield') {
+                    applyPowerupState(player, 'Shield', 5000);
+                } else if (powerup.type === 'Ghost') {
+                    applyPowerupState(player, 'Ghost', 5000);
+                } else if (powerup.type === 'Juggernaut') {
+                    applyPowerupState(player, 'Juggernaut', 10000);
                 }
 
+                console.log(`[POWERUP] ${player.name} picked up ${powerup.type}`);
                 io.to(playerId).emit('powerup', { type: powerup.type });
 
                 // Remove powerup
                 world.removeBody(powerup.body);
                 powerups.delete(pId);
                 break;
+            } else if (pup.type === 'Weapon') {
+                player.ammo = (player.ammo || 0) + 5;
+                player.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
+                io.to(playerId).emit('powerup', { type: 'Weapon', ammo: player.ammo, weaponType: player.weaponType });
             }
         }
     }
@@ -366,6 +728,177 @@ function spawnTrap(x, z, ownerId) {
 }
 
 // =============================================================================
+// GAME LOOP MANAGER
+// =============================================================================
+let gameState = 'LOBBY'; // LOBBY, COUNTDOWN, RACING, WINNER
+let gameTimer = 0;
+let winnerName = null;
+
+function broadcastGameState() {
+    io.emit('gameState', {
+        state: gameState,
+        timer: gameTimer,
+        winner: winnerName
+    });
+}
+
+function startCountdown() {
+    if (gameState !== 'LOBBY') return;
+
+    // Select random track for this round
+    selectRandomTrack();
+
+    gameState = 'COUNTDOWN';
+    gameTimer = 3;
+    broadcastGameState();
+
+    const interval = setInterval(() => {
+        gameTimer--;
+        broadcastGameState();
+        if (gameTimer <= 0) {
+            clearInterval(interval);
+            startRace();
+        }
+    }, 1000);
+}
+
+function startRace() {
+    gameState = 'RACING';
+    gameTimer = 0;
+
+    // Remove any existing CPU
+    removeCPUOpponents();
+
+    // Count human drivers
+    let humanDrivers = 0;
+    for (const [id, player] of players) {
+        if (player.type === 'driver' && !player.isCPU) humanDrivers++;
+    }
+
+    // Spawn CPU opponents if less than 3 human players
+    if (humanDrivers < 3) {
+        const cpuCount = Math.max(1, 3 - humanDrivers);
+        spawnCPUOpponents(cpuCount);
+    }
+
+    // Reset all players to driver
+    resetGame();
+
+    // Emit track music style
+    io.emit('trackStyle', { trackId: activeTrack.id, trackName: activeTrack.name });
+
+    broadcastGameState();
+    console.log('[GAME] Race Started!');
+}
+
+function resetGame() {
+    // Respawn all players
+    for (const [id, player] of players) {
+        removePlayerBody(player); // Helper to clear old body
+
+        // Reset stats
+        player.hp = 100;
+        player.type = 'driver';
+        player.boost = 100;
+        player.isShielded = false;
+        player.isGhost = false;
+        player.isJuggernaut = false;
+
+        // Create new body
+        // Use logic from spawnPlayer but force creation
+        const spawnIndex = players.size % activeTrack.spawnPoints.length;
+        const spawnPoint = activeTrack.spawnPoints[spawnIndex];
+        const spawnX = spawnPoint.x + (Math.random() - 0.5) * 5;
+        const spawnZ = spawnPoint.z + (Math.random() - 0.5) * 5;
+
+        createPlayerBody(player, spawnX, spawnZ, spawnPoint.rotation || 0);
+
+        io.to(id).emit('joined', {
+            id: id,
+            color: player.color, // Keep color
+            hp: 100
+        });
+    }
+
+    // Clear powerups and traps
+    for (const [id, p] of powerups) world.removeBody(p.body);
+    powerups.clear();
+    for (const [id, t] of traps) world.removeBody(t.body);
+    traps.clear();
+}
+
+function endRace(winner) {
+    if (gameState !== 'RACING') return;
+    gameState = 'WINNER';
+    winnerName = winner ? winner.name : 'Nobody';
+    gameTimer = 10; // 10s until lobby
+    console.log(`[GAME] Winner: ${winnerName}`);
+    broadcastGameState();
+
+    const interval = setInterval(() => {
+        gameTimer--;
+        broadcastGameState();
+        if (gameTimer <= 0) {
+            clearInterval(interval);
+            gameState = 'LOBBY';
+            winnerName = null;
+            broadcastGameState();
+        }
+    }, 1000);
+}
+
+function checkWinCondition() {
+    if (gameState !== 'RACING') return;
+
+    // Count active drivers
+    let activeDrivers = [];
+    for (const [id, p] of players) {
+        if (p.type === 'driver' && p.hp > 0) activeDrivers.push(p);
+    }
+
+    // PvP Win Condition: Last man standing (only if we have multiple players)
+    if (players.size > 1 && activeDrivers.length === 1) {
+        endRace(activeDrivers[0]);
+    }
+    // Single Player / Everyone Died Condition
+    else if (activeDrivers.length === 0) {
+        endRace(null); // Game Over
+    }
+}
+
+// Helper to separate body creation logic
+function createPlayerBody(player, x, z, rotation = 0) {
+    const body = new CANNON.Body({
+        mass: 50,
+        shape: new CANNON.Sphere(1),
+        position: new CANNON.Vec3(x, 1, z),
+        linearDamping: 0.5,
+        angularDamping: 0.5,
+        allowSleep: false,
+        material: carMaterial,
+        ccdSpeedThreshold: 1,
+        ccdIterations: 5
+    });
+
+    // Apply spawn rotation
+    body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotation);
+
+    world.addBody(body);
+    player.body = body;
+}
+
+function removePlayerBody(player) {
+    if (player.body) {
+        world.removeBody(player.body);
+        player.body = null;
+    }
+}
+
+// ... INSIDE JOIN LOGIC ...
+// If RACING, spawn as DRONE immediately
+
+
+// =============================================================================
 // NETWORK HANDLING
 // =============================================================================
 io.on('connection', (socket) => {
@@ -380,24 +913,91 @@ io.on('connection', (socket) => {
         floorSize: activeTrack.floorSize
     });
 
+    // Send initial game state
+    socket.emit('gameState', { state: gameState, timer: gameTimer, winner: winnerName });
+
     if (role === 'admin') {
         // Renderer connection - just receives state
         socket.join('renderers');
+
+        // Admin commands
+        socket.on('startGame', () => {
+            console.log("Admin requested start");
+            if (gameState === 'LOBBY') startCountdown();
+        });
+
     } else {
         // Controller connection
-        socket.on('join', ({ name }) => {
-            const player = spawnPlayer(socket.id, name);
+        socket.on('join', ({ name, maskType }) => {
+            // Determine spawn type
+            let type = 'driver';
+            if (gameState === 'RACING' || gameState === 'WINNER') {
+                type = 'drone';
+            }
+
+            // Create player object
+            const color = CAR_COLORS[players.size % CAR_COLORS.length];
+            const newPlayer = {
+                id: socket.id,
+                body: null,
+                hp: type === 'drone' ? 0 : 100,
+                type: type,
+                maskType: maskType || 'Classic',
+                color,
+                name: name || 'Player',
+                boost: 100,
+                isShielded: false,
+                isGhost: false,
+                isJuggernaut: false
+            };
+            players.set(socket.id, newPlayer);
+            // ...
+
+            // If Driver, spawn body
+            if (type === 'driver') {
+                const spawnIndex = players.size % activeTrack.spawnPoints.length;
+                const spawnPoint = activeTrack.spawnPoints[spawnIndex];
+                createPlayerBody(newPlayer,
+                    spawnPoint.x + (Math.random() - 0.5) * 2,
+                    spawnPoint.z + (Math.random() - 0.5) * 2,
+                    spawnPoint.rotation || 0
+                );
+            }
+
             socket.emit('joined', {
                 id: socket.id,
-                color: player.color,
-                hp: player.hp
+                color: newPlayer.color,
+                hp: newPlayer.hp
             });
+
+            // AUTO-START LOGIC
+            // Start countdown if we have at least 1 player in LOBBY (Single Player allowed)
+            if (gameState === 'LOBBY' && players.size >= 1) {
+                // If not already counting down, start it
+                if (gameTimer === 0) {
+                    console.log("[GAME] Auto-start sequence initiated...");
+                    // Start countdown after a brief delay to let them see the "Waiting" for a split second?
+                    // Or immediate? Immediate is fine.
+                    startCountdown();
+                }
+            }
+
+            console.log(`[JOIN] ${name} as ${type}`);
+            broadcastGameState();
+
+            // Auto-start if 2 players in lobby and not started? 
+            // Better to wait for Admin/Renderer start, or auto-start logic
+            if (gameState === 'LOBBY' && players.size >= 2) {
+                // Optional: Auto start countdown?
+                // Let's stick to manual start or renderer button for now, 
+                // OR auto-start after 30s?
+            }
         });
 
         socket.on('input', ({ steering, throttle, boost }) => {
             const player = players.get(socket.id);
             if (!player || player.type !== 'driver' || !player.body) {
-                console.log(`[INPUT] Rejected - player: ${!!player}, type: ${player?.type}, body: ${!!player?.body}`);
+                // ... (Keep existing rejection logic) ...
                 return;
             }
 
@@ -408,7 +1008,7 @@ io.on('connection', (socket) => {
             const force = new CANNON.Vec3();
 
             // Forward/backward - increased for punchy acceleration
-            force.z = -throttle * 600; // Was 200
+            force.z = -throttle * 600;
 
             // Steering (rotate force direction) - sharper response
             const angle = steering * 0.8;
@@ -416,7 +1016,7 @@ io.on('connection', (socket) => {
             const rotatedZ = force.x * Math.sin(angle) + force.z * Math.cos(angle);
 
             // Lateral force helper - helps turn the car by pushing it sideways
-            force.x = rotatedX + steering * 400; // Was 150
+            force.x = rotatedX + steering * 400;
             force.z = rotatedZ;
 
             // Boost
@@ -425,11 +1025,6 @@ io.on('connection', (socket) => {
                 player.boost = Math.max(0, player.boost - 1);
             } else {
                 player.boost = Math.min(100, player.boost + 0.2);
-            }
-
-            // Log first few inputs for debugging
-            if (throttle > 0 || steering !== 0) {
-                console.log(`[INPUT] ${socket.id.slice(0, 6)} - throttle: ${throttle}, steering: ${steering.toFixed(2)}, force: (${force.x.toFixed(1)}, ${force.z.toFixed(1)})`);
             }
 
             player.body.applyForce(force, player.body.position);
@@ -441,13 +1036,46 @@ io.on('connection', (socket) => {
                 spawnTrap(x, z, socket.id);
             }
         });
+
+        // FIRE WEAPON
+        socket.on('fire', () => {
+            const player = players.get(socket.id);
+            if (!player || player.type !== 'driver' || !player.body) return;
+            if (!player.ammo || player.ammo <= 0) return;
+
+            player.ammo--;
+
+            // Get forward direction
+            const forward = new CANNON.Vec3(0, 0, -1);
+            player.body.quaternion.vmult(forward, forward);
+
+            const projPos = {
+                x: player.body.position.x + forward.x * 2,
+                y: player.body.position.y,
+                z: player.body.position.z + forward.z * 2
+            };
+
+            const projType = player.weaponType || 'laser';
+            createProjectile(socket.id, projType, projPos, { x: forward.x, z: forward.z });
+
+            io.emit('projectileFired', {
+                ownerId: socket.id,
+                position: projPos,
+                direction: { x: forward.x, z: forward.z },
+                type: projType
+            });
+        });
     }
 
     socket.on('disconnect', () => {
         removePlayer(socket.id);
         console.log(`[DISCONNECT] ${socket.id}`);
+        checkWinCondition(); // Check if this caused a win
+        broadcastGameState();
     });
 });
+
+// ... Keep GameLoop ...
 
 // =============================================================================
 // GAME LOOP
@@ -458,21 +1086,24 @@ function gameLoop() {
     // Step physics
     world.step(timestep);
 
-    // Safety: Clamp velocities to prevent physics explosions
+    // Update CPU opponents
+    if (gameState === 'RACING') {
+        updateCPUPhysics();
+        updateProjectiles();
+    }
+
+    // Safety: Clamp velocities and enforce boundaries
     for (const [id, player] of players) {
         if (player.type === 'driver' && player.body) {
             const vel = player.body.velocity;
             const speed = vel.length();
             if (speed > MAX_SPEED) {
                 vel.scale(MAX_SPEED / speed, vel);
-                // console.log(`[PHYSICS] Clamped speed for ${id} (was ${speed.toFixed(1)})`);
             }
 
-            // Safety: Reset position if fallen off map (glitch prevention)
-            if (player.body.position.y < -10) {
-                player.body.position.set(0, 5, 0);
-                player.body.velocity.set(0, 0, 0);
-                console.log(`[PHYSICS] Reset ${id} from void`);
+            // Enforce track boundaries
+            if (enforceBoundaries(player.body)) {
+                io.to(id).emit('respawned', { reason: 'out_of_bounds' });
             }
         }
     }
@@ -501,9 +1132,14 @@ function gameLoop() {
             } : null,
             hp: player.hp,
             type: player.type,
+            maskType: player.maskType,
             color: player.color,
             name: player.name,
-            boost: player.boost
+            name: player.name,
+            boost: player.boost,
+            isShielded: player.isShielded || false,
+            isGhost: player.isGhost || false,
+            isJuggernaut: player.isJuggernaut || false
         };
     }
 

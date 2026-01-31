@@ -196,22 +196,51 @@ function vibrate(pattern) {
 // =============================================================================
 // LOBBY SCREEN
 // =============================================================================
+// =============================================================================
+// LOBBY SCREEN
+// =============================================================================
+const MASKS = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
+
 function LobbyScreen({ onJoin }) {
     const [name, setName] = useState('');
+    const [maskIndex, setMaskIndex] = useState(0);
 
     const handleJoin = () => {
-        console.log('[DEBUG] handleJoin called, name:', name, 'trimmed:', name.trim());
         if (name.trim()) {
-            console.log('[DEBUG] Calling onJoin with:', name.trim());
-            onJoin(name.trim());
-        } else {
-            console.log('[DEBUG] Name is empty, not joining');
+            onJoin(name.trim(), MASKS[maskIndex]);
         }
     };
+
+    const nextMask = () => setMaskIndex((i) => (i + 1) % MASKS.length);
+    const prevMask = () => setMaskIndex((i) => (i - 1 + MASKS.length) % MASKS.length);
 
     return (
         <div style={styles.container('#ff00ff')}>
             <h1 style={styles.title}>Entropy</h1>
+
+            {/* Mask Selector */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 20,
+                marginBottom: 30,
+                background: 'rgba(255,255,255,0.1)',
+                padding: '10px 20px',
+                borderRadius: 12
+            }}>
+                <button
+                    onClick={prevMask}
+                    style={{ background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}
+                >◀</button>
+                <div style={{ textAlign: 'center', width: 100 }}>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>MASK</div>
+                    <div style={{ fontSize: 20, fontWeight: 'bold', color: '#00ffff' }}>{MASKS[maskIndex]}</div>
+                </div>
+                <button
+                    onClick={nextMask}
+                    style={{ background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}
+                >▶</button>
+            </div>
 
             <input
                 type="text"
@@ -271,6 +300,9 @@ function DrivingScreen({ playerState }) {
             const key = e.key.toLowerCase();
             keysPressed.add(key);
             updateFromKeys();
+
+            // Fire weapon with F key
+            if (key === 'f') handleFire();
         };
 
         const handleKeyUp = (e) => {
@@ -356,8 +388,17 @@ function DrivingScreen({ playerState }) {
         forceUpdate(n => n + 1);
     };
 
+    const handleFire = () => {
+        if (playerState?.ammo > 0) {
+            socket.emit('fire');
+            vibrate([30, 20, 30]);
+        }
+    };
+
     const hp = playerState?.hp ?? 100;
     const boost = playerState?.boost ?? 100;
+    const ammo = playerState?.ammo ?? 0;
+    const weaponType = playerState?.weaponType || 'none';
     const color = playerState?.color || '#ff00ff';
     const isThrottling = inputRef.current.throttle > 0;
     const isBoosting = inputRef.current.boost;
@@ -376,6 +417,22 @@ function DrivingScreen({ playerState }) {
             <div style={styles.boostMeter.container}>
                 <div style={styles.boostMeter.fill(boost)} />
             </div>
+
+            {/* Ammo Display */}
+            {ammo > 0 && (
+                <div style={{
+                    marginTop: 10,
+                    padding: '8px 16px',
+                    background: weaponType === 'missile' ? 'rgba(255,100,0,0.3)' : 'rgba(0,200,255,0.3)',
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10
+                }}>
+                    <span style={{ fontSize: 20 }}>{weaponType === 'missile' ? '🚀' : '⚡'}</span>
+                    <span style={{ fontWeight: 700 }}>{ammo}</span>
+                </div>
+            )}
 
             {/* Steering Indicator */}
             <div style={{ marginTop: 30, marginBottom: 20, textAlign: 'center' }}>
@@ -404,6 +461,24 @@ function DrivingScreen({ playerState }) {
 
             {/* Controls */}
             <div style={styles.controls}>
+                {/* Fire Button (only shows when have ammo) */}
+                {ammo > 0 && (
+                    <div
+                        style={{
+                            ...styles.throttleZone(false),
+                            height: 60,
+                            background: weaponType === 'missile'
+                                ? 'linear-gradient(135deg, #ff6600 0%, #ff3300 100%)'
+                                : 'linear-gradient(135deg, #00aaff 0%, #0066ff 100%)',
+                            border: `3px solid ${weaponType === 'missile' ? '#ff6600' : '#00aaff'}`
+                        }}
+                        onTouchStart={(e) => { e.preventDefault(); handleFire(); }}
+                        onClick={handleFire}
+                    >
+                        {weaponType === 'missile' ? '🚀' : '⚡'} FIRE (F)
+                    </div>
+                )}
+
                 {/* Boost Zone (top) */}
                 <div
                     style={{
@@ -549,6 +624,12 @@ export default function App() {
             vibrate([500, 200, 500]);
         });
 
+        socket.on('wallHit', ({ intensity }) => {
+            // Haptic feedback based on impact intensity
+            const duration = Math.floor(30 + intensity * 70);
+            vibrate(duration);
+        });
+
         socket.on('worldState', (state) => {
             if (playerId && state.players[playerId]) {
                 const player = state.players[playerId];
@@ -569,8 +650,8 @@ export default function App() {
         };
     }, [playerId]);
 
-    const handleJoin = (name) => {
-        socket.emit('join', { name });
+    const handleJoin = (name, maskType) => {
+        socket.emit('join', { name, maskType });
     };
 
     switch (gameState) {
