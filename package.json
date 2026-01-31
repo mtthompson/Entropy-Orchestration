@@ -1,0 +1,18 @@
+{
+    "name": "entropy-orchestration",
+    "version": "1.0.0",
+    "private": true,
+    "workspaces": [
+        "server",
+        "renderer",
+        "controller"
+    ],
+    "scripts": {
+        "dev:server": "nodemon --config nodemon.json",
+        "dev:renderer": "npm run dev --workspace=renderer",
+        "dev:controller": "npm run dev --workspace=controller"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}
