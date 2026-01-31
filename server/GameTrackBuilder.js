@@ -25,56 +25,71 @@ function validateSpawnPoints(spawnPoints, boundaries, minClearance = 15) {
     let adjustmentCount = 0;
     
     for (const spawn of spawnPoints) {
-        let minDist = Infinity;
-        let nearestWallPoint = null;
+        let currentSpawn = { ...spawn };
+        let iterations = 0;
+        const maxIterations = 5; // Try up to 5 times to find a safe position
         
-        // Find nearest wall and closest point on that wall
-        for (const wall of boundaries) {
-            const dist = distanceToSegment(spawn.x, spawn.z, wall.x1, wall.z1, wall.x2, wall.z2);
-            if (dist < minDist) {
-                minDist = dist;
-                
-                // Calculate closest point on wall
-                const dx = wall.x2 - wall.x1;
-                const dz = wall.z2 - wall.z1;
-                const lenSq = dx * dx + dz * dz;
-                let t = ((spawn.x - wall.x1) * dx + (spawn.z - wall.z1) * dz) / lenSq;
-                t = Math.max(0, Math.min(1, t));
-                nearestWallPoint = {
-                    x: wall.x1 + t * dx,
-                    z: wall.z1 + t * dz
-                };
-            }
-        }
-        
-        if (minDist < minClearance && nearestWallPoint) {
-            // Calculate direction from wall to spawn
-            const dx = spawn.x - nearestWallPoint.x;
-            const dz = spawn.z - nearestWallPoint.z;
-            const len = Math.sqrt(dx * dx + dz * dz);
+        while (iterations < maxIterations) {
+            let minDist = Infinity;
+            let nearestWallPoint = null;
             
-            if (len > 0.001) {
-                // Move spawn away from wall along this direction
-                const pushDistance = minClearance - minDist + 2; // Extra 2 units buffer
-                const dirX = dx / len;
-                const dirZ = dz / len;
-                
-                adjustedSpawns.push({
-                    x: spawn.x + dirX * pushDistance,
-                    z: spawn.z + dirZ * pushDistance,
-                    rotation: spawn.rotation
-                });
-                adjustmentCount++;
-            } else {
-                adjustedSpawns.push(spawn);
+            // Find nearest wall and closest point on that wall
+            for (const wall of boundaries) {
+                const dist = distanceToSegment(currentSpawn.x, currentSpawn.z, wall.x1, wall.z1, wall.x2, wall.z2);
+                if (dist < minDist) {
+                    minDist = dist;
+                    
+                    // Calculate closest point on wall
+                    const dx = wall.x2 - wall.x1;
+                    const dz = wall.z2 - wall.z1;
+                    const lenSq = dx * dx + dz * dz;
+                    let t = ((currentSpawn.x - wall.x1) * dx + (currentSpawn.z - wall.z1) * dz) / lenSq;
+                    t = Math.max(0, Math.min(1, t));
+                    nearestWallPoint = {
+                        x: wall.x1 + t * dx,
+                        z: wall.z1 + t * dz
+                    };
+                }
             }
-        } else {
-            adjustedSpawns.push(spawn);
+            
+            if (minDist >= minClearance) {
+                // Safe position found
+                break;
+            }
+            
+            if (nearestWallPoint) {
+                // Calculate direction from wall to spawn
+                const dx = currentSpawn.x - nearestWallPoint.x;
+                const dz = currentSpawn.z - nearestWallPoint.z;
+                const len = Math.sqrt(dx * dx + dz * dz);
+                
+                if (len > 0.001) {
+                    // Move spawn away from wall along this direction
+                    const pushDistance = minClearance - minDist + 3;
+                    const dirX = dx / len;
+                    const dirZ = dz / len;
+                    
+                    currentSpawn.x += dirX * pushDistance;
+                    currentSpawn.z += dirZ * pushDistance;
+                    adjustmentCount++;
+                } else {
+                    // Spawn is exactly on wall, push in arbitrary direction
+                    currentSpawn.x += minClearance;
+                }
+            }
+            
+            iterations++;
         }
+        
+        adjustedSpawns.push({
+            x: currentSpawn.x,
+            z: currentSpawn.z,
+            rotation: spawn.rotation
+        });
     }
     
     if (adjustmentCount > 0) {
-        console.log(`  [GameTrackBuilder] Adjusted ${adjustmentCount} spawn point(s) to maintain clearance`);
+        console.log(`  [GameTrackBuilder] Made ${adjustmentCount} spawn adjustment(s) to maintain clearance`);
     }
     
     return adjustedSpawns;

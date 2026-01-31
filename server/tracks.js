@@ -250,7 +250,7 @@ TRACKS.push({
     name: 'The Switchback',
     type: 'race',
     path: SWITCHBACK_PATH,
-    boundaries: createTrackFromPath(SWITCHBACK_PATH, 45, true),
+    boundaries: createTrackFromPath(SWITCHBACK_PATH, 70, true),
     spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 10, 8),
     powerupBounds: { minX: -175, maxX: 175, minZ: -250, maxZ: 200 },
     floorSize: { width: 420, depth: 520 }
@@ -273,7 +273,7 @@ TRACKS.push({
     name: 'Cloverleaf',
     type: 'race',
     path: CLOVER_PATH,
-    boundaries: createTrackFromPath(CLOVER_PATH, 50, true),
+    boundaries: createTrackFromPath(CLOVER_PATH, 75, true),
     spawnPoints: generateAlignedSpawns(CLOVER_PATH, 10, 8),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
     floorSize: { width: 420, depth: 520 }
@@ -309,7 +309,7 @@ TRACKS.push({
     type: 'race',
     path: DRAGON_PATH,
     boundaries: createTrackFromPath(DRAGON_PATH, 40, true),
-    spawnPoints: generateAlignedSpawns(DRAGON_PATH, 10, 8),
+    spawnPoints: generateAlignedSpawns(DRAGON_PATH, 15, 8),
     powerupBounds: { minX: -200, maxX: 150, minZ: -275, maxZ: 250 },
     floorSize: { width: 480, depth: 600 }
 });
@@ -346,7 +346,7 @@ TRACKS.push({
     type: 'race',
     path: GP_PATH,
     boundaries: createTrackFromPath(GP_PATH, 45, true),
-    spawnPoints: generateAlignedSpawns(GP_PATH, 10, 8),
+    spawnPoints: generateAlignedSpawns(GP_PATH, 15, 8),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
     floorSize: { width: 420, depth: 520 }
 });
