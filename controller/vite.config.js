@@ -5,6 +5,10 @@ export default defineConfig({
     plugins: [react()],
     server: {
         port: 5174,
-        host: true
+        host: true,
+        allowedHosts: [
+            'jam.gimongous.net',
+            'laptop-4b1imve6.ussuri-neon.ts.net'
+        ]
     }
 });
