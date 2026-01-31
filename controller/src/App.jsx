@@ -5,7 +5,11 @@ import { io } from 'socket.io-client';
 // SOCKET CONNECTION
 // =============================================================================
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
+console.log('[DEBUG] Connecting to SERVER_URL:', SERVER_URL);
 const socket = io(SERVER_URL, { query: { role: 'controller' } });
+socket.on('connect', () => console.log('[DEBUG] Socket connected! ID:', socket.id));
+socket.on('connect_error', (err) => console.error('[DEBUG] Socket connection error:', err.message));
+socket.on('disconnect', (reason) => console.log('[DEBUG] Socket disconnected:', reason));
 
 // =============================================================================
 // STYLES
