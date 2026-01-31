@@ -9,6 +9,8 @@ import QRCode from 'react-qr-code';
 import { Scenery } from './Scenery';
 import { GameUI } from './GameUI';
 import { useAudio } from './useAudio';
+import { ToastNotification } from './ToastNotification';
+import { AdminPanel } from './AdminPanel';
 
 // =============================================================================
 // SOCKET CONNECTION
@@ -854,9 +856,43 @@ function TrackBoundaries({ boundaries }) {
 
 
 // =============================================================================
+// LOBBY FLYING CAMERA - Orbits the track while waiting
+// =============================================================================
+function FlyingCamera({ trackData }) {
+    const { camera } = useThree();
+    const timeRef = useRef(0);
+
+    useFrame((state, delta) => {
+        timeRef.current += delta * 0.3; // Slow orbit speed
+        const t = timeRef.current;
+
+        // Get track dimensions for orbiting
+        const trackWidth = trackData?.floorSize?.width || 250;
+        const trackDepth = trackData?.floorSize?.depth || 250;
+        const radius = Math.max(trackWidth, trackDepth) * 0.6;
+
+        // Calculate orbit position - figure-8 pattern for dynamic feel
+        const x = Math.cos(t) * radius * 1.2;
+        const z = Math.sin(t * 2) * radius * 0.5; // Double frequency for figure-8
+        const y = 30 + Math.sin(t * 0.5) * 10; // Gentle up/down motion
+
+        camera.position.set(x, y, z);
+        
+        // Look at center with slight offset for dynamic feel
+        camera.lookAt(
+            Math.sin(t * 0.5) * 20,
+            5,
+            Math.cos(t * 0.5) * 20
+        );
+    });
+
+    return null;
+}
+
+// =============================================================================
 // CAMERA CONTROLLER - PACK LEADER CAM
 // =============================================================================
-function CameraController({ players }) {
+function CameraController({ players, gameState }) {
     const { camera } = useThree();
     const targetPos = useRef(new THREE.Vector3(0, 20, 30));
     const targetLookAt = useRef(new THREE.Vector3(0, 0, -30));
@@ -864,6 +900,11 @@ function CameraController({ players }) {
     const smoothVel = useRef(new THREE.Vector3(0, 0, -1));
 
     useFrame((state, delta) => {
+        // Skip pack-following logic if not in active game states
+        if (gameState !== 'PLAYING' && gameState !== 'COUNTDOWN') {
+            return;
+        }
+
         // Get top 3 players by Z position
         const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
 
@@ -938,7 +979,7 @@ function CameraController({ players }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, trackData, setEngineRpm }) {
+function Scene({ worldState, trackData, setEngineRpm, gameState }) {
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
 
@@ -1020,7 +1061,12 @@ function Scene({ worldState, trackData, setEngineRpm }) {
                 />
             )}
 
-            <CameraController players={worldState.players || {}} />
+            {/* Camera system - Flying camera for lobby, pack-following for active game */}
+            {gameState === 'LOBBY' ? (
+                <FlyingCamera trackData={trackData} />
+            ) : (
+                <CameraController players={worldState.players || {}} gameState={gameState} />
+            )}
 
             {/* Cars */}
             {Object.entries(worldState.players || {}).map(([id, player]) => {
@@ -1228,8 +1274,19 @@ export default function App() {
     const [screenShake, setScreenShake] = useState(0); // 0-1 intensity
     const prevPlayersRef = useRef({});
 
+    // Admin state
+    const [trackList, setTrackList] = useState([]);
+    const [cpuCount, setCpuCount] = useState(0);
+    const [toasts, setToasts] = useState([]);
+
     // Audio Hook
     const { initAudio, playSfx, setMusicStyle, setEngineRpm } = useAudio(connected);
+
+    // Toast helper
+    const showToast = (message, type = 'info') => {
+        const id = Date.now() + Math.random();
+        setToasts(prev => [...prev, { id, message, type, timestamp: Date.now() }]);
+    };
 
     // Track player eliminations for reveal banner
     useEffect(() => {
@@ -1303,6 +1360,17 @@ export default function App() {
             setDemoMode(data.active);
         });
 
+        // Admin-specific events
+        socket.on('trackList', (data) => {
+            console.log('Received track list:', data.length);
+            setTrackList(data);
+        });
+
+        socket.on('cpuCount', (count) => {
+            console.log('Received CPU count:', count);
+            setCpuCount(count);
+        });
+
         // Projectile fired events
         socket.on('projectileFired', (data) => {
             setProjectiles(prev => [...prev, {
@@ -1333,8 +1401,53 @@ export default function App() {
             socket.off('worldState');
             socket.off('gameState');
             socket.off('damage');
+            socket.off('trackList');
+            socket.off('cpuCount');
         };
     }, [playSfx, setMusicStyle]);
+
+    // Keyboard shortcuts for admin controls
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ignore if user is typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            switch (e.key.toLowerCase()) {
+                case ' ': // Space - Start game
+                    e.preventDefault();
+                    if (gameState.state === 'LOBBY') {
+                        socket.emit('startGame');
+                        showToast('Starting game...', 'info');
+                    }
+                    break;
+                case 'r': // R - Restart game
+                    socket.emit('restartGame');
+                    showToast('Restarting game...', 'info');
+                    break;
+                case '+': // + - Add CPU
+                case '=': // = (same key as +)
+                    socket.emit('addCPU');
+                    showToast('Adding CPU opponent', 'success');
+                    break;
+                case '-': // - - Remove CPU
+                case '_': // _ (same key as -)
+                    if (cpuCount > 0) {
+                        socket.emit('removeCPU');
+                        showToast('Removing CPU opponent', 'success');
+                    } else {
+                        showToast('No CPUs to remove', 'error');
+                    }
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [gameState.state, cpuCount]);
 
     // Calculate shake offset
     const shakeX = screenShake * (Math.random() - 0.5) * 20;
@@ -1351,7 +1464,12 @@ export default function App() {
                 camera={{ position: [0, 20, 30], fov: 60 }}
                 gl={{ antialias: true, alpha: false }}
             >
-                <Scene worldState={worldState} trackData={trackData} setEngineRpm={setEngineRpm} />
+                <Scene 
+                    worldState={worldState} 
+                    trackData={trackData} 
+                    setEngineRpm={setEngineRpm}
+                    gameState={gameState.state}
+                />
             </Canvas>
 
             <GameUI
@@ -1365,6 +1483,17 @@ export default function App() {
             <DemoModeIndicator active={demoMode} />
             <LeaderboardDisplay entries={leaderboard} visible={gameState.state === 'LOBBY' || demoMode} />
             <EliminationBanner eliminations={eliminations} />
+
+            {/* Admin UI */}
+            <ToastNotification toasts={toasts} setToasts={setToasts} />
+            <AdminPanel
+                socket={socket}
+                tracks={trackList}
+                currentTrack={trackData}
+                cpuCount={cpuCount}
+                gameState={gameState.state}
+                showToast={showToast}
+            />
 
             {!connected && (
                 <div style={{

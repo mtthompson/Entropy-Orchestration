@@ -407,6 +407,9 @@ function removePlayer(id) {
     }
     players.delete(id);
     console.log(`[REMOVE] Player ${id} removed`);
+
+    // Reset demo timer if no human players remain
+    resetDemoTimer();
 }
 
 function switchToDrone(id) {
@@ -1144,8 +1147,17 @@ io.on('connection', (socket) => {
         socket.join('renderers');
 
         // Send track list and CPU count on connect
-        const { getAllTracks } = require('./tracks');
-        socket.emit('trackList', getAllTracks().map(t => ({ id: t.id, name: t.name, type: t.type })));
+        const { getAllTracks, getThemeByTrackId } = require('./tracks');
+        socket.emit('trackList', getAllTracks().map(t => {
+            const theme = getThemeByTrackId(t.id);
+            return {
+                id: t.id,
+                name: t.name,
+                type: t.type,
+                primaryColor: theme.primaryColor,
+                secondaryColor: theme.secondaryColor
+            };
+        }));
         socket.emit('cpuCount', cpuPlayers.size);
 
         // Admin commands
@@ -1257,6 +1269,14 @@ io.on('connection', (socket) => {
     } else {
         // Controller connection
         socket.on('join', ({ name, maskType }) => {
+            // Exit demo mode if active when a real player joins
+            if (demoModeActive) {
+                stopDemoMode();
+            }
+
+            // Reset demo timer (prevents demo from starting while player is present)
+            resetDemoTimer();
+
             // Determine spawn type
             let type = 'driver';
             if (gameState === 'RACING' || gameState === 'WINNER') {
