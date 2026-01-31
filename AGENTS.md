@@ -86,6 +86,9 @@ This is a 48-hour Game Jam project.
 * **Power-ups:** Spawning logic not yet implemented.
 * **Visual Polish:** Trails, damage effects, explosions.
 * **Spectator/Drone Mode:** Not yet implemented.
+* **Assets:** Create animations, graphics, and car model.
+* **Audio:** Sound effects and music.
+* **Theme:** Integrate "Mask" theme (Game Jam requirement).
 
 ### Dev Commands
 ```bash

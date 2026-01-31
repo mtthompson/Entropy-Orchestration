@@ -20,42 +20,44 @@ const TRACKS = [
             // Right wall  
             { x1: 10, z1: 60, x2: 10, z2: 30, height: 4 },
 
-            // === FIRST TURN - RIGHT (connects to eastward section) ===
-            // Outer wall (left becomes bottom of turn)
-            { x1: -10, z1: 30, x2: 0, z2: 20, height: 4 },
-            // Inner wall (right becomes top of turn)
-            { x1: 10, z1: 30, x2: 20, z2: 20, height: 4 },
+            // === TURN 1: RIGHT (connects to eastward section) ===
+            // Outer wall (left becomes bottom of turn) -> Connect to Z=0
+            { x1: -10, z1: 30, x2: 0, z2: 0, height: 4 },
+            // Inner wall (right becomes top of turn) -> Connect to X=15, Z=20
+            { x1: 10, z1: 30, x2: 15, z2: 20, height: 4 },
 
             // === EASTWARD STRAIGHT (x: 0 to 40, z: ~20) ===
-            // Top wall
-            { x1: 0, z1: 20, x2: 40, z2: 20, height: 4 },
-            // Bottom wall
-            { x1: 20, z1: 0, x2: 60, z2: 0, height: 4 },
+            // Left/North side: z=0. Right/South side: z=20.
+            { x1: 0, z1: 0, x2: 50, z2: 0, height: 4 },
+            { x1: 15, z1: 20, x2: 70, z2: 20, height: 4 },
 
             // === SECOND TURN - LEFT (connects to northward section) ===
             // Outer wall
-            { x1: 40, z1: 20, x2: 50, z2: 10, height: 4 },
-            { x1: 50, z1: 10, x2: 50, z2: -20, height: 4 },
-            // Inner wall
-            { x1: 60, z1: 0, x2: 70, z2: -10, height: 4 },
-            { x1: 70, z1: -10, x2: 70, z2: -40, height: 4 },
-
-            // === NORTHWARD STRAIGHT (z: -20 to -60) ===
-            // Left wall
             { x1: 50, z1: -20, x2: 50, z2: -60, height: 4 },
-            // Right wall
-            { x1: 70, z1: -40, x2: 70, z2: -80, height: 4 },
+            // Wait, this is Northward straight. Where is Turn 2?
+            // Missing Turn 2 connection in this copy-paste block? 
+            // I need to be careful to include ALL boundaries.
 
-            // === THIRD TURN - LEFT (connects to westward finish) ===
-            // Outer walls
+            // Re-constructing the full block from memory/logic:
+
+            // Turn 2 Left (North)
+            // Left Inner: (50,0) -> (50,-20)
+            { x1: 50, z1: 0, x2: 50, z2: -20, height: 4 },
+            // Right Outer: (70,20) -> (70,-20)
+            { x1: 70, z1: 20, x2: 70, z2: -20, height: 4 },
+
+            // Northward Straight
+            { x1: 50, z1: -20, x2: 50, z2: -60, height: 4 },
+            { x1: 70, z1: -20, x2: 70, z2: -60, height: 4 },
+
+            // Turn 3 Left (West)
             { x1: 50, z1: -60, x2: 40, z2: -70, height: 4 },
             { x1: 40, z1: -70, x2: 0, z2: -70, height: 4 },
             // Inner walls
             { x1: 70, z1: -80, x2: 60, z2: -90, height: 4 },
             { x1: 60, z1: -90, x2: 0, z2: -90, height: 4 },
 
-            // === FINISH STRAIGHT ===
-            // End walls
+            // Finish Straight
             { x1: 0, z1: -70, x2: 0, z2: -90, height: 4 },
         ],
 
