@@ -51,3 +51,44 @@ This is a 48-hour Game Jam project.
 * **Drone Mechanics:**
     * Cannot collide with cars.
     * Can tap a button to drop a "Trap" (Static Box) onto the track to mess with survivors.
+
+---
+
+## Development Status (Updated: 2026-01-30)
+
+### ✅ Implemented
+* **Project Scaffold:** Monorepo with npm workspaces (`server`, `renderer`, `controller`).
+* **Server (Port 3000):**
+    * Socket.io server with 60Hz tick rate.
+    * `cannon-es` physics with sphere bodies (mass 50).
+    * Player join/leave handling, input processing.
+    * "Test Arena" track with 4 boundary walls.
+    * Game state broadcast to all clients.
+* **Renderer (Port 5173):**
+    * React Three Fiber setup with Vaporwave aesthetic.
+    * Neon grid floor, bloom post-processing.
+    * QR code overlay for controller access.
+    * Real-time player sphere rendering from server state.
+* **Controller (Port 5174):**
+    * Mobile-optimized React UI with lobby → dashboard flow.
+    * DeviceOrientation steering with exponential curve.
+    * Touch throttle/brake controls.
+    * Health bar display.
+* **Networking:**
+    * Tailscale serve configured for dev testing.
+    * Vite configs allow `.ts.net` and `jam.gimongous.net` hosts.
+
+### 🚧 In Progress / TODO
+* **Tracks:** Basic test arena complete; need more complex tracks.
+* **Combat:** Collision damage detection not yet wired up.
+* **Power-ups:** Spawning logic not yet implemented.
+* **Visual Polish:** Trails, damage effects, explosions.
+* **Spectator/Drone Mode:** Not yet implemented.
+
+### Dev Commands
+```bash
+npm run dev:server      # Server on :3000
+npm run dev:renderer    # Renderer on :5173
+npm run dev:controller  # Controller on :5174
+tailscale serve --bg http://localhost:5174  # Expose controller
+```
