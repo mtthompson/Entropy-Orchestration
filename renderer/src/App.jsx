@@ -211,14 +211,29 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
         }
     };
 
-    // Calculate speed for visual effects
-    const [engineFlame, setEngineFlame] = useState(0);
+    // Calculate speed for visual effects - use ref to avoid re-renders every frame
+    const engineFlameRef = useRef(0);
+    const flameRef = useRef();
+    const underglowRef = useRef();
 
     useFrame((state) => {
         if (meshRef.current && velocity) {
             // Pulse effect based on speed
             const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-            setEngineFlame(Math.min(1, speed / 20));
+            engineFlameRef.current = Math.min(1, speed / 20);
+            
+            // Update flame mesh directly without state
+            if (flameRef.current) {
+                const ef = engineFlameRef.current;
+                flameRef.current.visible = ef > 0.1;
+                if (ef > 0.1) {
+                    flameRef.current.scale.set(0.4 + ef * 0.3, 0.3 + ef * 0.2, 0.5 + ef * 1.5);
+                    flameRef.current.material.opacity = 0.6 + ef * 0.3;
+                }
+            }
+            if (underglowRef.current) {
+                underglowRef.current.intensity = 0.8 + engineFlameRef.current * 0.5;
+            }
         }
     });
 
@@ -227,24 +242,23 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
             <group ref={meshRef} position={position} castShadow receiveShadow>
                 <GeometricModel />
 
-                {/* Engine Flame Effect */}
-                {engineFlame > 0.1 && (
-                    <mesh position={[0, 0.1, 1.5]} scale={[0.4 + engineFlame * 0.3, 0.3 + engineFlame * 0.2, 0.5 + engineFlame * 1.5]}>
-                        <coneGeometry args={[1, 2, 8]} />
-                        <meshBasicMaterial
-                            color="#ff6600"
-                            transparent
-                            opacity={0.6 + engineFlame * 0.3}
-                            blending={THREE.AdditiveBlending}
-                        />
-                    </mesh>
-                )}
+                {/* Engine Flame Effect - controlled via ref */}
+                <mesh ref={flameRef} position={[0, 0.1, 1.5]} visible={false}>
+                    <coneGeometry args={[1, 2, 8]} />
+                    <meshBasicMaterial
+                        color="#ff6600"
+                        transparent
+                        opacity={0.6}
+                        blending={THREE.AdditiveBlending}
+                    />
+                </mesh>
 
-                {/* Underglow */}
+                {/* Underglow - controlled via ref */}
                 <pointLight
+                    ref={underglowRef}
                     position={[0, -0.5, 0]}
                     color={color}
-                    intensity={0.8 + engineFlame * 0.5}
+                    intensity={0.8}
                     distance={6}
                 />
             </group>
@@ -260,19 +274,34 @@ function Car({ position, velocity, color, hp, isDying, maskType }) {
 // =============================================================================
 function Explosion({ position, color, onComplete }) {
     const texture = useMemo(() => new THREE.TextureLoader().load('/explosion.png'), []);
-    const [life, setLife] = useState(1);
+    const lifeRef = useRef(1);
+    const spriteRef = useRef();
+    const completedRef = useRef(false);
 
     useFrame((state, delta) => {
-        setLife(l => l - delta * 2);
-        if (life <= 0) onComplete?.();
+        if (completedRef.current) return;
+        
+        lifeRef.current -= delta * 2;
+        
+        if (lifeRef.current <= 0) {
+            completedRef.current = true;
+            onComplete?.();
+            return;
+        }
+        
+        // Update sprite directly without state
+        if (spriteRef.current) {
+            const life = lifeRef.current;
+            const scale = 5 + (1 - life) * 5;
+            spriteRef.current.scale.set(scale, scale, 1);
+            spriteRef.current.material.opacity = life;
+        }
     });
-
-    if (life <= 0) return null;
 
     return (
         <group position={position}>
-            <sprite scale={[5 + (1 - life) * 5, 5 + (1 - life) * 5, 1]}>
-                <spriteMaterial map={texture} color={color} transparent opacity={life} blending={THREE.AdditiveBlending} />
+            <sprite ref={spriteRef} scale={[5, 5, 1]}>
+                <spriteMaterial map={texture} color={color} transparent opacity={1} blending={THREE.AdditiveBlending} />
             </sprite>
         </group>
     );
@@ -862,23 +891,6 @@ function ScreenFlash({ active, color = '#ff0000' }) {
         }} />
     );
 }
-
-// =============================================================================
-// TRACK BOUNDARIES CONTAINER
-// =============================================================================
-function TrackBoundaries({ boundaries }) {
-    if (!boundaries || boundaries.length === 0) return null;
-
-    return (
-        <group>
-            {boundaries.map((wall, index) => (
-                <TrackWall key={index} wall={wall} />
-            ))}
-        </group>
-    );
-}
-
-
 
 // =============================================================================
 // LOBBY FLYING CAMERA - Orbits the track while waiting
@@ -1481,6 +1493,14 @@ export default function App() {
     const [demoMode, setDemoMode] = useState(false);
     const [eliminations, setEliminations] = useState([]);
     const [screenShake, setScreenShake] = useState(0); // 0-1 intensity
+    const [trackTheme, setTrackTheme] = useState({
+        primaryColor: '#ff00ff',
+        secondaryColor: '#00ffff',
+        floorColor: '#0a051a',
+        gridColor: '#ff00ff',
+        wallColor: '#ff00ff',
+        skyColor: '#0a0020'
+    });
     const prevPlayersRef = useRef({});
 
     // Admin state
