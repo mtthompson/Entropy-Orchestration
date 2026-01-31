@@ -1,11 +1,16 @@
-import React, { useRef, useMemo, useState, useEffect } from 'react';
+import React, { useRef, useMemo, useState, useEffect, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { particleWorkerAPI } from './hooks/useParticleWorker';
 
 // =============================================================================
 // PARTICLE EFFECTS SYSTEM
 // Tire smoke, collision sparks, powerup bursts, ambient particles
+// With optional Web Worker offloading for heavy computations
 // =============================================================================
+
+// Check if worker is available (singleton check)
+const useWorker = particleWorkerAPI.isAvailable();
 
 // Tire smoke particles - shown during drifting/boosting
 export function TireSmoke({ position, active, color = '#888888', intensity = 1 }) {

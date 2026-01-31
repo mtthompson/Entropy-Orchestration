@@ -9,7 +9,15 @@ export function useAudio(connected) {
     const songEndCallbackRef = useRef(null);
     const currentTrackIndexRef = useRef(0);
     const masterGainRef = useRef(null);
+    const compressorRef = useRef(null);
     const songLengthRef = useRef(0); // Total bars in current song
+    const schedulerTimerRef = useRef(null); // For lookahead scheduler
+    const nextNoteTimeRef = useRef(0); // When the next measure should start
+    const scheduledMeasuresRef = useRef(new Set()); // Track which measures are scheduled
+    
+    // Lookahead scheduler constants (in seconds)
+    const SCHEDULE_AHEAD_TIME = 0.2; // How far ahead to schedule audio (200ms)
+    const SCHEDULER_INTERVAL = 50; // How often to check/schedule (50ms - runs frequently but cheaply)
     
     // Track order for automatic progression
     const TRACK_ORDER = [
@@ -108,6 +116,491 @@ export function useAudio(connected) {
         return match[1] + (parseInt(match[2]) + 1);
     };
 
+    // Note name to frequency conversion for precise melodies
+    const NOTE_FREQS = {
+        'C3': 130.81, 'C#3': 138.59, 'Db3': 138.59, 'D3': 146.83, 'D#3': 155.56, 'Eb3': 155.56,
+        'E3': 164.81, 'F3': 174.61, 'F#3': 185.00, 'Gb3': 185.00, 'G3': 196.00, 'G#3': 207.65,
+        'Ab3': 207.65, 'A3': 220.00, 'A#3': 233.08, 'Bb3': 233.08, 'B3': 246.94,
+        'C4': 261.63, 'C#4': 277.18, 'Db4': 277.18, 'D4': 293.66, 'D#4': 311.13, 'Eb4': 311.13,
+        'E4': 329.63, 'F4': 349.23, 'F#4': 369.99, 'Gb4': 369.99, 'G4': 392.00, 'G#4': 415.30,
+        'Ab4': 415.30, 'A4': 440.00, 'A#4': 466.16, 'Bb4': 466.16, 'B4': 493.88,
+        'C5': 523.25, 'C#5': 554.37, 'Db5': 554.37, 'D5': 587.33, 'D#5': 622.25, 'Eb5': 622.25,
+        'E5': 659.25, 'F5': 698.46, 'F#5': 739.99, 'Gb5': 739.99, 'G5': 783.99, 'G#5': 830.61,
+        'Ab5': 830.61, 'A5': 880.00, 'A#5': 932.33, 'Bb5': 932.33, 'B5': 987.77,
+        'C6': 1046.50, 'D6': 1174.66, 'E6': 1318.51, 'F6': 1396.91, 'G6': 1567.98,
+    };
+
+    // Complete 4-bar melodies for each track - actual tunes!
+    // Each melody is designed to work over a 4-chord progression
+    const COMPLETE_MELODIES = {
+        // Track 1: Stadium Oval - Classic Synthwave anthem
+        'track_01': {
+            verse: [
+                // Bar 1
+                { bar: 0, step: 0, note: 'A4', duration: 2 },
+                { bar: 0, step: 2, note: 'C5', duration: 2 },
+                { bar: 0, step: 4, note: 'D5', duration: 4 },
+                { bar: 0, step: 8, note: 'E5', duration: 2 },
+                { bar: 0, step: 10, note: 'D5', duration: 2 },
+                { bar: 0, step: 12, note: 'C5', duration: 4 },
+                // Bar 2
+                { bar: 1, step: 0, note: 'A4', duration: 2 },
+                { bar: 1, step: 2, note: 'G4', duration: 2 },
+                { bar: 1, step: 4, note: 'A4', duration: 8 },
+                { bar: 1, step: 12, note: 'G4', duration: 4 },
+                // Bar 3 - variation
+                { bar: 2, step: 0, note: 'A4', duration: 2 },
+                { bar: 2, step: 2, note: 'C5', duration: 2 },
+                { bar: 2, step: 4, note: 'D5', duration: 2 },
+                { bar: 2, step: 6, note: 'E5', duration: 2 },
+                { bar: 2, step: 8, note: 'F5', duration: 4 },
+                { bar: 2, step: 12, note: 'E5', duration: 4 },
+                // Bar 4 - resolution
+                { bar: 3, step: 0, note: 'D5', duration: 4 },
+                { bar: 3, step: 4, note: 'C5', duration: 4 },
+                { bar: 3, step: 8, note: 'A4', duration: 8 },
+            ],
+            chorus: [
+                // Bar 1 - big hook
+                { bar: 0, step: 0, note: 'E5', duration: 4 },
+                { bar: 0, step: 4, note: 'D5', duration: 2 },
+                { bar: 0, step: 6, note: 'E5', duration: 2 },
+                { bar: 0, step: 8, note: 'G5', duration: 8 },
+                // Bar 2
+                { bar: 1, step: 0, note: 'F5', duration: 4 },
+                { bar: 1, step: 4, note: 'E5', duration: 2 },
+                { bar: 1, step: 6, note: 'D5', duration: 2 },
+                { bar: 1, step: 8, note: 'E5', duration: 8 },
+                // Bar 3
+                { bar: 2, step: 0, note: 'E5', duration: 2 },
+                { bar: 2, step: 2, note: 'F5', duration: 2 },
+                { bar: 2, step: 4, note: 'G5', duration: 4 },
+                { bar: 2, step: 8, note: 'A5', duration: 4 },
+                { bar: 2, step: 12, note: 'G5', duration: 4 },
+                // Bar 4 - climax
+                { bar: 3, step: 0, note: 'F5', duration: 2 },
+                { bar: 3, step: 2, note: 'E5', duration: 2 },
+                { bar: 3, step: 4, note: 'D5', duration: 4 },
+                { bar: 3, step: 8, note: 'C5', duration: 8 },
+            ],
+        },
+        
+        // Track 2: Thunder Dome - Industrial darksynth
+        'track_02': {
+            verse: [
+                { bar: 0, step: 0, note: 'E4', duration: 1 },
+                { bar: 0, step: 2, note: 'E4', duration: 1 },
+                { bar: 0, step: 4, note: 'G4', duration: 2 },
+                { bar: 0, step: 8, note: 'E4', duration: 1 },
+                { bar: 0, step: 10, note: 'E4', duration: 1 },
+                { bar: 0, step: 12, note: 'A4', duration: 4 },
+                { bar: 1, step: 0, note: 'G4', duration: 8 },
+                { bar: 1, step: 8, note: 'E4', duration: 8 },
+                { bar: 2, step: 0, note: 'E4', duration: 1 },
+                { bar: 2, step: 2, note: 'E4', duration: 1 },
+                { bar: 2, step: 4, note: 'G4', duration: 2 },
+                { bar: 2, step: 8, note: 'A4', duration: 2 },
+                { bar: 2, step: 10, note: 'B4', duration: 2 },
+                { bar: 2, step: 12, note: 'C5', duration: 4 },
+                { bar: 3, step: 0, note: 'B4', duration: 4 },
+                { bar: 3, step: 4, note: 'A4', duration: 4 },
+                { bar: 3, step: 8, note: 'E4', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'E5', duration: 2 },
+                { bar: 0, step: 2, note: 'D5', duration: 2 },
+                { bar: 0, step: 4, note: 'E5', duration: 2 },
+                { bar: 0, step: 6, note: 'D5', duration: 2 },
+                { bar: 0, step: 8, note: 'C5', duration: 8 },
+                { bar: 1, step: 0, note: 'B4', duration: 4 },
+                { bar: 1, step: 4, note: 'C5', duration: 4 },
+                { bar: 1, step: 8, note: 'E5', duration: 8 },
+                { bar: 2, step: 0, note: 'E5', duration: 2 },
+                { bar: 2, step: 2, note: 'G5', duration: 2 },
+                { bar: 2, step: 4, note: 'E5', duration: 2 },
+                { bar: 2, step: 6, note: 'D5', duration: 2 },
+                { bar: 2, step: 8, note: 'C5', duration: 8 },
+                { bar: 3, step: 0, note: 'B4', duration: 8 },
+                { bar: 3, step: 8, note: 'E4', duration: 8 },
+            ],
+        },
+        
+        // Track 3: Switchback - Outrun driving
+        'track_03': {
+            verse: [
+                { bar: 0, step: 0, note: 'D5', duration: 2 },
+                { bar: 0, step: 3, note: 'E5', duration: 2 },
+                { bar: 0, step: 6, note: 'F5', duration: 2 },
+                { bar: 0, step: 9, note: 'A5', duration: 2 },
+                { bar: 0, step: 12, note: 'G5', duration: 4 },
+                { bar: 1, step: 0, note: 'F5', duration: 4 },
+                { bar: 1, step: 4, note: 'E5', duration: 4 },
+                { bar: 1, step: 8, note: 'D5', duration: 8 },
+                { bar: 2, step: 0, note: 'D5', duration: 2 },
+                { bar: 2, step: 3, note: 'E5', duration: 2 },
+                { bar: 2, step: 6, note: 'F5', duration: 2 },
+                { bar: 2, step: 9, note: 'G5', duration: 2 },
+                { bar: 2, step: 12, note: 'A5', duration: 4 },
+                { bar: 3, step: 0, note: 'G5', duration: 4 },
+                { bar: 3, step: 4, note: 'F5', duration: 4 },
+                { bar: 3, step: 8, note: 'E5', duration: 4 },
+                { bar: 3, step: 12, note: 'D5', duration: 4 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'A5', duration: 4 },
+                { bar: 0, step: 4, note: 'G5', duration: 2 },
+                { bar: 0, step: 6, note: 'A5', duration: 2 },
+                { bar: 0, step: 8, note: 'C6', duration: 4 },
+                { bar: 0, step: 12, note: 'A5', duration: 4 },
+                { bar: 1, step: 0, note: 'G5', duration: 8 },
+                { bar: 1, step: 8, note: 'F5', duration: 8 },
+                { bar: 2, step: 0, note: 'A5', duration: 2 },
+                { bar: 2, step: 2, note: 'Bb5', duration: 2 },
+                { bar: 2, step: 4, note: 'C6', duration: 4 },
+                { bar: 2, step: 8, note: 'D6', duration: 4 },
+                { bar: 2, step: 12, note: 'C6', duration: 4 },
+                { bar: 3, step: 0, note: 'Bb5', duration: 4 },
+                { bar: 3, step: 4, note: 'A5', duration: 4 },
+                { bar: 3, step: 8, note: 'G5', duration: 4 },
+                { bar: 3, step: 12, note: 'F5', duration: 4 },
+            ],
+        },
+        
+        // Track 4: Cloverleaf - Dreamy ambient
+        'track_04': {
+            verse: [
+                { bar: 0, step: 0, note: 'G5', duration: 8 },
+                { bar: 0, step: 8, note: 'E5', duration: 8 },
+                { bar: 1, step: 0, note: 'D5', duration: 8 },
+                { bar: 1, step: 8, note: 'C5', duration: 8 },
+                { bar: 2, step: 0, note: 'E5', duration: 8 },
+                { bar: 2, step: 8, note: 'G5', duration: 8 },
+                { bar: 3, step: 0, note: 'A5', duration: 16 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'C6', duration: 8 },
+                { bar: 0, step: 8, note: 'B5', duration: 8 },
+                { bar: 1, step: 0, note: 'A5', duration: 8 },
+                { bar: 1, step: 8, note: 'G5', duration: 8 },
+                { bar: 2, step: 0, note: 'A5', duration: 8 },
+                { bar: 2, step: 8, note: 'B5', duration: 8 },
+                { bar: 3, step: 0, note: 'C6', duration: 16 },
+            ],
+        },
+        
+        // Track 5: Hexagon Heat - Volcanic intensity
+        'track_05': {
+            verse: [
+                { bar: 0, step: 0, note: 'A4', duration: 1 },
+                { bar: 0, step: 1, note: 'A4', duration: 1 },
+                { bar: 0, step: 4, note: 'C5', duration: 2 },
+                { bar: 0, step: 8, note: 'A4', duration: 1 },
+                { bar: 0, step: 9, note: 'A4', duration: 1 },
+                { bar: 0, step: 12, note: 'E5', duration: 4 },
+                { bar: 1, step: 0, note: 'D5', duration: 4 },
+                { bar: 1, step: 4, note: 'C5', duration: 4 },
+                { bar: 1, step: 8, note: 'A4', duration: 8 },
+                { bar: 2, step: 0, note: 'A4', duration: 1 },
+                { bar: 2, step: 1, note: 'A4', duration: 1 },
+                { bar: 2, step: 4, note: 'E5', duration: 2 },
+                { bar: 2, step: 8, note: 'F5', duration: 2 },
+                { bar: 2, step: 10, note: 'E5', duration: 2 },
+                { bar: 2, step: 12, note: 'D5', duration: 4 },
+                { bar: 3, step: 0, note: 'C5', duration: 8 },
+                { bar: 3, step: 8, note: 'A4', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'E5', duration: 2 },
+                { bar: 0, step: 2, note: 'F5', duration: 2 },
+                { bar: 0, step: 4, note: 'E5', duration: 2 },
+                { bar: 0, step: 6, note: 'D5', duration: 2 },
+                { bar: 0, step: 8, note: 'E5', duration: 4 },
+                { bar: 0, step: 12, note: 'A5', duration: 4 },
+                { bar: 1, step: 0, note: 'G5', duration: 4 },
+                { bar: 1, step: 4, note: 'F5', duration: 4 },
+                { bar: 1, step: 8, note: 'E5', duration: 8 },
+                { bar: 2, step: 0, note: 'E5', duration: 2 },
+                { bar: 2, step: 2, note: 'F5', duration: 2 },
+                { bar: 2, step: 4, note: 'G5', duration: 2 },
+                { bar: 2, step: 6, note: 'A5', duration: 2 },
+                { bar: 2, step: 8, note: 'B5', duration: 8 },
+                { bar: 3, step: 0, note: 'A5', duration: 8 },
+                { bar: 3, step: 8, note: 'E5', duration: 8 },
+            ],
+        },
+        
+        // Track 6: Dragon's Tail - Oriental pentatonic
+        'track_06': {
+            verse: [
+                { bar: 0, step: 0, note: 'E5', duration: 2 },
+                { bar: 0, step: 2, note: 'G5', duration: 2 },
+                { bar: 0, step: 4, note: 'A5', duration: 4 },
+                { bar: 0, step: 8, note: 'G5', duration: 2 },
+                { bar: 0, step: 10, note: 'E5', duration: 2 },
+                { bar: 0, step: 12, note: 'D5', duration: 4 },
+                { bar: 1, step: 0, note: 'E5', duration: 8 },
+                { bar: 1, step: 8, note: 'D5', duration: 4 },
+                { bar: 1, step: 12, note: 'B4', duration: 4 },
+                { bar: 2, step: 0, note: 'E5', duration: 2 },
+                { bar: 2, step: 2, note: 'G5', duration: 2 },
+                { bar: 2, step: 4, note: 'A5', duration: 2 },
+                { bar: 2, step: 6, note: 'B5', duration: 2 },
+                { bar: 2, step: 8, note: 'D6', duration: 4 },
+                { bar: 2, step: 12, note: 'B5', duration: 4 },
+                { bar: 3, step: 0, note: 'A5', duration: 4 },
+                { bar: 3, step: 4, note: 'G5', duration: 4 },
+                { bar: 3, step: 8, note: 'E5', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'B5', duration: 4 },
+                { bar: 0, step: 4, note: 'A5', duration: 2 },
+                { bar: 0, step: 6, note: 'G5', duration: 2 },
+                { bar: 0, step: 8, note: 'A5', duration: 4 },
+                { bar: 0, step: 12, note: 'E5', duration: 4 },
+                { bar: 1, step: 0, note: 'G5', duration: 8 },
+                { bar: 1, step: 8, note: 'E5', duration: 8 },
+                { bar: 2, step: 0, note: 'B5', duration: 2 },
+                { bar: 2, step: 2, note: 'D6', duration: 2 },
+                { bar: 2, step: 4, note: 'E6', duration: 4 },
+                { bar: 2, step: 8, note: 'D6', duration: 4 },
+                { bar: 2, step: 12, note: 'B5', duration: 4 },
+                { bar: 3, step: 0, note: 'A5', duration: 8 },
+                { bar: 3, step: 8, note: 'E5', duration: 8 },
+            ],
+        },
+        
+        // Track 7: Octagon - Mystic/ethereal
+        'track_07': {
+            verse: [
+                { bar: 0, step: 0, note: 'D5', duration: 4 },
+                { bar: 0, step: 4, note: 'F5', duration: 4 },
+                { bar: 0, step: 8, note: 'A5', duration: 8 },
+                { bar: 1, step: 0, note: 'G5', duration: 4 },
+                { bar: 1, step: 4, note: 'F5', duration: 4 },
+                { bar: 1, step: 8, note: 'E5', duration: 4 },
+                { bar: 1, step: 12, note: 'D5', duration: 4 },
+                { bar: 2, step: 0, note: 'D5', duration: 2 },
+                { bar: 2, step: 2, note: 'E5', duration: 2 },
+                { bar: 2, step: 4, note: 'F5', duration: 2 },
+                { bar: 2, step: 6, note: 'G5', duration: 2 },
+                { bar: 2, step: 8, note: 'A5', duration: 8 },
+                { bar: 3, step: 0, note: 'Bb5', duration: 8 },
+                { bar: 3, step: 8, note: 'A5', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'A5', duration: 4 },
+                { bar: 0, step: 4, note: 'Bb5', duration: 4 },
+                { bar: 0, step: 8, note: 'C6', duration: 8 },
+                { bar: 1, step: 0, note: 'D6', duration: 8 },
+                { bar: 1, step: 8, note: 'C6', duration: 8 },
+                { bar: 2, step: 0, note: 'Bb5', duration: 4 },
+                { bar: 2, step: 4, note: 'A5', duration: 4 },
+                { bar: 2, step: 8, note: 'G5', duration: 4 },
+                { bar: 2, step: 12, note: 'F5', duration: 4 },
+                { bar: 3, step: 0, note: 'E5', duration: 8 },
+                { bar: 3, step: 8, note: 'D5', duration: 8 },
+            ],
+        },
+        
+        // Track 8: Grand Prix - 80s Pop racing
+        'track_08': {
+            verse: [
+                { bar: 0, step: 0, note: 'C5', duration: 2 },
+                { bar: 0, step: 2, note: 'D5', duration: 2 },
+                { bar: 0, step: 4, note: 'E5', duration: 2 },
+                { bar: 0, step: 6, note: 'G5', duration: 2 },
+                { bar: 0, step: 8, note: 'E5', duration: 4 },
+                { bar: 0, step: 12, note: 'D5', duration: 4 },
+                { bar: 1, step: 0, note: 'C5', duration: 8 },
+                { bar: 1, step: 8, note: 'D5', duration: 4 },
+                { bar: 1, step: 12, note: 'E5', duration: 4 },
+                { bar: 2, step: 0, note: 'C5', duration: 2 },
+                { bar: 2, step: 2, note: 'D5', duration: 2 },
+                { bar: 2, step: 4, note: 'E5', duration: 2 },
+                { bar: 2, step: 6, note: 'G5', duration: 2 },
+                { bar: 2, step: 8, note: 'A5', duration: 4 },
+                { bar: 2, step: 12, note: 'G5', duration: 4 },
+                { bar: 3, step: 0, note: 'E5', duration: 8 },
+                { bar: 3, step: 8, note: 'C5', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'G5', duration: 4 },
+                { bar: 0, step: 4, note: 'A5', duration: 2 },
+                { bar: 0, step: 6, note: 'G5', duration: 2 },
+                { bar: 0, step: 8, note: 'E5', duration: 4 },
+                { bar: 0, step: 12, note: 'C5', duration: 4 },
+                { bar: 1, step: 0, note: 'D5', duration: 4 },
+                { bar: 1, step: 4, note: 'E5', duration: 4 },
+                { bar: 1, step: 8, note: 'G5', duration: 8 },
+                { bar: 2, step: 0, note: 'A5', duration: 2 },
+                { bar: 2, step: 2, note: 'G5', duration: 2 },
+                { bar: 2, step: 4, note: 'A5', duration: 2 },
+                { bar: 2, step: 6, note: 'C6', duration: 2 },
+                { bar: 2, step: 8, note: 'B5', duration: 4 },
+                { bar: 2, step: 12, note: 'A5', duration: 4 },
+                { bar: 3, step: 0, note: 'G5', duration: 8 },
+                { bar: 3, step: 8, note: 'C5', duration: 8 },
+            ],
+        },
+        
+        // Track 9: Triangle Terror - Tense minimal
+        'track_09': {
+            verse: [
+                { bar: 0, step: 0, note: 'E4', duration: 8 },
+                { bar: 0, step: 8, note: 'E4', duration: 8 },
+                { bar: 1, step: 0, note: 'F4', duration: 8 },
+                { bar: 1, step: 8, note: 'E4', duration: 8 },
+                { bar: 2, step: 0, note: 'E4', duration: 4 },
+                { bar: 2, step: 4, note: 'G4', duration: 4 },
+                { bar: 2, step: 8, note: 'E4', duration: 8 },
+                { bar: 3, step: 0, note: 'D4', duration: 8 },
+                { bar: 3, step: 8, note: 'E4', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'E5', duration: 4 },
+                { bar: 0, step: 8, note: 'E5', duration: 4 },
+                { bar: 1, step: 0, note: 'F5', duration: 4 },
+                { bar: 1, step: 8, note: 'E5', duration: 4 },
+                { bar: 2, step: 0, note: 'G5', duration: 2 },
+                { bar: 2, step: 4, note: 'F5', duration: 2 },
+                { bar: 2, step: 8, note: 'E5', duration: 4 },
+                { bar: 3, step: 0, note: 'D5', duration: 8 },
+                { bar: 3, step: 8, note: 'E5', duration: 8 },
+            ],
+        },
+        
+        // Track 10: Velocity Strip - Eurobeat euphoria
+        'track_10': {
+            verse: [
+                { bar: 0, step: 0, note: 'A4', duration: 1 },
+                { bar: 0, step: 1, note: 'B4', duration: 1 },
+                { bar: 0, step: 2, note: 'C5', duration: 2 },
+                { bar: 0, step: 4, note: 'D5', duration: 1 },
+                { bar: 0, step: 5, note: 'E5', duration: 1 },
+                { bar: 0, step: 6, note: 'F5', duration: 2 },
+                { bar: 0, step: 8, note: 'E5', duration: 4 },
+                { bar: 0, step: 12, note: 'D5', duration: 4 },
+                { bar: 1, step: 0, note: 'C5', duration: 4 },
+                { bar: 1, step: 4, note: 'B4', duration: 4 },
+                { bar: 1, step: 8, note: 'A4', duration: 8 },
+                { bar: 2, step: 0, note: 'A4', duration: 1 },
+                { bar: 2, step: 1, note: 'C5', duration: 1 },
+                { bar: 2, step: 2, note: 'E5', duration: 2 },
+                { bar: 2, step: 4, note: 'A4', duration: 1 },
+                { bar: 2, step: 5, note: 'C5', duration: 1 },
+                { bar: 2, step: 6, note: 'E5', duration: 2 },
+                { bar: 2, step: 8, note: 'G5', duration: 4 },
+                { bar: 2, step: 12, note: 'F5', duration: 4 },
+                { bar: 3, step: 0, note: 'E5', duration: 8 },
+                { bar: 3, step: 8, note: 'A4', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'E5', duration: 2 },
+                { bar: 0, step: 2, note: 'F5', duration: 2 },
+                { bar: 0, step: 4, note: 'G5', duration: 2 },
+                { bar: 0, step: 6, note: 'A5', duration: 2 },
+                { bar: 0, step: 8, note: 'B5', duration: 4 },
+                { bar: 0, step: 12, note: 'A5', duration: 4 },
+                { bar: 1, step: 0, note: 'G5', duration: 4 },
+                { bar: 1, step: 4, note: 'F5', duration: 4 },
+                { bar: 1, step: 8, note: 'E5', duration: 8 },
+                { bar: 2, step: 0, note: 'E5', duration: 1 },
+                { bar: 2, step: 1, note: 'G5', duration: 1 },
+                { bar: 2, step: 2, note: 'B5', duration: 2 },
+                { bar: 2, step: 4, note: 'C6', duration: 4 },
+                { bar: 2, step: 8, note: 'B5', duration: 2 },
+                { bar: 2, step: 10, note: 'A5', duration: 2 },
+                { bar: 2, step: 12, note: 'G5', duration: 4 },
+                { bar: 3, step: 0, note: 'A5', duration: 8 },
+                { bar: 3, step: 8, note: 'E5', duration: 8 },
+            ],
+        },
+        
+        // Track 11: Coliseum - Epic orchestral
+        'track_11': {
+            verse: [
+                { bar: 0, step: 0, note: 'D5', duration: 8 },
+                { bar: 0, step: 8, note: 'F5', duration: 8 },
+                { bar: 1, step: 0, note: 'A5', duration: 8 },
+                { bar: 1, step: 8, note: 'G5', duration: 8 },
+                { bar: 2, step: 0, note: 'F5', duration: 4 },
+                { bar: 2, step: 4, note: 'E5', duration: 4 },
+                { bar: 2, step: 8, note: 'D5', duration: 8 },
+                { bar: 3, step: 0, note: 'E5', duration: 8 },
+                { bar: 3, step: 8, note: 'D5', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'A5', duration: 4 },
+                { bar: 0, step: 4, note: 'Bb5', duration: 4 },
+                { bar: 0, step: 8, note: 'C6', duration: 4 },
+                { bar: 0, step: 12, note: 'D6', duration: 4 },
+                { bar: 1, step: 0, note: 'C6', duration: 8 },
+                { bar: 1, step: 8, note: 'Bb5', duration: 8 },
+                { bar: 2, step: 0, note: 'A5', duration: 4 },
+                { bar: 2, step: 4, note: 'G5', duration: 4 },
+                { bar: 2, step: 8, note: 'F5', duration: 4 },
+                { bar: 2, step: 12, note: 'E5', duration: 4 },
+                { bar: 3, step: 0, note: 'D5', duration: 16 },
+            ],
+        },
+        
+        // Track 12: The Cage - Chaotic/tense
+        'track_12': {
+            verse: [
+                { bar: 0, step: 0, note: 'E4', duration: 2 },
+                { bar: 0, step: 3, note: 'G4', duration: 1 },
+                { bar: 0, step: 5, note: 'E4', duration: 2 },
+                { bar: 0, step: 8, note: 'Bb4', duration: 2 },
+                { bar: 0, step: 11, note: 'A4', duration: 2 },
+                { bar: 0, step: 14, note: 'E4', duration: 2 },
+                { bar: 1, step: 0, note: 'G4', duration: 4 },
+                { bar: 1, step: 6, note: 'E4', duration: 2 },
+                { bar: 1, step: 10, note: 'D4', duration: 4 },
+                { bar: 2, step: 0, note: 'E4', duration: 1 },
+                { bar: 2, step: 2, note: 'E4', duration: 1 },
+                { bar: 2, step: 4, note: 'G4', duration: 2 },
+                { bar: 2, step: 8, note: 'Bb4', duration: 4 },
+                { bar: 2, step: 13, note: 'A4', duration: 2 },
+                { bar: 3, step: 0, note: 'G4', duration: 8 },
+                { bar: 3, step: 8, note: 'E4', duration: 8 },
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'E5', duration: 2 },
+                { bar: 0, step: 2, note: 'F5', duration: 1 },
+                { bar: 0, step: 4, note: 'E5', duration: 2 },
+                { bar: 0, step: 7, note: 'D5', duration: 1 },
+                { bar: 0, step: 9, note: 'E5', duration: 2 },
+                { bar: 0, step: 12, note: 'G5', duration: 4 },
+                { bar: 1, step: 0, note: 'Bb5', duration: 4 },
+                { bar: 1, step: 4, note: 'A5', duration: 4 },
+                { bar: 1, step: 8, note: 'G5', duration: 4 },
+                { bar: 1, step: 12, note: 'E5', duration: 4 },
+                { bar: 2, step: 0, note: 'E5', duration: 1 },
+                { bar: 2, step: 1, note: 'G5', duration: 1 },
+                { bar: 2, step: 2, note: 'Bb5', duration: 2 },
+                { bar: 2, step: 4, note: 'A5', duration: 2 },
+                { bar: 2, step: 6, note: 'G5', duration: 2 },
+                { bar: 2, step: 8, note: 'E5', duration: 8 },
+                { bar: 3, step: 0, note: 'D5', duration: 8 },
+                { bar: 3, step: 8, note: 'E5', duration: 8 },
+            ],
+        },
+    };
+
+    // Get melody notes for current bar from complete melody
+    const getCompleteMelody = (trackId, section, barInPhrase) => {
+        const trackMelodies = COMPLETE_MELODIES[trackId] || COMPLETE_MELODIES['track_01'];
+        const isChorus = section === 3 || section === 6; // Chorus or Drop
+        const melodySet = isChorus ? trackMelodies.chorus : trackMelodies.verse;
+        const bar = barInPhrase % 4;
+        
+        return melodySet.filter(note => note.bar === bar).map(note => ({
+            step: note.step,
+            note: note.note,
+            duration: note.duration
+        }));
+    };
+
     // Multiple chord progressions for variety
     const PROGRESSIONS = [
         ['Dm', 'Am', 'Bb', 'C'],     // 0: Classic synthwave
@@ -129,7 +622,7 @@ export function useAudio(connected) {
         [[0, 1], [3, 1], [4, 1], [7, 1], [8, 1], [11, 1], [12, 1], [14, 1]], // 5: 16th groove (relentless)
     ];
 
-    // Lead melody generators - now STYLE-SPECIFIC for each track
+    // Lead melody generators - fallback for when complete melody not available
     const generateMelody = (chord, section, measureNum, melodyStyle = 'arpeggio') => {
         const chordNotes = CHORDS[chord];
         if (!chordNotes) return [];
@@ -675,10 +1168,39 @@ export function useAudio(connected) {
         const ctx = new AudioContext();
         audioContext.current = ctx;
 
-        // Create master gain for fade effects
+        // === MASTER OUTPUT CHAIN (prevents clipping) ===
+        
+        // Soft clipper using waveshaper for smooth limiting
+        const limiter = ctx.createWaveShaper();
+        const limitCurve = new Float32Array(65536);
+        for (let i = 0; i < 65536; i++) {
+            const x = (i / 32768) - 1;
+            // Soft clip curve - starts limiting around 0.7, hard limit at 1.0
+            limitCurve[i] = Math.tanh(x * 1.5) * 0.9;
+        }
+        limiter.curve = limitCurve;
+        limiter.oversample = '2x';
+
+        // Master compressor for dynamic control
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.value = -12;  // Start compressing at -12dB
+        compressor.knee.value = 6;         // Soft knee
+        compressor.ratio.value = 4;        // 4:1 compression
+        compressor.attack.value = 0.003;   // Fast attack
+        compressor.release.value = 0.15;   // Quick release
+
+        // Master gain (reduced to prevent overload)
         const masterGain = ctx.createGain();
-        masterGain.connect(ctx.destination);
+        masterGain.gain.value = 0.7; // -3dB headroom
+        
+        // Chain: masterGain -> compressor -> limiter -> destination
+        masterGain.connect(compressor);
+        compressor.connect(limiter);
+        limiter.connect(ctx.destination);
         masterGainRef.current = masterGain;
+
+        // Store compressor for potential external control
+        compressorRef.current = compressor;
 
         // Initialize with first track style
         const initialTrack = TRACK_ORDER[currentTrackIndexRef.current];
@@ -717,17 +1239,120 @@ export function useAudio(connected) {
         noiseSrc.start();
         engineNode.current = { src: noiseSrc, filter, gain };
 
-        // --- START SONG SEQUENCER ---
+        // --- START LOOKAHEAD SCHEDULER ---
         isPlayingRef.current = true;
         currentMeasure.current = 0;
-        scheduleMeasure(0, ctx);
+        nextNoteTimeRef.current = ctx.currentTime + 0.1; // Start slightly in the future
+        scheduledMeasuresRef.current.clear();
+        
+        // Start the lookahead scheduler loop
+        startScheduler(ctx);
 
         const songDuration = Math.round(arrangementRef.current.length * (60 / initialStyle.bpm) * 4);
         console.log(`[AUDIO] 🎵 Song started: "${initialStyle.name}" - ${arrangementRef.current.length} bars (~${songDuration} seconds)`);
     }, []);
 
-    // Schedule one measure (16 steps) at a time
-    const scheduleMeasure = (measureNum, ctx) => {
+    // Lookahead scheduler - runs frequently to schedule audio ahead of time
+    // This pattern prevents audio glitches by not relying on setTimeout timing accuracy
+    const startScheduler = (ctx) => {
+        if (schedulerTimerRef.current) {
+            clearInterval(schedulerTimerRef.current);
+        }
+        
+        const scheduler = () => {
+            if (!isPlayingRef.current || !ctx) {
+                clearInterval(schedulerTimerRef.current);
+                return;
+            }
+            
+            // Schedule measures that fall within our lookahead window
+            while (nextNoteTimeRef.current < ctx.currentTime + SCHEDULE_AHEAD_TIME) {
+                const measureNum = currentMeasure.current;
+                
+                // Prevent double-scheduling the same measure
+                if (!scheduledMeasuresRef.current.has(measureNum)) {
+                    scheduledMeasuresRef.current.add(measureNum);
+                    scheduleMeasureAtTime(measureNum, nextNoteTimeRef.current, ctx);
+                    
+                    // Clean up old scheduled measures (keep only recent 10)
+                    if (scheduledMeasuresRef.current.size > 10) {
+                        const oldest = Math.min(...scheduledMeasuresRef.current);
+                        scheduledMeasuresRef.current.delete(oldest);
+                    }
+                }
+                
+                // Calculate when the next measure starts
+                const style = currentStyleRef.current || TRACK_STYLES['track_01'];
+                const BPM = style.bpm || 130;
+                const measureDuration = (60 / BPM / 4) * 16;
+                
+                // Check if song is ending
+                const songLength = songLengthRef.current || arrangementRef.current.length;
+                if (measureNum >= songLength - 1) {
+                    // Song complete - schedule transition to next track
+                    handleSongEnd(ctx, nextNoteTimeRef.current + measureDuration);
+                    nextNoteTimeRef.current += measureDuration;
+                    return; // Exit scheduler, will be restarted by handleSongEnd
+                }
+                
+                // Advance to next measure
+                nextNoteTimeRef.current += measureDuration;
+                currentMeasure.current = measureNum + 1;
+            }
+        };
+        
+        // Run scheduler at regular intervals (doesn't need to be precise, just frequent enough)
+        schedulerTimerRef.current = setInterval(scheduler, SCHEDULER_INTERVAL);
+        scheduler(); // Run immediately once
+    };
+
+    // Handle song ending and track transition
+    const handleSongEnd = (ctx, transitionTime) => {
+        console.log(`[AUDIO] 🎵 Song complete! (${currentMeasure.current + 1} bars)`);
+        
+        // Stop current scheduler
+        if (schedulerTimerRef.current) {
+            clearInterval(schedulerTimerRef.current);
+        }
+        
+        // Schedule the transition using audio time (precise)
+        const delay = Math.max(0, (transitionTime - ctx.currentTime) * 1000);
+        
+        setTimeout(() => {
+            if (audioContext.current && isPlayingRef.current) {
+                // Move to next track
+                currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % TRACK_ORDER.length;
+                const nextTrack = TRACK_ORDER[currentTrackIndexRef.current];
+                
+                console.log(`[AUDIO] 🔄 Auto-advancing to: ${nextTrack}`);
+                
+                // Reset and regenerate for new track
+                const newStyle = TRACK_STYLES[nextTrack];
+                currentStyleRef.current = newStyle;
+                arrangementRef.current = generateSong(newStyle);
+                songLengthRef.current = arrangementRef.current.length;
+                currentMeasure.current = 0;
+                scheduledMeasuresRef.current.clear();
+                nextNoteTimeRef.current = ctx.currentTime + 0.05;
+                
+                // Reset master gain for new song
+                if (masterGainRef.current) {
+                    masterGainRef.current.gain.setTargetAtTime(0.7, ctx.currentTime, 0.1);
+                }
+                
+                // Notify callback if set
+                if (songEndCallbackRef.current) {
+                    songEndCallbackRef.current(nextTrack, newStyle.name);
+                }
+                
+                // Restart scheduler for new song
+                startScheduler(ctx);
+            }
+        }, delay);
+    };
+
+    // Schedule one measure at a specific audio time (called by lookahead scheduler)
+    const scheduleMeasureAtTime = (measureNum, startTime, ctx) => {
         if (!isPlayingRef.current || !ctx) return;
 
         // Get current track style
@@ -764,7 +1389,7 @@ export function useAudio(connected) {
 
         // Schedule all 16 steps in this measure
         for (let step = 0; step < 16; step++) {
-            const time = ctx.currentTime + step * stepDuration;
+            const time = startTime + step * stepDuration;
 
             // Drums
             const drumPattern = DRUM_PATTERNS[barData.drumPattern] || DRUM_PATTERNS.basic;
@@ -827,56 +1452,73 @@ export function useAudio(connected) {
 
             // === MELODIC ELEMENTS ===
             
-            // Main lead melody - use track-specific melody style
+            // Main lead melody - use COMPLETE track-specific melodies
             if (barData.leadEnabled && step === 0) {
-                const melody = generateMelody(chord, barData.section, measureNum, style.melodyStyle);
-                for (const note of melody) {
-                    const noteTime = ctx.currentTime + note.step * stepDuration;
-                    
-                    // Regular lead - reduced volume to prevent harshness
-                    scheduleLead(ctx, noteTime, note.note, stepDuration * 1.5, intensity * 0.6, style);
-                    
-                    // Add pluck doubling for tracks that use it
-                    if (style.usePluck && Math.random() < 0.5 * sectionIntensity) {
-                        schedulePluck(ctx, noteTime, note.note, style);
-                    }
-
-                    // Tremolo on some lead notes
-                    if (style.useTremolo && Math.random() < 0.3 * sectionIntensity) {
-                        scheduleTremolo(ctx, noteTime, note.note, stepDuration * 2, intensity * 0.4, style);
-                    }
-                }
-
-                // Portamento slides (occasionally)
-                if (style.usePortamento && measureNum % 8 === 0 && melody.length >= 2) {
-                    schedulePortamento(ctx, ctx.currentTime, melody[0].note, melody[1].note, stepDuration * 4, intensity * 0.5, style);
-                }
+                // Get current track ID
+                const trackId = TRACK_ORDER[currentTrackIndexRef.current] || 'track_01';
+                const barInPhrase = measureNum % 4;
                 
-                // HOOK MELODY: Catchy repeated phrase on choruses and drops
-                if ((barData.section === 3 || barData.section === 6) && measureNum % 4 === 0) {
-                    const hookMelody = generateHookMelody(chord, barData.section, measureNum);
-                    for (const note of hookMelody) {
-                        const noteTime = ctx.currentTime + note.step * stepDuration;
-                        scheduleHook(ctx, noteTime, note.note, note.duration * stepDuration, intensity * 0.7, style);
+                // Try complete melody first, fall back to generated patterns
+                const completeMelody = getCompleteMelody(trackId, barData.section, measureNum);
+                
+                if (completeMelody && completeMelody.length > 0) {
+                    // Use complete, authored melody
+                    for (const note of completeMelody) {
+                        const noteTime = startTime + note.step * stepDuration;
+                        const noteDuration = (note.duration || 2) * stepDuration;
+                        
+                        // Schedule lead with note name (will be converted to frequency)
+                        scheduleLeadNote(ctx, noteTime, note.note, noteDuration, intensity * 0.6, style);
+                        
+                        // Add pluck doubling for emphasis on some notes
+                        if (style.usePluck && note.duration >= 2 && Math.random() < 0.4 * sectionIntensity) {
+                            schedulePluckNote(ctx, noteTime, note.note, style);
+                        }
                     }
+                } else {
+                    // Fall back to chord-based generated melody
+                    const melody = generateMelody(chord, barData.section, measureNum, style.melodyStyle);
+                    for (const note of melody) {
+                        const noteTime = startTime + note.step * stepDuration;
+                        scheduleLead(ctx, noteTime, note.note, stepDuration * 1.5, intensity * 0.6, style);
+                        
+                        if (style.usePluck && Math.random() < 0.5 * sectionIntensity) {
+                            schedulePluck(ctx, noteTime, note.note, style);
+                        }
+                    }
+                }
+
+                // Tremolo on some lead notes
+                if (style.useTremolo && Math.random() < 0.3 * sectionIntensity) {
+                    const tremoloNote = completeMelody.length > 0 ? completeMelody[0].note : 'A4';
+                    scheduleLeadNote(ctx, startTime, tremoloNote, stepDuration * 4, intensity * 0.3, style);
+                }
+
+                // Portamento slides (occasionally on long notes)
+                if (style.usePortamento && measureNum % 8 === 0 && completeMelody.length >= 2) {
+                    const freq1 = NOTE_FREQS[completeMelody[0].note] || 440;
+                    const freq2 = NOTE_FREQS[completeMelody[1].note] || 523;
+                    schedulePortamentoFreq(ctx, startTime, freq1, freq2, stepDuration * 4, intensity * 0.5, style);
                 }
                 
                 // COUNTER-MELODY: Secondary melody line for depth
                 if (barData.section >= 1 && barData.section <= 4 && measureNum % 2 === 1) {
                     const counterMelody = generateCounterMelody(chord, barData.section, measureNum);
                     for (const note of counterMelody) {
-                        const noteTime = ctx.currentTime + note.step * stepDuration;
+                        const noteTime = startTime + note.step * stepDuration;
                         scheduleCounterMelody(ctx, noteTime, note.note, stepDuration * 1.2, intensity * 0.35, style);
                     }
                 }
                 
-                // HARMONY: Third and fifth harmonies on intense sections
-                if ((barData.section === 3 || barData.section === 6) && Math.random() < 0.6) {
-                    for (const note of melody.slice(0, 4)) {
-                        const noteTime = ctx.currentTime + note.step * stepDuration;
-                        // Add third above
-                        const harmonyNote = chordUp(note.note);
-                        scheduleHarmony(ctx, noteTime, harmonyNote, stepDuration * 1.3, intensity * 0.25, style);
+                // HARMONY: Parallel thirds on chorus/drop
+                if ((barData.section === 3 || barData.section === 6) && completeMelody.length > 0) {
+                    // Add harmony a third above first few notes
+                    for (const note of completeMelody.slice(0, 3)) {
+                        if (note.duration >= 2) {
+                            const noteTime = startTime + note.step * stepDuration;
+                            const harmonyFreq = (NOTE_FREQS[note.note] || 440) * 1.26; // Major third
+                            scheduleHarmonyFreq(ctx, noteTime, harmonyFreq, note.duration * stepDuration, intensity * 0.25, style);
+                        }
                     }
                 }
             }
@@ -885,7 +1527,7 @@ export function useAudio(connected) {
             if (style.useFM && barData.leadEnabled && measureNum % 2 === 1 && step === 0 && Math.random() < sectionIntensity) {
                 const melody = generateMelody(chord, barData.section, measureNum + 1, 'minimal');
                 for (const note of melody.slice(0, 4)) { // Only first 4 notes
-                    scheduleFM(ctx, ctx.currentTime + note.step * stepDuration, note.note, stepDuration * 1.2, intensity * 0.5, style);
+                    scheduleFM(ctx, startTime + note.step * stepDuration, note.note, stepDuration * 1.2, intensity * 0.5, style);
                 }
             }
 
@@ -893,7 +1535,7 @@ export function useAudio(connected) {
             if (style.useBells && barData.leadEnabled && measureNum % 4 === 0 && step === 0 && Math.random() < 0.5) {
                 const melody = generateMelody(chord, barData.section, measureNum, style.melodyStyle);
                 for (const note of melody.slice(0, 3)) {
-                    scheduleBell(ctx, ctx.currentTime + note.step * stepDuration, note.note, style);
+                    scheduleBell(ctx, startTime + note.step * stepDuration, note.note, style);
                 }
             }
 
@@ -924,27 +1566,27 @@ export function useAudio(connected) {
 
         // Formant sweeps on pads during bridges
         if (style.useFormant && barData.chordPad && barData.section === 4 && Math.random() < 0.5) {
-            scheduleFormant(ctx, ctx.currentTime, chord, measureDuration * 0.95, intensity * 0.6, style);
+            scheduleFormant(ctx, startTime, chord, measureDuration * 0.95, intensity * 0.6, style);
         }
 
         // Granular textures on breakdowns
         if (style.useGranular && barData.section === 5 && Math.random() < 0.7) {
-            scheduleGranular(ctx, ctx.currentTime, measureDuration * 0.95, chord, intensity * 0.5, style);
+            scheduleGranular(ctx, startTime, measureDuration * 0.95, chord, intensity * 0.5, style);
         }
 
         // Noise sweeps during transitions/risers
         if (style.useNoiseSweep && (barData.riser || barData.section === 2)) {
-            scheduleNoiseSweep(ctx, ctx.currentTime, measureDuration * 0.9, 'up', intensity * style.noiseLevel);
+            scheduleNoiseSweep(ctx, startTime, measureDuration * 0.9, 'up', intensity * style.noiseLevel);
         }
 
         // Reverse sweeps before drops
         if (style.useReverse && barData.section === 5 && measureNum % 4 === 3) {
-            scheduleReverse(ctx, ctx.currentTime, measureDuration, intensity * 0.8);
+            scheduleReverse(ctx, startTime, measureDuration, intensity * 0.8);
         }
 
         // Riser for buildups
         if (barData.riser) {
-            scheduleRiser(ctx, ctx.currentTime, measureDuration);
+            scheduleRiser(ctx, startTime, measureDuration);
         }
 
         // Check if song is ending
@@ -952,57 +1594,21 @@ export function useAudio(connected) {
         const isLastBar = measureNum >= songLength - 1;
         const isOutro = barData.isOutro;
         
-        // Apply fade out during outro
+        // Apply fade out during outro (schedule gain change at startTime)
         if (isOutro && masterGainRef.current) {
             const fadeProgress = (measureNum - (songLength - 8)) / 8; // Last 8 bars fade
             const fadeGain = Math.max(0.1, 1.0 - fadeProgress * 0.8);
-            masterGainRef.current.gain.setTargetAtTime(fadeGain, ctx.currentTime, 0.5);
+            masterGainRef.current.gain.setTargetAtTime(fadeGain, startTime, 0.5);
         }
 
-        // Handle end of song
+        // Handle end of song - trigger track transition via handleSongEnd
         if (isLastBar) {
             console.log(`[AUDIO] 🎵 Song complete! (${measureNum + 1} bars)`);
-            
-            // Schedule track change after this measure
-            setTimeout(() => {
-                if (audioContext.current && isPlayingRef.current) {
-                    // Move to next track
-                    currentTrackIndexRef.current = (currentTrackIndexRef.current + 1) % TRACK_ORDER.length;
-                    const nextTrack = TRACK_ORDER[currentTrackIndexRef.current];
-                    
-                    console.log(`[AUDIO] 🔄 Auto-advancing to: ${nextTrack}`);
-                    
-                    // Reset and regenerate for new track
-                    const newStyle = TRACK_STYLES[nextTrack];
-                    currentStyleRef.current = newStyle;
-                    arrangementRef.current = generateSong(newStyle);
-                    songLengthRef.current = arrangementRef.current.length;
-                    currentMeasure.current = 0;
-                    
-                    // Reset master gain for new song
-                    if (masterGainRef.current) {
-                        masterGainRef.current.gain.setTargetAtTime(1.0, ctx.currentTime, 0.1);
-                    }
-                    
-                    // Notify callback if set
-                    if (songEndCallbackRef.current) {
-                        songEndCallbackRef.current(nextTrack, newStyle.name);
-                    }
-                    
-                    // Start new song
-                    scheduleMeasure(0, ctx);
-                }
-            }, measureDuration * 1000);
-            return; // Don't schedule next measure normally
+            // Schedule transition at end of this measure
+            const transitionTime = startTime + measureDuration;
+            handleSongEnd(ctx, transitionTime);
         }
-
-        // Schedule next measure
-        setTimeout(() => {
-            if (audioContext.current) {
-                currentMeasure.current = measureNum + 1;
-                scheduleMeasure(measureNum + 1, ctx);
-            }
-        }, measureDuration * 1000);
+        // Note: Next measure scheduling is handled by the lookahead scheduler loop
     };
 
     // --- INSTRUMENT SCHEDULERS ---
@@ -1024,14 +1630,14 @@ export function useAudio(connected) {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(250 * intensity, time);
         osc.frequency.exponentialRampToValueAtTime(40, time + 0.12);
-        gain.gain.setValueAtTime(0.6 * intensity, time);
+        gain.gain.setValueAtTime(0.35 * intensity, time);
         gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
 
         // Sub layer - very low frequency thump
         subOsc.type = 'sine';
         subOsc.frequency.setValueAtTime(60, time);
         subOsc.frequency.exponentialRampToValueAtTime(30, time + 0.2);
-        subGain.gain.setValueAtTime(0.5 * intensity, time);
+        subGain.gain.setValueAtTime(0.25 * intensity, time);
         subGain.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
 
         // Click transient - high frequency attack for definition
@@ -1127,9 +1733,9 @@ export function useAudio(connected) {
         filter.Q.value = 2; // Slight resonance for punch
 
         // Sidechain-style pump envelope - duck then swell
-        gain.gain.setValueAtTime(0.1 * intensity, time); // Start ducked
-        gain.gain.linearRampToValueAtTime(0.2 * intensity, time + 0.04); // Quick attack
-        gain.gain.setValueAtTime(0.2 * intensity, time + duration * 0.3);
+        gain.gain.setValueAtTime(0.08 * intensity, time); // Start ducked
+        gain.gain.linearRampToValueAtTime(0.15 * intensity, time + 0.04); // Quick attack
+        gain.gain.setValueAtTime(0.15 * intensity, time + duration * 0.3);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
         osc.connect(filter);
@@ -1386,8 +1992,8 @@ export function useAudio(connected) {
 
         // Increased gain and slower attack for weight
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.45 * intensity, time + 0.03);
-        gain.gain.setValueAtTime(0.45 * intensity, time + duration * 0.6);
+        gain.gain.linearRampToValueAtTime(0.25 * intensity, time + 0.03);
+        gain.gain.setValueAtTime(0.25 * intensity, time + duration * 0.6);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
         osc.connect(filter);
@@ -1446,8 +2052,8 @@ export function useAudio(connected) {
 
         // Envelope with sidechain-style pump
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.35 * intensity, time + 0.02);
-        gain.gain.setValueAtTime(0.35 * intensity, time + duration * 0.1);
+        gain.gain.linearRampToValueAtTime(0.2 * intensity, time + 0.02);
+        gain.gain.setValueAtTime(0.2 * intensity, time + duration * 0.1);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
         // Signal chain: oscillators -> filter -> distortion -> gain
@@ -1521,8 +2127,8 @@ export function useAudio(connected) {
 
         // Master envelope
         masterGain.gain.setValueAtTime(0, time);
-        masterGain.gain.linearRampToValueAtTime(0.4 * intensity, time + 0.01);
-        masterGain.gain.setValueAtTime(0.4 * intensity, time + duration * 0.8);
+        masterGain.gain.linearRampToValueAtTime(0.2 * intensity, time + 0.01);
+        masterGain.gain.setValueAtTime(0.2 * intensity, time + duration * 0.8);
         masterGain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
         // Connect oscillators to both filters in parallel, then sum
@@ -1570,8 +2176,8 @@ export function useAudio(connected) {
 
         // Slow attack, sustained body
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.5 * intensity, time + 0.05);
-        gain.gain.setValueAtTime(0.5 * intensity, time + duration * 0.7);
+        gain.gain.linearRampToValueAtTime(0.25 * intensity, time + 0.05);
+        gain.gain.setValueAtTime(0.25 * intensity, time + duration * 0.7);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
         osc.connect(filter);
@@ -2282,6 +2888,17 @@ export function useAudio(connected) {
         return currentStyleRef.current || TRACK_STYLES['track_01'];
     }, []);
 
+    // Stop audio and clean up scheduler
+    const stopAudio = useCallback(() => {
+        isPlayingRef.current = false;
+        if (schedulerTimerRef.current) {
+            clearInterval(schedulerTimerRef.current);
+            schedulerTimerRef.current = null;
+        }
+        scheduledMeasuresRef.current.clear();
+        console.log('[AUDIO] Stopped and cleaned up scheduler');
+    }, []);
+
     return { 
         initAudio, 
         playSfx, 
@@ -2289,6 +2906,7 @@ export function useAudio(connected) {
         setMusicStyle, 
         getCurrentStyle, 
         onSongEnd,
+        stopAudio,
         getSongProgress,
         TRACK_STYLES,
         TRACK_ORDER

@@ -2,9 +2,39 @@ const { Server } = require('socket.io');
 const { createServer } = require('http');
 const CANNON = require('cannon-es');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
 const { getDefaultTrack, getThemeByTrackId, getRandomTrack, getRandomRaceTrack, getAllTracks, getAllThemes } = require('./tracks');
 const { getNextWaypoint, getArenaTarget, normalizeAngle, findNearestWaypointIndex } = require('./cpuPathfinding');
 const { generateHeightMap, getTerrainHeight, getTerrainPreset } = require('./terrain');
+const { WorkerPool } = require('./workers/workerPool');
+
+// =============================================================================
+// WORKER THREAD POOLS (Multi-threading for CPU pathfinding & terrain generation)
+// =============================================================================
+let cpuWorkerPool = null;
+let terrainWorkerPool = null;
+let pendingCpuResults = null; // Stores async CPU calculations between ticks
+
+function initializeWorkerPools() {
+    try {
+        cpuWorkerPool = new WorkerPool(
+            path.join(__dirname, 'workers', 'cpuWorker.js'),
+            2 // 2 workers for CPU pathfinding
+        );
+        terrainWorkerPool = new WorkerPool(
+            path.join(__dirname, 'workers', 'terrainWorker.js'),
+            1 // 1 worker for terrain (infrequent operation)
+        );
+        console.log('[WORKERS] Multi-threaded worker pools initialized');
+    } catch (err) {
+        console.error('[WORKERS] Failed to initialize worker pools, falling back to single-threaded:', err.message);
+        cpuWorkerPool = null;
+        terrainWorkerPool = null;
+    }
+}
+
+// Initialize workers on startup
+initializeWorkerPools();
 
 // =============================================================================
 // CONFIGURATION
@@ -338,27 +368,117 @@ function spawnCPUOpponents(count) {
     console.log(`[CPU] Spawned ${count} CPU opponents`);
 }
 
-function updateCPUPhysics() {
+// Submit CPU calculations to worker pool (async, results applied next tick)
+function submitCpuCalculationsAsync() {
+    if (!cpuWorkerPool || cpuPlayers.size === 0) return;
+    
+    // Build serializable data for workers
+    const cpuList = [];
     for (const [id, cpu] of cpuPlayers) {
         if (!cpu.body || cpu.hp <= 0) continue;
+        cpuList.push({
+            id,
+            position: { x: cpu.body.position.x, y: cpu.body.position.y, z: cpu.body.position.z },
+            quaternion: { w: cpu.body.quaternion.w, x: cpu.body.quaternion.x, y: cpu.body.quaternion.y, z: cpu.body.quaternion.z },
+            velocity: { x: cpu.body.velocity.x, y: cpu.body.velocity.y, z: cpu.body.velocity.z },
+            waypointIndex: cpu.waypointIndex || 0
+        });
+    }
+    
+    if (cpuList.length === 0) return;
+    
+    // Build entity list for arena targeting
+    const allEntities = [];
+    for (const [id, player] of players) {
+        if (player.type !== 'driver' || !player.body || player.hp <= 0) continue;
+        allEntities.push({
+            id,
+            position: { x: player.body.position.x, z: player.body.position.z },
+            hp: player.hp,
+            isCPU: false
+        });
+    }
+    for (const [id, cpu] of cpuPlayers) {
+        if (!cpu.body || cpu.hp <= 0) continue;
+        allEntities.push({
+            id,
+            position: { x: cpu.body.position.x, z: cpu.body.position.z },
+            hp: cpu.hp,
+            isCPU: true
+        });
+    }
+    
+    // Submit async calculation (result stored in pendingCpuResults)
+    pendingCpuResults = cpuWorkerPool.submit('calculateCpuBatch', {
+        cpuList,
+        trackPath: activeTrack.path || null,
+        trackType: activeTrack.type,
+        allEntities
+    });
+}
 
-        // Wake up the body to ensure physics applies
+// Apply worker results to CPU physics bodies
+function applyCpuWorkerResults(results) {
+    if (!results || !Array.isArray(results)) return;
+    
+    for (const result of results) {
+        const cpu = cpuPlayers.get(result.id);
+        if (!cpu || !cpu.body || cpu.hp <= 0) continue;
+        
+        // Wake up body
         cpu.body.wakeUp();
+        
+        // Lap tracking for race mode
+        const isRacing = activeTrack.type === 'race' && activeTrack.path;
+        if (isRacing && cpu.waypointIndex !== result.waypointIndex) {
+            if (result.waypointIndex === 0 && cpu.waypointIndex === activeTrack.path.length - 1) {
+                cpu.lapsCompleted++;
+                console.log(`[LAP] ${cpu.name} completed lap ${cpu.lapsCompleted}`);
+                if (cpu.lapsCompleted >= LAPS_TO_WIN) {
+                    endRace(cpu);
+                    return;
+                }
+            }
+            cpu.waypointIndex = result.waypointIndex;
+        }
+        
+        // Apply steering
+        cpu.body.angularVelocity.y = result.steering;
+        
+        // Apply throttle force
+        const forward = new CANNON.Vec3(0, 0, -1);
+        cpu.body.quaternion.vmult(forward, forward);
+        forward.scale(result.throttle, forward);
+        cpu.body.applyForce(forward, cpu.body.position);
+        
+        // Enforce boundaries
+        enforceBoundaries(cpu.body);
+    }
+}
 
-        const pos = cpu.body.position;
-        let target;
-        let isRacing = false;
+// Fallback single-threaded CPU physics (used when workers unavailable)
+function updateCPUPhysicsFallback() {
+    try {
+        for (const [id, cpu] of cpuPlayers) {
+            if (!cpu.body || cpu.hp <= 0) continue;
 
-        // Different behavior for race tracks vs arenas
-        if (activeTrack.type === 'race' && activeTrack.path) {
-            // Race track: Follow waypoints
-            const WAYPOINT_THRESHOLD = 10; // Reduced from 15 for tighter racing
-            const result = getNextWaypoint(cpu, activeTrack.path, 3); // Increased lookahead
-            target = { x: result.x, z: result.z };
-            
-            // Lap tracking: detect finish line crossing
-            if (cpu.waypointIndex !== result.waypointIndex) {
-                // Waypoint advanced
+            // Wake up the body to ensure physics applies
+            cpu.body.wakeUp();
+
+            const pos = cpu.body.position;
+            let target;
+            let isRacing = false;
+
+            // Different behavior for race tracks vs arenas
+            if (activeTrack.type === 'race' && activeTrack.path) {
+                // Race track: Follow waypoints
+                const WAYPOINT_THRESHOLD = 10; // Reduced from 15 for tighter racing
+                const result = getNextWaypoint(cpu, activeTrack.path, 3); // Increased lookahead
+                target = { x: result.x, z: result.z };
+                
+                // Lap tracking: detect finish line crossing
+                if (cpu.waypointIndex !== result.waypointIndex) {
+                    // Waypoint advanced
                 if (result.waypointIndex === 0 && cpu.waypointIndex === activeTrack.path.length - 1) {
                     // Wrapped from last to first = lap completed
                     cpu.lapsCompleted++;
@@ -458,6 +578,9 @@ function updateCPUPhysics() {
 
         // Enforce boundaries for CPU too
         enforceBoundaries(cpu.body);
+    }
+    } catch (error) {
+        console.error('[CPU] Error in CPU physics:', error.message);
     }
 }
 
@@ -1977,12 +2100,28 @@ function getOrCreatePlayerState(id) {
 }
 
 function gameLoop() {
-    // Step physics
-    world.step(timestep);
+    try {
+        // Apply pending CPU worker results from previous tick (if available)
+        if (pendingCpuResults) {
+            pendingCpuResults
+                .then(results => applyCpuWorkerResults(results))
+                .catch(err => console.error('[WORKERS] CPU result error:', err.message));
+            pendingCpuResults = null;
+        }
+        
+        // Step physics
+        world.step(timestep);
 
     // Update CPU opponents (in both RACING and DEMO modes)
     if (gameState === 'RACING' || gameState === 'DEMO') {
-        updateCPUPhysics();
+        // Use worker pool if available, otherwise fallback to single-threaded
+        if (cpuWorkerPool && cpuPlayers.size > 0) {
+            // Submit async calculation for NEXT tick
+            submitCpuCalculationsAsync();
+        } else {
+            // Fallback: synchronous single-threaded
+            updateCPUPhysicsFallback();
+        }
         updateProjectiles();
         
         // Update human player physics using stored input
@@ -2208,6 +2347,10 @@ function gameLoop() {
         if (!worldStatePool.players[id]) {
             previousPlayerState.delete(id);
         }
+    }
+    } catch (error) {
+        console.error('[GAMELOOP] Error in game loop:', error.message);
+        console.error(error.stack);
     }
 }
 

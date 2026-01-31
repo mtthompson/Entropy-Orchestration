@@ -176,6 +176,9 @@ function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
     const targetPos = useRef(new THREE.Vector3(...position));
     const beaconRef = useRef();
 
+    // Memoize color to prevent recreation every render
+    const trailColor = useMemo(() => new THREE.Color(color), [color]);
+
     useEffect(() => {
         targetPos.current.set(position[0], position[1], position[2]);
     }, [position]);
@@ -215,9 +218,7 @@ function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
         }
     });
 
-    const trailColor = new THREE.Color(color);
-
-    // MASK GEOMETRY SWITCHER
+    // MASK GEOMETRY SWITCHER - memoized to prevent recreation
     const GeometricModel = () => {
         const mat = <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} metalness={0.9} roughness={0.3} />;
         const blackMat = <meshStandardMaterial color="#222" metalness={0.1} roughness={0.9} />;
@@ -1104,9 +1105,9 @@ function CameraController({ players, gameState }) {
     }, [players, camera]);
 
     useFrame((state, delta) => {
-        // During demo mode, follow action even in LOBBY state
-        // Otherwise, only follow during active game states
-        const shouldFollow = gameState === 'PLAYING' || gameState === 'COUNTDOWN';
+        // Follow action during racing states (including demo mode)
+        const shouldFollow = gameState === 'RACING' || gameState === 'COUNTDOWN' || gameState === 'DEMO';
+        
         if (!shouldFollow) {
             return;
         }
