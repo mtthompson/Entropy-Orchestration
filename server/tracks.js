@@ -50,15 +50,17 @@ const TRACKS = [
             { x1: 50, z1: -20, x2: 50, z2: -60, height: 4 },
             { x1: 70, z1: -20, x2: 70, z2: -60, height: 4 },
 
-            // Turn 3 Left (West)
+            // Turn 3 Left (West) - Left Inner
             { x1: 50, z1: -60, x2: 40, z2: -70, height: 4 },
-            { x1: 40, z1: -70, x2: 0, z2: -70, height: 4 },
-            // Inner walls
-            { x1: 70, z1: -80, x2: 60, z2: -90, height: 4 },
-            { x1: 60, z1: -90, x2: 0, z2: -90, height: 4 },
+            { x1: 40, z1: -70, x2: -20, z2: -70, height: 4 }, // Extend past X=0 to X=-20
 
-            // Finish Straight
-            { x1: 0, z1: -70, x2: 0, z2: -90, height: 4 },
+            // Turn 3 Left (West) - Right Outer
+            { x1: 70, z1: -60, x2: 70, z2: -80, height: 4 }, // Added missing segment to bridge gap
+            { x1: 70, z1: -80, x2: 60, z2: -90, height: 4 },
+            { x1: 60, z1: -90, x2: -20, z2: -90, height: 4 }, // Extend past X=0 to X=-20
+
+            // Finish Straight End Cap (at X=-20)
+            { x1: -20, z1: -70, x2: -20, z2: -90, height: 4 },
         ],
 
         // Start line at beginning of first straight
