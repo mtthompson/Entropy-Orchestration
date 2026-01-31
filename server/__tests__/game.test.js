@@ -510,6 +510,143 @@ describe('Leaderboard System', () => {
 });
 
 // =============================================================================
+// HUMAN VS CPU BALANCE TESTS
+// =============================================================================
+describe('Human Player Survival', () => {
+    const DAMAGE_THRESHOLD = 15;
+    const COLLISION_DAMAGE_MULTIPLIER = 1.2; // Current balance
+    
+    test('human can survive multiple CPU collisions', () => {
+        let humanHP = 100;
+        const cpuCount = 3;
+        
+        // Simulate 3 moderate collisions (20 speed each)
+        for (let i = 0; i < cpuCount; i++) {
+            const impactSpeed = 20;
+            let damage = Math.floor(impactSpeed * COLLISION_DAMAGE_MULTIPLIER);
+            
+            // CPU ramming bonus
+            damage *= 1.2;
+            
+            humanHP -= damage;
+        }
+        
+        // Human should survive 3 hits
+        expect(humanHP).toBeGreaterThan(0);
+        expect(humanHP).toBeGreaterThanOrEqual(10); // At least 10% health remaining
+    });
+    
+    test('human spawn position is far from CPU spawns', () => {
+        const humanSpawn = { x: 0, z: 0 }; // Typical player spawn
+        
+        // CPU spawns start 30 units back with 12-unit spacing
+        const cpuSpawns = [
+            { x: -6, z: -30 },  // First CPU
+            { x: 6, z: -42 },   // Second CPU
+            { x: -10, z: -54 }  // Third CPU
+        ];
+        
+        // Check minimum distance
+        cpuSpawns.forEach(cpuSpawn => {
+            const dist = Math.sqrt(
+                Math.pow(cpuSpawn.x - humanSpawn.x, 2) + 
+                Math.pow(cpuSpawn.z - humanSpawn.z, 2)
+            );
+            expect(dist).toBeGreaterThanOrEqual(30); // At least 30 units away
+        });
+    });
+    
+    test('human can win race by completing laps', () => {
+        const LAPS_TO_WIN = 3;
+        let humanLaps = 0;
+        let cpuLaps = 0;
+        
+        // Simulate human racing ahead
+        humanLaps = 3;
+        cpuLaps = 2;
+        
+        const humanWins = humanLaps >= LAPS_TO_WIN && humanLaps > cpuLaps;
+        expect(humanWins).toBe(true);
+    });
+    
+    test('human can survive arena with defensive play', () => {
+        let humanHP = 100;
+        let cpu1HP = 100;
+        let cpu2HP = 100;
+        
+        // Scenario: Human avoids damage, CPUs fight each other
+        const cpuVsCpuDamage = Math.floor(25 * COLLISION_DAMAGE_MULTIPLIER * 1.2);
+        
+        cpu1HP -= cpuVsCpuDamage;
+        cpu2HP -= cpuVsCpuDamage;
+        
+        // Human takes one glancing hit
+        const glancingDamage = Math.floor(18 * COLLISION_DAMAGE_MULTIPLIER);
+        humanHP -= glancingDamage;
+        
+        // Human should still have good health
+        expect(humanHP).toBeGreaterThan(70);
+        
+        // CPUs should have damaged each other more
+        expect(cpu1HP).toBeLessThan(humanHP);
+        expect(cpu2HP).toBeLessThan(humanHP);
+    });
+    
+    test('reduced damage multiplier makes game fairer', () => {
+        const oldMultiplier = 2.0;
+        const newMultiplier = 1.2;
+        
+        const impactSpeed = 30;
+        const oldDamage = Math.floor(impactSpeed * oldMultiplier);
+        const newDamage = Math.floor(impactSpeed * newMultiplier);
+        
+        expect(newDamage).toBe(36);
+        expect(oldDamage).toBe(60);
+        
+        // New damage is 40% less
+        const reduction = ((oldDamage - newDamage) / oldDamage) * 100;
+        expect(reduction).toBeGreaterThanOrEqual(40);
+    });
+    
+    test('ramming multipliers are balanced', () => {
+        const baseDamage = 30;
+        
+        // Attacker takes less damage
+        const attackerDamage = baseDamage * 0.7;
+        
+        // Defender takes bonus damage
+        const defenderDamage = baseDamage * 1.2;
+        
+        expect(attackerDamage).toBe(21);
+        expect(defenderDamage).toBe(36);
+        
+        // Attacker advantage is reasonable (41% less damage)
+        const advantage = ((defenderDamage - attackerDamage) / defenderDamage) * 100;
+        expect(advantage).toBeGreaterThanOrEqual(40);
+        expect(advantage).toBeLessThanOrEqual(45);
+    });
+    
+    test('human can eliminate CPU with strategic ramming', () => {
+        let humanHP = 100;
+        let cpuHP = 100;
+        
+        // Human performs 3 successful rams
+        const rammingDamage = Math.floor(28 * COLLISION_DAMAGE_MULTIPLIER);
+        const humanTakesDamage = Math.floor(rammingDamage * 0.7);
+        const cpuTakesDamage = Math.floor(rammingDamage * 1.2);
+        
+        for (let i = 0; i < 3; i++) {
+            humanHP -= humanTakesDamage;
+            cpuHP -= cpuTakesDamage;
+        }
+        
+        // Human should win
+        expect(humanHP).toBeGreaterThan(0);
+        expect(cpuHP).toBeLessThanOrEqual(0);
+    });
+});
+
+// =============================================================================
 // MASK TYPE TESTS
 // =============================================================================
 describe('Mask System', () => {

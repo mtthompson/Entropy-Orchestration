@@ -213,9 +213,9 @@ function spawnCPUOpponents(count) {
             lastWaypointIndex: 0
         };
 
-        // Stagger spawn positions more - alternate sides and add larger offset
-        const xOffset = ((i % 2) * 2 - 1) * (4 + Math.floor(i / 2) * 3); // -4, +4, -7, +7, etc
-        const zOffset = -i * 8; // Spread them behind each other
+        // Spawn CPUs far behind players to prevent instant collision
+        const xOffset = ((i % 2) * 2 - 1) * (6 + Math.floor(i / 2) * 4); // -6, +6, -10, +10, etc
+        const zOffset = -30 - (i * 12); // Start 30 units back, then 12 units apart
 
         const body = new CANNON.Body({
             mass: 50,
@@ -707,8 +707,8 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damage1 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
-                    let damage2 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
+                    let damage1 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
+                    let damage2 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
                     let knockback1 = 1.0;
                     let knockback2 = 1.0;
 
@@ -738,8 +738,8 @@ world.addEventListener('postStep', () => {
                     // Check P1 Ramming P2
                     if (p1FacingP2 > 0.7) {
                         // P1 is hitting P2 frontally
-                        damage2 *= 1.3; // Reduced from 1.5x
-                        damage1 *= 0.6; // Less reduction (was 0.5)
+                        damage2 *= 1.2; // Further reduced
+                        damage1 *= 0.7; // Less reduction for attacker
                         knockback2 = 2.0; // P2 gets punted
                         console.log(`[COMBAT] ${p1.name} RAMMED ${p2.name}!`);
                     }
@@ -747,8 +747,8 @@ world.addEventListener('postStep', () => {
                     // Check P2 Ramming P1
                     if (p2FacingP1 > 0.7) {
                         // P2 is hitting P1 frontally
-                        damage1 *= 1.3; // Reduced from 1.5x
-                        damage2 *= 0.6; // Less reduction (was 0.5)
+                        damage1 *= 1.2; // Further reduced
+                        damage2 *= 0.7; // Less reduction for attacker
                         knockback1 = 2.0;
                         console.log(`[COMBAT] ${p2.name} RAMMED ${p1.name}!`);
                     }
@@ -803,8 +803,8 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damageToPlayer = Math.floor(impactSpeed * 1.5); // Reduced from 2x
-                    let damageToCPU = Math.floor(impactSpeed * 1.5); // Reduced from 2x
+                    let damageToPlayer = Math.floor(impactSpeed * 1.2); // Further reduced for balance
+                    let damageToCPU = Math.floor(impactSpeed * 1.2); // Further reduced for balance
 
                     // ONI MASK: 15% damage resistance
                     if (player.maskType === 'Oni') damageToPlayer *= 0.85;
@@ -836,14 +836,14 @@ world.addEventListener('postStep', () => {
                     const cpuRamming = cForward.dot(v1to2.negate());
 
                     if (playerRamming > 0.7) {
-                        damageToPlayer *= 0.6; // Less reduction (was 0.5)
-                        damageToCPU *= 1.3; // Reduced from 1.5x
+                        damageToPlayer *= 0.7; // Less reduction for attacker
+                        damageToCPU *= 1.2; // Further reduced
                         console.log(`[COMBAT] ${player.name} RAMMED ${cpu.name}!`);
                     }
 
                     if (cpuRamming > 0.7) {
-                        damageToCPU *= 0.6; // Less reduction (was 0.5)
-                        damageToPlayer *= 1.3; // Reduced from 1.5x
+                        damageToCPU *= 0.7; // Less reduction for attacker
+                        damageToPlayer *= 1.2; // Further reduced to help humans
                         console.log(`[COMBAT] ${cpu.name} RAMMED ${player.name}!`);
                     }
 
@@ -894,8 +894,8 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damage1 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
-                    let damage2 = Math.floor(impactSpeed * 1.5); // Reduced from 2x
+                    let damage1 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
+                    let damage2 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
 
                     // RAMMING LOGIC
                     const v1to2 = new CANNON.Vec3();
@@ -924,14 +924,14 @@ world.addEventListener('postStep', () => {
                     const cpu2Ramming = f2.dot(v1to2.negate());
 
                     if (cpu1Ramming > 0.7) {
-                        damage1 *= 0.6; // Less reduction (was 0.5)
-                        damage2 *= 1.3; // Reduced from 1.5x
+                        damage1 *= 0.7; // Less reduction for attacker
+                        damage2 *= 1.2; // Further reduced
                         console.log(`[COMBAT] ${cpu1.name} RAMMED ${cpu2.name}!`);
                     }
 
                     if (cpu2Ramming > 0.7) {
-                        damage2 *= 0.6; // Less reduction (was 0.5)
-                        damage1 *= 1.3; // Reduced from 1.5x
+                        damage2 *= 0.7; // Less reduction for attacker
+                        damage1 *= 1.2; // Further reduced
                         console.log(`[COMBAT] ${cpu2.name} RAMMED ${cpu1.name}!`);
                     }
 

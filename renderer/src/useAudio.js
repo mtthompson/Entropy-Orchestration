@@ -12,51 +12,63 @@ export function useAudio(connected) {
         'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassType: 'square', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.0, 
             usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'electronic', noiseLevel: 0.3 },
+            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'electronic', noiseLevel: 0.3,
+            progression: [0], melodyStyle: 'arpeggio', bassStyle: 'steady' },
         'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassType: 'sawtooth', leadType: 'square', intensity: 1.4, filterMod: 0.7, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: true, useBells: false, useMetallic: true, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.7 },
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.7,
+            progression: [3], melodyStyle: 'staccato', bassStyle: 'aggressive' },
         'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassType: 'square', leadType: 'sawtooth', intensity: 1.1, filterMod: 1.2, 
             usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: true, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4 },
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
+            progression: [2, 5], melodyStyle: 'driving', bassStyle: 'syncopated' },
         'track_04': { name: 'Dreamwave', bpm: 100, key: 'F', bassType: 'triangle', leadType: 'sine', intensity: 0.7, filterMod: 1.5, 
             usePluck: false, useArp: false, useSubBass: false, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: false, useFormant: true, 
-            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'minimal', noiseLevel: 0.2 },
+            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'minimal', noiseLevel: 0.2,
+            progression: [4], melodyStyle: 'ambient', bassStyle: 'slow' },
         'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassType: 'sawtooth', leadType: 'square', intensity: 1.5, filterMod: 0.5, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: true, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.8 },
+            useGranular: false, useReverse: true, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.8,
+            progression: [3], melodyStyle: 'mechanical', bassStyle: 'aggressive' },
         'track_06': { name: 'Cyberpunk', bpm: 130, key: 'C', bassType: 'square', leadType: 'sawtooth', intensity: 1.2, filterMod: 0.8, 
             usePluck: true, useArp: true, useSubBass: true, useDetuned: false, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.5 },
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.5,
+            progression: [1, 2], melodyStyle: 'glitch', bassStyle: 'funky' },
         'track_07': { name: 'Horror Synth', bpm: 90, key: 'Gm', bassType: 'sawtooth', leadType: 'triangle', intensity: 0.6, filterMod: 0.4, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: true, 
-            useGranular: true, useReverse: true, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.7 },
+            useGranular: true, useReverse: true, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.7,
+            progression: [3], melodyStyle: 'dissonant', bassStyle: 'slow' },
         'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassType: 'square', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.3, 
             usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: false, useStabs: true, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'live', noiseLevel: 0.3 },
+            useGranular: false, useReverse: false, drumStyle: 'basic', percStyle: 'live', noiseLevel: 0.3,
+            progression: [1, 4], melodyStyle: 'pop', bassStyle: 'steady' },
         'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassType: 'sawtooth', leadType: 'square', intensity: 1.8, filterMod: 0.3, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.9 },
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.9,
+            progression: [3], melodyStyle: 'minimal', bassStyle: 'relentless' },
         'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassType: 'square', leadType: 'sawtooth', intensity: 1.3, filterMod: 1.4, 
             usePluck: true, useArp: true, useSubBass: false, useDetuned: true, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4 },
+            useGranular: false, useReverse: false, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
+            progression: [5, 2], melodyStyle: 'euphoric', bassStyle: 'funky' },
         'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassType: 'triangle', leadType: 'sine', intensity: 0.9, filterMod: 1.6, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: true, 
-            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.3 },
+            useGranular: true, useReverse: false, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.3,
+            progression: [0, 4], melodyStyle: 'epic', bassStyle: 'slow' },
         'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassType: 'sawtooth', leadType: 'square', intensity: 1.4, filterMod: 0.6, 
             usePluck: false, useArp: true, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
             useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: true, useReverse: true, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.6 }
+            useGranular: true, useReverse: true, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.6,
+            progression: [3], melodyStyle: 'chaotic', bassStyle: 'aggressive' }
     };
 
     // Extended Note Frequencies (3 octaves)
@@ -81,33 +93,33 @@ export function useAudio(connected) {
 
     // Multiple chord progressions for variety
     const PROGRESSIONS = [
-        ['Dm', 'Am', 'Bb', 'C'],     // Classic synthwave
-        ['Dm', 'Bb', 'F', 'C'],      // Pop progression
-        ['Am', 'F', 'C', 'Gm'],      // Alternative
-        ['Dm', 'Gm', 'Am', 'Dm'],    // Minor mood
-        ['F', 'Bb', 'C', 'Dm'],      // Uplifting
-        ['Am', 'Em', 'F', 'C'],      // Emotional
+        ['Dm', 'Am', 'Bb', 'C'],     // 0: Classic synthwave
+        ['C', 'Am', 'F', 'C'],       // 1: Pop/uplifting
+        ['Am', 'F', 'C', 'Gm'],      // 2: Alternative/driving
+        ['Em', 'C', 'Am', 'Em'],     // 3: Dark/minor
+        ['F', 'C', 'Dm', 'Bb'],      // 4: Cinematic/epic  
+        ['Am', 'Em', 'F', 'C'],      // 5: Emotional/euphoric
+        ['Bb', 'Gm', 'Dm', 'Bb'],    // 6: Heavy/industrial (not used yet)
     ];
 
     // Bassline patterns (array of [stepOffset, duration] pairs)
     const BASS_PATTERNS = [
-        [[0, 2], [4, 2], [8, 2], [12, 2]],           // Quarter notes
-        [[0, 1], [2, 1], [4, 1], [6, 1], [8, 2], [12, 2]], // Syncopated
-        [[0, 3], [4, 1], [8, 3], [12, 1]],           // Dotted
-        [[0, 1], [1, 1], [4, 2], [8, 1], [9, 1], [12, 2]], // Busy
-        [[0, 4], [8, 4]],                             // Half notes
-        [[0, 1], [3, 1], [4, 1], [7, 1], [8, 1], [11, 1], [12, 1], [14, 1]], // 16th groove
+        [[0, 2], [4, 2], [8, 2], [12, 2]],           // 0: Quarter notes (steady)
+        [[0, 1], [2, 1], [4, 1], [6, 1], [8, 2], [12, 2]], // 1: Syncopated
+        [[0, 3], [4, 1], [8, 3], [12, 1]],           // 2: Dotted (funky)
+        [[0, 1], [1, 1], [4, 2], [8, 1], [9, 1], [12, 2]], // 3: Busy/aggressive
+        [[0, 4], [8, 4]],                             // 4: Half notes (slow)
+        [[0, 1], [3, 1], [4, 1], [7, 1], [8, 1], [11, 1], [12, 1], [14, 1]], // 5: 16th groove (relentless)
     ];
 
-    // Lead melody generators (procedural patterns)
-    const generateMelody = (chord, section, measureNum) => {
+    // Lead melody generators - now STYLE-SPECIFIC for each track
+    const generateMelody = (chord, section, measureNum, melodyStyle = 'arpeggio') => {
         const chordNotes = CHORDS[chord];
-        const notes = [];
-        const seed = measureNum * 7 + section * 13;
+        if (!chordNotes) return [];
 
-        const patterns = [
-            // Arpeggios
-            () => [
+        const MELODY_GENERATORS = {
+            // Track 1: Classic Synthwave - smooth arpeggios
+            'arpeggio': () => [
                 { step: 0, note: chordNotes[0] },
                 { step: 2, note: chordNotes[1] },
                 { step: 4, note: chordNotes[2] },
@@ -117,39 +129,118 @@ export function useAudio(connected) {
                 { step: 12, note: chordUp(chordNotes[0]) },
                 { step: 14, note: chordNotes[2] },
             ],
-            // Staccato hits
-            () => [
+            
+            // Track 2: Darksynth - aggressive staccato hits
+            'staccato': () => [
                 { step: 0, note: chordUp(chordNotes[0]) },
-                { step: 4, note: chordUp(chordNotes[1]) },
-                { step: 8, note: chordUp(chordNotes[2]) },
-                { step: 12, note: chordUp(chordNotes[0]) },
+                { step: 2, note: chordUp(chordUp(chordNotes[2])) },
+                { step: 4, note: chordUp(chordNotes[0]) },
+                { step: 7, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 10, note: chordUp(chordUp(chordNotes[0])) },
+                { step: 12, note: chordUp(chordNotes[2]) },
             ],
-            // Syncopated
-            () => [
+            
+            // Track 3: Outrun - driving syncopated rhythm
+            'driving': () => [
                 { step: 1, note: chordUp(chordNotes[0]) },
-                { step: 4, note: chordUp(chordNotes[2]) },
-                { step: 7, note: chordUp(chordNotes[1]) },
-                { step: 10, note: chordUp(chordNotes[0]) },
-                { step: 14, note: chordUp(chordNotes[2]) },
+                { step: 3, note: chordUp(chordNotes[2]) },
+                { step: 6, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 9, note: chordUp(chordNotes[0]) },
+                { step: 11, note: chordUp(chordNotes[1]) },
+                { step: 14, note: chordUp(chordUp(chordNotes[0])) },
             ],
-            // Descending
-            () => [
-                { step: 0, note: chordUp(chordUp(chordNotes[2])) },
-                { step: 3, note: chordUp(chordUp(chordNotes[1])) },
-                { step: 6, note: chordUp(chordUp(chordNotes[0])) },
+            
+            // Track 4: Dreamwave - slow ambient pads
+            'ambient': () => [
+                { step: 0, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 8, note: chordUp(chordUp(chordNotes[2])) },
+            ],
+            
+            // Track 5: Industrial - repetitive mechanical pattern
+            'mechanical': () => [
+                { step: 0, note: chordNotes[0] },
+                { step: 2, note: chordNotes[0] },
+                { step: 4, note: chordNotes[2] },
+                { step: 6, note: chordNotes[2] },
+                { step: 8, note: chordNotes[0] },
+                { step: 10, note: chordNotes[1] },
+                { step: 12, note: chordNotes[0] },
+                { step: 14, note: chordNotes[2] },
+            ],
+            
+            // Track 6: Cyberpunk - glitchy irregular pattern
+            'glitch': () => [
+                { step: 0, note: chordUp(chordNotes[0]) },
+                { step: 1, note: chordUp(chordUp(chordNotes[2])) },
+                { step: 5, note: chordUp(chordNotes[1]) },
+                { step: 7, note: chordUp(chordUp(chordNotes[0])) },
                 { step: 9, note: chordUp(chordNotes[2]) },
-                { step: 12, note: chordUp(chordNotes[1]) },
+                { step: 13, note: chordUp(chordUp(chordNotes[1])) },
+            ],
+            
+            // Track 7: Horror - dissonant descending
+            'dissonant': () => [
+                { step: 0, note: chordUp(chordUp(chordUp(chordNotes[2]))) },
+                { step: 4, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 8, note: chordUp(chordNotes[2]) },
+                { step: 12, note: chordNotes[0] },
+            ],
+            
+            // Track 8: 80s Pop - catchy memorable hook
+            'pop': () => [
+                { step: 0, note: chordUp(chordNotes[0]) },
+                { step: 3, note: chordUp(chordNotes[1]) },
+                { step: 4, note: chordUp(chordNotes[2]) },
+                { step: 7, note: chordUp(chordUp(chordNotes[0])) },
+                { step: 8, note: chordUp(chordNotes[2]) },
+                { step: 11, note: chordUp(chordNotes[1]) },
+                { step: 12, note: chordUp(chordNotes[0]) },
                 { step: 15, note: chordUp(chordNotes[0]) },
             ],
-            // Minimal
-            () => [
+            
+            // Track 9: Gabber - minimal sparse hits
+            'minimal': () => [
                 { step: 0, note: chordUp(chordNotes[0]) },
-                { step: 8, note: chordUp(chordNotes[2]) },
+                { step: 8, note: chordUp(chordNotes[0]) },
             ],
-        ];
+            
+            // Track 10: Eurobeat - euphoric ascending
+            'euphoric': () => [
+                { step: 0, note: chordNotes[0] },
+                { step: 2, note: chordNotes[1] },
+                { step: 4, note: chordNotes[2] },
+                { step: 6, note: chordUp(chordNotes[0]) },
+                { step: 7, note: chordUp(chordNotes[1]) },
+                { step: 8, note: chordUp(chordNotes[2]) },
+                { step: 9, note: chordUp(chordUp(chordNotes[0])) },
+                { step: 10, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 11, note: chordUp(chordUp(chordNotes[2])) },
+                { step: 12, note: chordUp(chordUp(chordUp(chordNotes[0]))) },
+            ],
+            
+            // Track 11: Epic Orchestral - slow dramatic progression
+            'epic': () => [
+                { step: 0, note: chordUp(chordUp(chordNotes[0])) },
+                { step: 4, note: chordUp(chordUp(chordNotes[2])) },
+                { step: 8, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 12, note: chordUp(chordUp(chordUp(chordNotes[0]))) },
+            ],
+            
+            // Track 12: Claustrophobic - chaotic unpredictable
+            'chaotic': () => [
+                { step: 0, note: chordUp(chordUp(chordNotes[1])) },
+                { step: 2, note: chordNotes[0] },
+                { step: 5, note: chordUp(chordUp(chordUp(chordNotes[2]))) },
+                { step: 7, note: chordUp(chordNotes[0]) },
+                { step: 9, note: chordNotes[2] },
+                { step: 11, note: chordUp(chordUp(chordNotes[0])) },
+                { step: 13, note: chordUp(chordNotes[1]) },
+                { step: 15, note: chordUp(chordUp(chordNotes[2])) },
+            ],
+        };
 
-        const patternIndex = (seed % patterns.length);
-        return patterns[patternIndex]();
+        const generator = MELODY_GENERATORS[melodyStyle] || MELODY_GENERATORS['arpeggio'];
+        return generator();
     };
 
     // Helper to transpose note up one octave
@@ -372,10 +463,21 @@ export function useAudio(connected) {
 
         const arrangement = arrangementRef.current;
         const barData = arrangement[measureNum % arrangement.length];
-        const progression = PROGRESSIONS[barData.progIndex % PROGRESSIONS.length];
+        
+        // Use track-specific chord progression
+        const trackProgressions = style.progression || [0];
+        const progIndex = trackProgressions[measureNum % trackProgressions.length];
+        const progression = PROGRESSIONS[progIndex % PROGRESSIONS.length];
+        
         const chordIndex = Math.floor((measureNum % 4)); // Change chord every bar
         const chord = progression[chordIndex % progression.length];
         const intensity = (barData.intensity || 1.0) * (style.intensity || 1.0);
+
+        // Map bass style to pattern index
+        const bassStyleMap = {
+            'steady': 0, 'syncopated': 1, 'funky': 2, 'aggressive': 3, 'slow': 4, 'relentless': 5
+        };
+        const trackBassPattern = bassStyleMap[style.bassStyle] || 0;
 
         // Section-based instrument probability (0=intro, 1=verse, 2=prechorus, 3=chorus, 4=bridge, 5=breakdown, 6=drop, 7=outro)
         const sectionIntensity = {
