@@ -219,15 +219,14 @@ function calculateSteering(cpuData, target, isRacing) {
     const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
     let throttle = 0.6 + 0.4 * turnFactor; // 0.6 to 1.0 based on turn sharpness
 
-    // Reverse Logic: If target is significantly behind (> 145 degrees), reverse!
+    // Reverse Logic: REMOVED for now as it causes stalling without reverse physics
+    // Just allow the turnFactor to slow it down (arc turn)
+    /*
     const isReversing = Math.abs(angleDiff) > (Math.PI * 0.8);
     if (isReversing) {
-        throttle = -1.0; // Full reverse (allowed since we reverted physics change? No wait, we reverted so -1 IS clamped to 0)
-        // Wait, if we reversed physics, -1 throttle = 0 speed?
-        // Yes, reverted physics clamps throttle [0,1].
-        // So reverse logic effectively BRAKES (Speed -> 0).
-        // This stops them from driving into walls, allowing turn.
+        throttle = -1.0; 
     }
+    */
 
     if (Math.random() < 0.05) {
         // console.log(`[CPU_STEER] ID: ${id} Diff: ${angleDiff.toFixed(2)} Steer: ${steering.toFixed(2)} Thr: ${throttle.toFixed(2)} Rev: ${isReversing}`);
