@@ -1998,10 +1998,50 @@ function processPlayerQueue() {
 
     playerQueue = []; // Clear queue
     broadcastGameState();
+
+    // Check if we need to start countdown after adding queued players
+    startLobbyCountdown();
+}
+
+function startLobbyCountdown() {
+    if (gameState !== 'LOBBY' || gameTimer > 0) return;
+
+    const humanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
+    if (humanCount === 0) return;
+
+    console.log("[GAME] Starting lobby timer (30s)...");
+    selectRandomTrack();
+    gameTimer = 30; // 30 seconds to join
+    broadcastGameState();
+
+    // Start lobby countdown
+    const lobbyInterval = setInterval(() => {
+        // checks
+        if (gameState !== 'LOBBY') {
+            clearInterval(lobbyInterval);
+            return;
+        }
+
+        const currentHumanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
+        if (currentHumanCount === 0) {
+            console.log("[GAME] All players left lobby - canceling timer");
+            gameTimer = 0;
+            broadcastGameState();
+            clearInterval(lobbyInterval);
+            return;
+        }
+
+        gameTimer--;
+        broadcastGameState();
+
+        if (gameTimer <= 0) {
+            clearInterval(lobbyInterval);
+            startCountdown();
+        }
+    }, 1000);
 }
 
 function startCountdown() {
-    if (gameState !== 'LOBBY') return;
 
     console.log('[GAME] Starting countdown...');
 
@@ -2559,43 +2599,7 @@ io.on('connection', (socket) => {
             // AUTO-START LOGIC
             // Start countdown if we have at least 1 player in LOBBY (Single Player allowed)
             if (gameState === 'LOBBY' && !queued) {
-                const humanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
-
-                if (humanCount === 1 && gameTimer === 0) {
-                    console.log("[GAME] First player joined - starting lobby timer (30s)...");
-
-                    // Select random track at the START of the lobby
-                    selectRandomTrack();
-
-                    gameTimer = 30; // 30 seconds to join
-                    broadcastGameState();
-
-                    // Start lobby countdown
-                    const lobbyInterval = setInterval(() => {
-                        // checks
-                        if (gameState !== 'LOBBY') {
-                            clearInterval(lobbyInterval);
-                            return;
-                        }
-
-                        const currentHumanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
-                        if (currentHumanCount === 0) {
-                            console.log("[GAME] All players left lobby - canceling timer");
-                            gameTimer = 0;
-                            broadcastGameState();
-                            clearInterval(lobbyInterval);
-                            return;
-                        }
-
-                        gameTimer--;
-                        broadcastGameState();
-
-                        if (gameTimer <= 0) {
-                            clearInterval(lobbyInterval);
-                            startCountdown();
-                        }
-                    }, 1000);
-                }
+                startLobbyCountdown();
             }
 
             console.log(`[JOIN] ${name} as ${queued ? 'queued' : type} `);
