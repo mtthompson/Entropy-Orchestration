@@ -305,7 +305,8 @@ function enforceBoundaries(body) {
         body.position.set(spawn.x, getSpawnHeight(spawn.x, spawn.z), spawn.z);
         body.velocity.set(0, 0, 0);
         body.angularVelocity.set(0, 0, 0);
-        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.rotation || 0);
+        const respawnYaw = spawn.rotation || 0;
+        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), respawnYaw);
         teleported = true;
         console.log(`[BOUNDS] Body exceeded horizontal bounds (${body.position.x.toFixed(1)}, ${body.position.z.toFixed(1)}). Resetting.`);
     }
@@ -935,24 +936,25 @@ function updatePlayerPhysics(player, input) {
     }
     const speed = player.speed;
 
-    // 1. ARCADE STEERING - stable at speed, gentler at low speed
-    const baseTurnRate = 7.5; // radians per second
-    const speedDampen = 1 / (1 + speed * 0.02); // gentler high-speed damping
-    const lowSpeedBoost = Math.min(1, speed / 6); // reduce steering when nearly stopped
-    const steerRate = baseTurnRate * speedDampen * (0.4 + 0.6 * lowSpeedBoost);
+    // 1. ARCADE STEERING - cached yaw for stable, strong turning
+    const baseTurnRate = 20.0; // radians per second (~500% stronger)
+    const speedDampen = 1 / (1 + speed * 0.004); // minimal damping at speed
+    const lowSpeedBoost = Math.min(1, speed / 3); // reduce steering when nearly stopped
+    const steerRate = baseTurnRate * speedDampen * (0.35 + 0.65 * lowSpeedBoost);
 
-    // Apply steering as angular velocity (smoothed to avoid instant jumps)
-    // Apply steering directly to yaw for stable arcade feel
-    const currentForward = new CANNON.Vec3(0, 0, -1);
-    player.body.quaternion.vmult(currentForward, currentForward);
-    const currentYaw = Math.atan2(currentForward.x, -currentForward.z);
-    const maxYawStep = 0.15; // radians per tick
+    if (typeof player.yaw !== 'number') {
+        const initialForward = new CANNON.Vec3(0, 0, -1);
+        player.body.quaternion.vmult(initialForward, initialForward);
+        player.yaw = Math.atan2(initialForward.x, -initialForward.z);
+    }
+
+    const maxYawStep = 0.6; // radians per tick
     let yawDelta = -steering * steerRate * timestep;
     if (yawDelta > maxYawStep) yawDelta = maxYawStep;
     if (yawDelta < -maxYawStep) yawDelta = -maxYawStep;
-    const newYaw = currentYaw + yawDelta;
-    player.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), newYaw);
-    player.body.angularVelocity.y *= 0.2;
+    player.yaw += yawDelta;
+    player.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), player.yaw);
+    player.body.angularVelocity.y = 0;
 
     // 2. Calculate Forward Direction based on updated rotation
     const forward = new CANNON.Vec3(0, 0, -1);
@@ -1750,6 +1752,7 @@ function resetGame() {
         player.waypointIndex = 0;
         player.input = { steering: 0, throttle: 0, boost: false };
         player.speed = 0;
+        player.yaw = spawnPoint.rotation || 0;
 
         // Create new body
         const spawnIndex = spawnCounter % activeTrack.spawnPoints.length;
@@ -1940,6 +1943,7 @@ function createPlayerBody(player, x, z, rotation = 0) {
     world.addBody(body);
     player.body = body;
     player.speed = 0;
+    player.yaw = rotation;
 }
 
 function removePlayerBody(player) {
@@ -2401,6 +2405,13 @@ function gameLoop() {
                 // Enforce track boundaries
                 if (enforceBoundaries(player.body)) {
                     player.speed = 0;
+                    if (player.body && player.body.quaternion) {
+                        const fwd = new CANNON.Vec3(0, 0, -1);
+                        player.body.quaternion.vmult(fwd, fwd);
+                        player.yaw = Math.atan2(fwd.x, -fwd.z);
+                    } else {
+                        player.yaw = 0;
+                    }
                     player.body.angularVelocity.set(0, 0, 0);
                     io.to(id).emit('respawned', { reason: 'out_of_bounds' });
                 }

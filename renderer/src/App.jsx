@@ -532,14 +532,18 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
                 {isLocating && (
                     <mesh ref={beaconRef} position={[0, 10, 0]}>
                         <cylinderGeometry args={[0.4, 0.8, 20, 8]} />
-                        <meshStandardMaterial
-                            color={color}
-                            emissive={color}
-                            emissiveIntensity={3}
-                            transparent
-                            opacity={0.6}
-                            side={THREE.DoubleSide}
-                        />
+                        {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.beaconMaterial ? (
+                            <primitive object={window.__preloadedAssets.beaconMaterial} attach="material" />
+                        ) : (
+                            <meshStandardMaterial
+                                color={color}
+                                emissive={color}
+                                emissiveIntensity={3}
+                                transparent
+                                opacity={0.6}
+                                side={THREE.DoubleSide}
+                            />
+                        )}
                     </mesh>
                 )}
             </group>
@@ -554,7 +558,13 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
 // EXPLOSION PARTICLES (SPRITE BASED)
 // =============================================================================
 function Explosion({ position, color, onComplete }) {
-    const texture = useMemo(() => new THREE.TextureLoader().load('/explosion.png'), []);
+    const texture = useMemo(() => {
+        try {
+            const pre = (window && window.__preloadedAssets && window.__preloadedAssets.explosionTexture);
+            if (pre) return pre;
+        } catch (e) {}
+        return new THREE.TextureLoader().load('/explosion.png');
+    }, []);
     const lifeRef = useRef(1);
     const spriteRef = useRef();
     const completedRef = useRef(false);
@@ -2019,6 +2029,8 @@ export default function App() {
 
     // Track preloading cache for instant track switching (eliminates lag)
     const preloadedTracksRef = useRef(new Map()); // trackId -> { boundaries, theme, geometries }
+    // General asset cache to avoid runtime shader/texture compilation stalls
+    const preloadedAssetsRef = useRef({}); // explosionTexture, beaconMaterial, beaconGeometry, spriteMaterial
 
     // Graphics Settings with localStorage persistence
     const [graphicsSettings, setGraphicsSettings] = useState(() => {
@@ -2057,6 +2069,48 @@ export default function App() {
     useEffect(() => {
         localStorage.setItem('graphicsSettings', JSON.stringify(graphicsSettings));
     }, [graphicsSettings]);
+
+    // Preload visual/audio assets used by locate/explosion to prevent first-use hitches
+    useEffect(() => {
+        const cache = preloadedAssetsRef.current;
+        try {
+            // Explosion sprite texture
+            const loader = new THREE.TextureLoader();
+            loader.load('/explosion.png', (tex) => {
+                try { tex.encoding = THREE.sRGBEncoding; } catch (e) {}
+                tex.needsUpdate = true;
+                cache.explosionTexture = tex;
+                // also set a sprite material for quick reuse
+                cache.spriteMaterial = new THREE.SpriteMaterial({ map: tex, transparent: true });
+                // expose globally for components that read window.__preloadedAssets
+                window.__preloadedAssets = cache;
+                console.log('[PRELOAD] explosion.png loaded');
+            }, undefined, (err) => {
+                console.warn('[PRELOAD] Failed to load explosion.png', err);
+                window.__preloadedAssets = cache;
+            });
+
+            // Beacon material for locate (compile shader early)
+            const beaconMat = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(trackTheme.primaryColor || '#ff00ff'),
+                emissive: new THREE.Color(trackTheme.primaryColor || '#ff00ff'),
+                emissiveIntensity: 3,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            beaconMat.needsUpdate = true;
+            cache.beaconMaterial = beaconMat;
+
+            // Precreate beacon geometry
+            cache.beaconGeometry = new THREE.CylinderGeometry(0.4, 0.8, 20, 8);
+            // expose cache immediately
+            window.__preloadedAssets = cache;
+        } catch (e) {
+            console.warn('[PRELOAD] Asset preloading failed', e);
+            window.__preloadedAssets = cache;
+        }
+    }, []);
 
     // Performance monitoring
     const [performanceStats, setPerformanceStats] = useState({ fps: 60, drawCalls: 0, particles: 0 });

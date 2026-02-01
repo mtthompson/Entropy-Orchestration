@@ -56,15 +56,15 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
     const speed = velocity.length();
 
     // Arcade steering (match server logic)
-    const baseTurnRate = params.baseTurnRate || 7.5;
-    const speedDampen = 1 / (1 + speed * 0.02);
-    const lowSpeedBoost = Math.min(1, speed / 6);
+    const baseTurnRate = params.baseTurnRate || 20.0;
+    const speedDampen = 1 / (1 + speed * 0.004);
+    const lowSpeedBoost = Math.min(1, speed / 3);
     const steerRate = baseTurnRate * speedDampen * (0.4 + 0.6 * lowSpeedBoost);
 
     const currentForward = new CANNON.Vec3(0, 0, -1);
     body.quaternion.vmult(currentForward, currentForward);
     const currentYaw = Math.atan2(currentForward.x, -currentForward.z);
-    const maxYawStep = params.maxYawStep || 0.15;
+    const maxYawStep = params.maxYawStep || 0.6;
     let yawDelta = -input.steering * steerRate * timestep;
     if (yawDelta > maxYawStep) yawDelta = maxYawStep;
     if (yawDelta < -maxYawStep) yawDelta = -maxYawStep;
@@ -165,7 +165,7 @@ async function run() {
   console.log('Starting extended tuning simulations (10–15s runs)...');
 
   const tuned = {
-    maxYawStep: 0.15,
+    maxYawStep: 0.6,
     maxSpeed: 140,
     accelRate: 85,
     brakeRate: 120,
@@ -173,7 +173,7 @@ async function run() {
     lateralGrip: 7.5,
     boostSpeedMult: 1.35,
     boostAccelMult: 1.25,
-    baseTurnRate: 7.5
+    baseTurnRate: 20.0
   };
 
   const scenarios = [
