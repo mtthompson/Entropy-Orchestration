@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const CANNON = require('cannon-es');
 
 function createWorld() {
@@ -34,12 +36,14 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
   const world = createWorld();
   const body = createBody();
   world.addBody(body);
+  const trace = [];
 
   // Default input: full throttle, slight right steering
   if (!inputSchedule) {
     inputSchedule = (t) => ({ throttle: 1, steering: 0.3, boost: false });
   }
 
+  let simSpeed = 0;
   for (let i = 0; i < Math.floor(durationSec * TICK_RATE); i++) {
     const t = i * timestep;
     const input = inputSchedule(t);
@@ -48,52 +52,62 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
     body.wakeUp();
 
     // Speed
-    const speed = body.velocity.length();
+    const velocity = body.velocity;
+    const speed = velocity.length();
 
-    // Steering
-    const maxSteerRate = params.maxSteerRate || 8.0;
-    const minSpeedForSteering = params.minSpeedForSteering || 2.0;
-    let steerRate;
-    if (speed < minSpeedForSteering) steerRate = maxSteerRate;
-    else {
-      const speedFactor = Math.max(0.3, minSpeedForSteering / speed);
-      steerRate = maxSteerRate * speedFactor;
-    }
+    // Arcade steering (match server logic)
+    const baseTurnRate = params.baseTurnRate || 7.5;
+    const speedDampen = 1 / (1 + speed * 0.02);
+    const lowSpeedBoost = Math.min(1, speed / 6);
+    const steerRate = baseTurnRate * speedDampen * (0.4 + 0.6 * lowSpeedBoost);
 
-    const targetAngVelY = -input.steering * steerRate;
-    const currentAngVelY = body.angularVelocity.y || 0;
-    const steerSmoothing = params.steerSmoothing || 0.22;
-    const maxAngChange = params.maxAngChange || 0.6;
-    let angDelta = (targetAngVelY - currentAngVelY) * steerSmoothing;
-    if (angDelta > maxAngChange) angDelta = maxAngChange;
-    if (angDelta < -maxAngChange) angDelta = -maxAngChange;
-    body.angularVelocity.y = currentAngVelY + angDelta;
+    const currentForward = new CANNON.Vec3(0, 0, -1);
+    body.quaternion.vmult(currentForward, currentForward);
+    const currentYaw = Math.atan2(currentForward.x, -currentForward.z);
+    const maxYawStep = params.maxYawStep || 0.15;
+    let yawDelta = -input.steering * steerRate * timestep;
+    if (yawDelta > maxYawStep) yawDelta = maxYawStep;
+    if (yawDelta < -maxYawStep) yawDelta = -maxYawStep;
+    const newYaw = currentYaw + yawDelta;
+    body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), newYaw);
+    body.angularVelocity.y *= 0.2;
 
     // Forward vector
     const forward = new CANNON.Vec3(0, 0, -1);
     body.quaternion.vmult(forward, forward);
     forward.normalize();
 
-    // Throttle force
-    const driveForce = params.driveForce || 15000;
-    const force = forward.clone();
-    force.scale(input.throttle * driveForce, force);
-    body.applyForce(force, body.position);
+    // Arcade Drive: target-speed approach and direct velocity alignment
+    const baseMaxSpeed = params.maxSpeed || 140;
+    let targetSpeed = input.throttle * baseMaxSpeed;
 
-    // Lateral friction
-    const up = new CANNON.Vec3(0, 1, 0);
-    const right = new CANNON.Vec3();
-    forward.cross(up, right);
-    right.normalize();
+    let accelRate = params.accelRate || 95;
+    let brakeRate = params.brakeRate || 140;
+    let coastRate = params.coastRate || 60;
 
-    const lateralVelocity = body.velocity.dot(right);
-    const grip = params.grip || 0.3;
-    const correctionForce = right.clone();
-    correctionForce.scale(-lateralVelocity * grip * body.mass * 3, correctionForce);
-    body.applyForce(correctionForce, body.position);
+    if (input.boost) {
+      targetSpeed *= params.boostSpeedMult || 1.35;
+      accelRate *= params.boostAccelMult || 1.25;
+    }
+
+    if (input.throttle > 0.01) {
+      if (simSpeed < targetSpeed) {
+        simSpeed = Math.min(targetSpeed, simSpeed + accelRate * timestep);
+      } else {
+        simSpeed = Math.max(targetSpeed, simSpeed - brakeRate * timestep);
+      }
+    } else {
+      simSpeed = Math.max(0, simSpeed - coastRate * timestep);
+    }
+
+    const desiredVelX = forward.x * simSpeed;
+    const desiredVelZ = forward.z * simSpeed;
+    const blend = 0.35;
+    body.velocity.x = body.velocity.x + (desiredVelX - body.velocity.x) * blend;
+    body.velocity.z = body.velocity.z + (desiredVelZ - body.velocity.z) * blend;
 
     // Speed cap
-    const maxSpeed = params.maxSpeed || 200;
+    const maxSpeed = baseMaxSpeed;
     if (body.velocity.length() > maxSpeed) {
       body.velocity.scale(maxSpeed / body.velocity.length(), body.velocity);
     }
@@ -105,43 +119,105 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
       const yaw = getYawFromQuaternion(body.quaternion);
       console.log(`${name} t=${t.toFixed(2)}s pos=(${body.position.x.toFixed(2)},${body.position.z.toFixed(2)}) speed=${body.velocity.length().toFixed(2)} yaw=${(yaw*180/Math.PI).toFixed(1)}deg`);
     }
+
+    trace.push({
+      time: parseFloat(t.toFixed(4)),
+      x: parseFloat(body.position.x.toFixed(4)),
+      z: parseFloat(body.position.z.toFixed(4)),
+      speed: parseFloat(body.velocity.length().toFixed(4)),
+      yaw: parseFloat(getYawFromQuaternion(body.quaternion).toFixed(4))
+    });
   }
 
   const finalYaw = getYawFromQuaternion(body.quaternion);
+  const tracesDir = path.join(__dirname, 'traces');
+  fs.mkdirSync(tracesDir, { recursive: true });
+  const tracePath = path.join(tracesDir, `${name}.json`);
+  fs.writeFileSync(tracePath, JSON.stringify(trace, null, 2));
   return {
     name,
     finalPos: { x: body.position.x, z: body.position.z },
     finalSpeed: body.velocity.length(),
-    finalYaw
+    finalYaw,
+    tracePath
+  };
+}
+
+function constantThrottleInput(steeringBias = 0.3) {
+  return (t) => ({ throttle: 1, steering: steeringBias, boost: false });
+}
+
+function sinusoidalSteeringInput(freq = 1.5, amp = 0.6) {
+  return (t) => ({ throttle: 0.95, steering: Math.sin(t * freq) * amp, boost: false });
+}
+
+function aggressivePulseInput() {
+  return (t) => {
+    const phase = (t % 4);
+    const throttle = phase < 3 ? 1 : 0.1;
+    const steering = phase < 2 ? 0.6 : -0.6;
+    const boost = phase < 0.3 || (phase > 2.5 && phase < 2.8);
+    return { throttle, steering, boost };
   };
 }
 
 async function run() {
-  console.log('Starting tuning simulations...');
-
-  const baseline = {
-    driveForce: 15000,
-    steerSmoothing: 0.0,
-    maxAngChange: 1000,
-    grip: 0.3,
-    maxSpeed: 200
-  };
+  console.log('Starting extended tuning simulations (10–15s runs)...');
 
   const tuned = {
-    driveForce: 6000,
-    steerSmoothing: 0.28,
-    maxAngChange: 0.45,
-    grip: 0.6,
-    maxSpeed: 140
+    maxYawStep: 0.15,
+    maxSpeed: 140,
+    accelRate: 85,
+    brakeRate: 120,
+    coastRate: 45,
+    lateralGrip: 7.5,
+    boostSpeedMult: 1.35,
+    boostAccelMult: 1.25,
+    baseTurnRate: 7.5
   };
 
-  const baselineRes = simulateConfig('baseline', baseline, 5);
-  console.log('---');
-  const tunedRes = simulateConfig('tuned', tuned, 5);
+  const scenarios = [
+    {
+      name: 'tuned_straight',
+      duration: 12,
+      params: tuned,
+      inputSchedule: constantThrottleInput(0.15),
+      description: 'Long straight with very mild steering to test stability.'
+    },
+    {
+      name: 'tuned_sinuous',
+      duration: 15,
+      params: tuned,
+      inputSchedule: sinusoidalSteeringInput(1.2, 0.5),
+      description: 'Constant throttle with gentle curves to exercise grip.'
+    },
+    {
+      name: 'tuned_aggressive',
+      duration: 14,
+      params: tuned,
+      inputSchedule: aggressivePulseInput(),
+      description: 'Throttle pulses + alternating steering mimic aggressive racing.'
+    }
+  ];
 
-  console.log('\nRESULTS:');
-  console.log('Baseline:', baselineRes);
-  console.log('Tuned   :', tunedRes);
+  const results = [];
+  for (const scenario of scenarios) {
+    console.log('---');
+    console.log(`[SCENARIO] ${scenario.name}: ${scenario.description}`);
+    const res = simulateConfig(
+      scenario.name,
+      scenario.params,
+      scenario.duration,
+      scenario.inputSchedule
+    );
+    results.push(res);
+    console.log(`Completed ${scenario.name}`);
+  }
+
+  console.log('\nFINAL SUMMARY:');
+  results.forEach((r) => {
+    console.log(`${r.name}: pos=(${r.finalPos.x.toFixed(1)}, ${r.finalPos.z.toFixed(1)}), speed=${r.finalSpeed.toFixed(1)}, yaw=${(r.finalYaw * 180 / Math.PI).toFixed(1)}deg`);
+  });
 }
 
 run().catch(err => { console.error(err); process.exit(1); });

@@ -170,9 +170,11 @@ function subdividePath(points, segments = 5, loop = true) {
  *                   innerPolygon: Array of {x, z} points for inner edge
  */
 function createTrackFromPath(originalPoints, width, loop = true, smoothSegments = 6) {
-    // Smooth the path for visuals, but use the original control points for collision/boundary generation
+    // Smooth the path for visuals and use the smoothed points for collision/boundary generation.
+    // Using smoothed points reduces long segment offsets that can cross the centerline
+    // on tight, switchback-style layouts.
     const smoothPoints = subdividePath(originalPoints, smoothSegments, loop);
-    const points = originalPoints.slice(); // centerline points used for boundary generation
+    const points = smoothPoints.slice(); // centerline points used for boundary generation
     const boundaries = [];
     const halfWidth = width / 2;
     const height = 4;
@@ -182,6 +184,7 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
     // 2. Generate Offset Vertices by offsetting each segment, then intersect adjacent offsets to form joins.
     const leftVerts = [];
     const rightVerts = [];
+    const scales = [];
 
     // Helper: intersect two infinite lines (p1->p2) and (p3->p4)
     function intersectLines(a1, a2, b1, b2) {
@@ -201,7 +204,7 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
         return { x, z };
     }
 
-    // Build offset lines for each segment using the original control points
+    // Build offset lines for each segment using the (smoothed) centerline points
     const leftLines = [];
     const rightLines = [];
     for (let i = 0; i < points.length; i++) {
@@ -213,31 +216,167 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
         const nx = -dz / len;
         const nz = dx / len;
 
-        leftLines.push({
-            p1: { x: p1.x + nx * halfWidth, z: p1.z + nz * halfWidth },
-            p2: { x: p2.x + nx * halfWidth, z: p2.z + nz * halfWidth }
-        });
-        rightLines.push({
-            p1: { x: p1.x - nx * halfWidth, z: p1.z - nz * halfWidth },
-            p2: { x: p2.x - nx * halfWidth, z: p2.z - nz * halfWidth }
-        });
+        leftLines.push({ p1: { x: p1.x + nx * halfWidth, z: p1.z + nz * halfWidth }, p2: { x: p2.x + nx * halfWidth, z: p2.z + nz * halfWidth } });
+        rightLines.push({ p1: { x: p1.x - nx * halfWidth, z: p1.z - nz * halfWidth }, p2: { x: p2.x - nx * halfWidth, z: p2.z - nz * halfWidth } });
     }
 
-    // Intersect adjacent offset lines to get vertex positions
+    // Strict miter intersection with conservative fallback to per-vertex bevel.
+    // Use a tighter clamp to avoid long miters that cross the path.
+    const maxMiterDistStrict = halfWidth * 2.0;
     for (let i = 0; i < points.length; i++) {
         const prev = (i - 1 + points.length) % points.length;
         const cur = i;
 
-        const leftI = intersectLines(leftLines[prev].p1, leftLines[prev].p2, leftLines[cur].p1, leftLines[cur].p2);
-        const rightI = intersectLines(rightLines[prev].p1, rightLines[prev].p2, rightLines[cur].p1, rightLines[cur].p2);
+        let leftI = intersectLines(leftLines[prev].p1, leftLines[prev].p2, leftLines[cur].p1, leftLines[cur].p2);
+        let rightI = intersectLines(rightLines[prev].p1, rightLines[prev].p2, rightLines[cur].p1, rightLines[cur].p2);
 
-        // If lines are parallel or intersection failed, fallback to simple offset at the point
+        // If intersection is invalid or too far, fallback to conservative per-vertex offset
+        if (leftI) {
+            const dx = leftI.x - points[i].x;
+            const dz = leftI.z - points[i].z;
+            if (Math.sqrt(dx * dx + dz * dz) > maxMiterDistStrict) leftI = null;
+        }
+        if (rightI) {
+            const dx = rightI.x - points[i].x;
+            const dz = rightI.z - points[i].z;
+            if (Math.sqrt(dx * dx + dz * dz) > maxMiterDistStrict) rightI = null;
+        }
+
         if (leftI) leftVerts.push(leftI);
-        else leftVerts.push({ x: points[i].x + (leftLines[cur].p1.x - points[i].x), z: points[i].z + (leftLines[cur].p1.z - points[i].z) });
+        else {
+            // Conservative per-vertex normal (average adjacent segment normals)
+            const pPrev = points[prev];
+            const pNext = points[(i + 1) % points.length];
+            const v1 = { x: points[i].x - pPrev.x, z: points[i].z - pPrev.z };
+            const v2 = { x: pNext.x - points[i].x, z: pNext.z - points[i].z };
+            const l1 = Math.sqrt(v1.x * v1.x + v1.z * v1.z) || 1.0;
+            const l2 = Math.sqrt(v2.x * v2.x + v2.z * v2.z) || 1.0;
+            const n1 = { x: -v1.z / l1, z: v1.x / l1 };
+            const n2 = { x: -v2.z / l2, z: v2.x / l2 };
+            let ax = n1.x + n2.x, az = n1.z + n2.z;
+            let alen = Math.sqrt(ax * ax + az * az) || 1.0;
+            ax /= alen; az /= alen;
+            leftVerts.push({ x: points[i].x + ax * halfWidth, z: points[i].z + az * halfWidth });
+        }
 
         if (rightI) rightVerts.push(rightI);
-        else rightVerts.push({ x: points[i].x + (rightLines[cur].p1.x - points[i].x), z: points[i].z + (rightLines[cur].p1.z - points[i].z) });
+        else {
+            const pPrev = points[prev];
+            const pNext = points[(i + 1) % points.length];
+            const v1 = { x: points[i].x - pPrev.x, z: points[i].z - pPrev.z };
+            const v2 = { x: pNext.x - points[i].x, z: pNext.z - points[i].z };
+            const l1 = Math.sqrt(v1.x * v1.x + v1.z * v1.z) || 1.0;
+            const l2 = Math.sqrt(v2.x * v2.x + v2.z * v2.z) || 1.0;
+            const n1 = { x: -v1.z / l1, z: v1.x / l1 };
+            const n2 = { x: -v2.z / l2, z: v2.x / l2 };
+            let ax = n1.x + n2.x, az = n1.z + n2.z;
+            let alen = Math.sqrt(ax * ax + az * az) || 1.0;
+            ax /= alen; az /= alen;
+            rightVerts.push({ x: points[i].x - ax * halfWidth, z: points[i].z - az * halfWidth });
+        }
     }
+
+    // Helper to build boundary list from current verts
+    function buildBoundariesFromVerts(lt, rt) {
+        const b = [];
+        for (let i = 0; i < points.length; i++) {
+            const next = (i + 1) % points.length;
+            b.push({ x1: lt[i].x, z1: lt[i].z, x2: lt[next].x, z2: lt[next].z, height });
+            b.push({ x1: rt[i].x, z1: rt[i].z, x2: rt[next].x, z2: rt[next].z, height });
+        }
+        return b;
+    }
+
+    // Detect segment intersection utility
+    function segsIntersect(a, b, c, d) {
+        const s1_x = b.x - a.x, s1_z = b.z - a.z;
+        const s2_x = d.x - c.x, s2_z = d.z - c.z;
+        const denom = (-s2_x * s1_z + s1_x * s2_z);
+        if (Math.abs(denom) < 1e-10) return false;
+        const s = (-s1_z * (a.x - c.x) + s1_x * (a.z - c.z)) / denom;
+        const t = (s2_x * (a.z - c.z) - s2_z * (a.x - c.x)) / denom;
+        return (s > 0 && s < 1 && t > 0 && t < 1);
+    }
+
+    // Iteratively repair any wall segments that intersect the centerline by switching
+    // the involved vertices to a conservative bevel offset (and slightly widening)
+    let boundariesTemp = buildBoundariesFromVerts(leftVerts, rightVerts);
+    const repairIters = 3;
+    for (let iter = 0; iter < repairIters; iter++) {
+        let changed = false;
+        for (let si = 0; si < points.length; si++) {
+            const a = points[si];
+            const bpt = points[(si + 1) % points.length];
+            for (let wi = 0; wi < boundariesTemp.length; wi++) {
+                const w = boundariesTemp[wi];
+                if (segsIntersect(a, bpt, { x: w.x1, z: w.z1 }, { x: w.x2, z: w.z2 })) {
+                    // The wall segment (w) intersects the waypoint segment (a->bpt).
+                    // Find which vertex indices are associated with this wall (side index)
+                    const sideIdx = Math.floor(wi / 2);
+                    const vi0 = sideIdx;
+                    const vi1 = (sideIdx + 1) % points.length;
+
+                    // Apply conservative bevel offsets to vi0 and vi1, and slightly widen
+                    [vi0, vi1].forEach(vi => {
+                        const pPrev = points[(vi - 1 + points.length) % points.length];
+                        const pNext = points[(vi + 1) % points.length];
+                        const v1 = { x: points[vi].x - pPrev.x, z: points[vi].z - pPrev.z };
+                        const v2 = { x: pNext.x - points[vi].x, z: pNext.z - points[vi].z };
+                        const l1 = Math.sqrt(v1.x * v1.x + v1.z * v1.z) || 1.0;
+                        const l2 = Math.sqrt(v2.x * v2.x + v2.z * v2.z) || 1.0;
+                        const n1 = { x: -v1.z / l1, z: v1.x / l1 };
+                        const n2 = { x: -v2.z / l2, z: v2.x / l2 };
+                        let ax = n1.x + n2.x, az = n1.z + n2.z;
+                        let alen = Math.sqrt(ax * ax + az * az) || 1.0;
+                        ax /= alen; az /= alen;
+                        // slight widen factor
+                        const widen = 1.15;
+                        leftVerts[vi] = { x: points[vi].x + ax * halfWidth * widen, z: points[vi].z + az * halfWidth * widen };
+                        rightVerts[vi] = { x: points[vi].x - ax * halfWidth * widen, z: points[vi].z - az * halfWidth * widen };
+                    });
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) break;
+        boundariesTemp = buildBoundariesFromVerts(leftVerts, rightVerts);
+    }
+
+    // Additional targeted per-segment fix: if a waypoint segment still intersects any wall,
+    // replace the verts at its endpoints with simple perpendicular offsets for that segment
+    // (widened slightly). This gives a guaranteed unobstructed corridor for that segment.
+    const perSegFixIters = 2;
+    for (let iter = 0; iter < perSegFixIters; iter++) {
+        let fixed = false;
+        for (let si = 0; si < points.length; si++) {
+            const a = points[si];
+            const bpt = points[(si + 1) % points.length];
+            // check if any wall intersects this centerline segment
+            let intersects = false;
+            for (const w of boundariesTemp) {
+                if (segsIntersect(a, bpt, { x: w.x1, z: w.z1 }, { x: w.x2, z: w.z2 })) { intersects = true; break; }
+            }
+            if (!intersects) continue;
+
+            // compute perpendicular to this segment
+            const dx = bpt.x - a.x; const dz = bpt.z - a.z;
+            const llen = Math.sqrt(dx*dx + dz*dz) || 1.0;
+            const nx = -dz / llen; const nz = dx / llen;
+            const widen = 1.25;
+            const vi0 = si; const vi1 = (si + 1) % points.length;
+            leftVerts[vi0] = { x: a.x + nx * halfWidth * widen, z: a.z + nz * halfWidth * widen };
+            rightVerts[vi0] = { x: a.x - nx * halfWidth * widen, z: a.z - nz * halfWidth * widen };
+            leftVerts[vi1] = { x: bpt.x + nx * halfWidth * widen, z: bpt.z + nz * halfWidth * widen };
+            rightVerts[vi1] = { x: bpt.x - nx * halfWidth * widen, z: bpt.z - nz * halfWidth * widen };
+            fixed = true;
+        }
+        if (!fixed) break;
+        boundariesTemp = buildBoundariesFromVerts(leftVerts, rightVerts);
+    }
+
+    const finalBoundaries = boundariesTemp;
+
+    // finalBoundaries was computed above by the strict-offset + repair pass
 
     // For visuals, compute smooth outer/inner polygons from smoothed points
     const smoothLeft = [];
@@ -254,23 +393,9 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
         smoothRight.push({ x: p1.x - nx * halfWidth, z: p1.z - nz * halfWidth });
     }
     
-    // 3. Connect Vertices with Walls
-    for (let i = 0; i < points.length; i++) {
-        if (!loop && i === points.length - 1) break;
-        const next = (i + 1) % points.length;
-
-        boundaries.push({
-            x1: leftVerts[i].x, z1: leftVerts[i].z,
-            x2: leftVerts[next].x, z2: leftVerts[next].z,
-            height
-        });
-
-        boundaries.push({
-            x1: rightVerts[i].x, z1: rightVerts[i].z,
-            x2: rightVerts[next].x, z2: rightVerts[next].z,
-            height
-        });
-    }
+    // 3. Use the post-processed boundaries
+    // finalBoundaries was computed with optional local nudges to avoid waypoint intersections
+    for (let i = 0; i < finalBoundaries.length; i++) boundaries.push(finalBoundaries[i]);
 
     // Determine which side is outer/inner based on path winding
     // In our coordinate system (Z+ is down), a CCW path has positive signed area.

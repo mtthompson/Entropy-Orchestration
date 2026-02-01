@@ -304,6 +304,7 @@ function enforceBoundaries(body) {
         const spawn = activeTrack.spawnPoints[0];
         body.position.set(spawn.x, getSpawnHeight(spawn.x, spawn.z), spawn.z);
         body.velocity.set(0, 0, 0);
+        body.angularVelocity.set(0, 0, 0);
         body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.rotation || 0);
         teleported = true;
         console.log(`[BOUNDS] Body exceeded horizontal bounds (${body.position.x.toFixed(1)}, ${body.position.z.toFixed(1)}). Resetting.`);
@@ -927,77 +928,71 @@ function updatePlayerPhysics(player, input) {
     // Wake up body
     player.body.wakeUp();
 
-    // Get current speed
-    const speed = player.body.velocity.length();
-
-    // 1. CAR-LIKE STEERING - Speed-dependent steering like real cars
-    // Low speed = responsive steering, high speed = stable steering
-    const maxSteerRate = 8.0; // Maximum steering rate (radians per second)
-    const minSpeedForSteering = 2.0; // Minimum speed for reduced steering
-
-    let steerRate;
-    if (speed < minSpeedForSteering) {
-        // Full steering responsiveness when slow or stopped
-        steerRate = maxSteerRate;
-    } else {
-        // Reduce steering responsiveness at high speeds for stability
-        const speedFactor = Math.max(0.3, minSpeedForSteering / speed);
-        steerRate = maxSteerRate * speedFactor;
+    // Get current speed (cache per player for stable arcade control)
+    const bodySpeed = player.body.velocity.length();
+    if (typeof player.speed !== 'number') {
+        player.speed = bodySpeed;
     }
+    const speed = player.speed;
+
+    // 1. ARCADE STEERING - stable at speed, gentler at low speed
+    const baseTurnRate = 7.5; // radians per second
+    const speedDampen = 1 / (1 + speed * 0.02); // gentler high-speed damping
+    const lowSpeedBoost = Math.min(1, speed / 6); // reduce steering when nearly stopped
+    const steerRate = baseTurnRate * speedDampen * (0.4 + 0.6 * lowSpeedBoost);
 
     // Apply steering as angular velocity (smoothed to avoid instant jumps)
-    const targetAngVelY = -steering * steerRate;
-    const currentAngVelY = player.body.angularVelocity.y || 0;
-    // Smooth factor per tick (0 = no change, 1 = instant). Tuned for arcade feel.
-    const steerSmoothing = 0.28;
-    // Limit maximum change per tick to avoid large instantaneous yaw when inputs jitter
-    const maxAngChange = 0.45; // radians per tick
-    let angDelta = (targetAngVelY - currentAngVelY) * steerSmoothing;
-    if (angDelta > maxAngChange) angDelta = maxAngChange;
-    if (angDelta < -maxAngChange) angDelta = -maxAngChange;
-    player.body.angularVelocity.y = currentAngVelY + angDelta;
+    // Apply steering directly to yaw for stable arcade feel
+    const currentForward = new CANNON.Vec3(0, 0, -1);
+    player.body.quaternion.vmult(currentForward, currentForward);
+    const currentYaw = Math.atan2(currentForward.x, -currentForward.z);
+    const maxYawStep = 0.15; // radians per tick
+    let yawDelta = -steering * steerRate * timestep;
+    if (yawDelta > maxYawStep) yawDelta = maxYawStep;
+    if (yawDelta < -maxYawStep) yawDelta = -maxYawStep;
+    const newYaw = currentYaw + yawDelta;
+    player.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), newYaw);
+    player.body.angularVelocity.y *= 0.2;
 
-    // 2. Calculate Forward Direction based on current rotation
-    const quaternion = player.body.quaternion;
-    const forward = new CANNON.Vec3(0, 0, -1); // NEGATIVE Z is forward
-    quaternion.vmult(forward, forward);
-    forward.normalize(); // Ensure normalized
+    // 2. Calculate Forward Direction based on updated rotation
+    const forward = new CANNON.Vec3(0, 0, -1);
+    player.body.quaternion.vmult(forward, forward);
+    forward.normalize();
 
-    // 3. Apply Throttle Force (Aligned with heading)
-    const driveForce = 6000; // Tuned for arcade acceleration
-    const force = forward.clone();
-    force.scale(throttle * driveForce, force);
+    // 3. Arcade Drive: target-speed approach and direct velocity alignment
+    const baseMaxSpeed = 140 * maxSpeedMod;
+    let targetSpeed = throttle * baseMaxSpeed;
 
-    // Boost multiplier
+    let accelRate = 95;
+    let brakeRate = 140;
+    let coastRate = 60;
+
     if (boost && player.boost > 0) {
-        force.scale(2.5, force); // Increased from 1.8 for better boost effect
-        player.boost = Math.max(0, player.boost - 0.8); // Reduced depletion from 1.5
+        targetSpeed *= 1.35;
+        accelRate *= 1.25;
+        player.boost = Math.max(0, player.boost - 0.8);
     } else {
         player.boost = Math.min(100, player.boost + 0.3 * boostRegenMod);
     }
 
-    player.body.applyForce(force, player.body.position);
+    if (throttle > 0.01) {
+        if (player.speed < targetSpeed) {
+            player.speed = Math.min(targetSpeed, player.speed + accelRate * timestep);
+        } else {
+            player.speed = Math.max(targetSpeed, player.speed - brakeRate * timestep);
+        }
+    } else {
+        player.speed = Math.max(0, player.speed - coastRate * timestep);
+    }
 
-    // 4. Lateral Friction (Anti-drift grip)
-    const velocity = player.body.velocity;
-    
-    // Calculate right vector properly: cross product of forward and up
-    const up = new CANNON.Vec3(0, 1, 0);
-    const right = new CANNON.Vec3();
-    forward.cross(up, right);  // right = forward × up
-    right.normalize();
-
-    const lateralVelocity = velocity.dot(right);
-
-    // Apply opposing force to cancel sideways slide
-    // Higher grip = more like a car, lower = more like ice
-    const grip = 0.6; // Tuned for tighter lateral grip
-    const correctionForce = right.clone();
-    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 3, correctionForce);
-    player.body.applyForce(correctionForce, player.body.position);
+    const desiredVelX = forward.x * player.speed;
+    const desiredVelZ = forward.z * player.speed;
+    const blend = 0.35;
+    player.body.velocity.x = player.body.velocity.x + (desiredVelX - player.body.velocity.x) * blend;
+    player.body.velocity.z = player.body.velocity.z + (desiredVelZ - player.body.velocity.z) * blend;
 
     // 5. Speed cap to prevent runaway (modified by mask)
-    const maxSpeed = 140 * maxSpeedMod; // Tuned max speed for better control
+    const maxSpeed = baseMaxSpeed;
     if (speed > maxSpeed) {
         player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
     }
@@ -1754,6 +1749,7 @@ function resetGame() {
         player.lapsCompleted = 0;
         player.waypointIndex = 0;
         player.input = { steering: 0, throttle: 0, boost: false };
+        player.speed = 0;
 
         // Create new body
         const spawnIndex = spawnCounter % activeTrack.spawnPoints.length;
@@ -1938,9 +1934,12 @@ function createPlayerBody(player, x, z, rotation = 0) {
 
     // Apply spawn rotation
     body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), rotation);
+    body.velocity.set(0, 0, 0);
+    body.angularVelocity.set(0, 0, 0);
 
     world.addBody(body);
     player.body = body;
+    player.speed = 0;
 }
 
 function removePlayerBody(player) {
@@ -2401,6 +2400,8 @@ function gameLoop() {
 
                 // Enforce track boundaries
                 if (enforceBoundaries(player.body)) {
+                    player.speed = 0;
+                    player.body.angularVelocity.set(0, 0, 0);
                     io.to(id).emit('respawned', { reason: 'out_of_bounds' });
                 }
             }

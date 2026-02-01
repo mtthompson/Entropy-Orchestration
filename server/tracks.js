@@ -357,8 +357,8 @@ TRACKS.push(buildArena(160, 24, {
 const SWITCHBACK_PATH = [
     { x: -150, z: 165 }, { x: -50, z: 165 }, { x: 50, z: 100 },
     { x: 150, z: 100 }, { x: 150, z: 0 },
-    { x: 50, z: 0 }, { x: -50, z: -75 },
-    { x: -150, z: -75 }, { x: -150, z: -175 },
+    { x: 50, z: 0 }, { x: -70, z: -85 },
+    { x: -105, z: -180 }, { x: -80, z: -175 },
     { x: -50, z: -175 }, { x: 50, z: -125 }, { x: 150, z: -175 },
     { x: 150, z: -225 }, { x: -150, z: -225 }
 ];
@@ -366,7 +366,7 @@ TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 90, {
     id: 'track_03',
     name: 'The Switchback',
     type: 'race',
-    smoothSegments: 2,
+    smoothSegments: 1,
     spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 10, 8),
     startLine: generateStartLine(SWITCHBACK_PATH, 70),
     powerupBounds: { minX: -175, maxX: 175, minZ: -250, maxZ: 200 },
@@ -387,6 +387,7 @@ TRACKS.push(buildRaceTrack(CLOVER_PATH, 75, {
     id: 'track_04',
     name: 'Cloverleaf',
     type: 'race',
+    smoothSegments: 1,
     spawnPoints: generateAlignedSpawns(CLOVER_PATH, 10, 8),
     startLine: generateStartLine(CLOVER_PATH, 75),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
@@ -422,6 +423,7 @@ TRACKS.push(buildRaceTrack(DRAGON_PATH, 40, {
     id: 'track_06',
     name: "Dragon's Tail",
     type: 'race',
+    smoothSegments: 1,
     spawnPoints: generateAlignedSpawns(DRAGON_PATH, 0, 8),
     startLine: generateStartLine(DRAGON_PATH, 40),
     powerupBounds: { minX: -200, maxX: 150, minZ: -275, maxZ: 250 },
@@ -491,6 +493,7 @@ TRACKS.push(buildRaceTrack(STRIP_PATH, 85, {
     id: 'track_10',
     name: 'Velocity Strip',
     type: 'race',
+    smoothSegments: 1,
     spawnPoints: generateAlignedSpawns(STRIP_PATH, 10, 8),
     startLine: generateStartLine(STRIP_PATH, 85),
     powerupBounds: { minX: -125, maxX: 125, minZ: -300, maxZ: 275 },
