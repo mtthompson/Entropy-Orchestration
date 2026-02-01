@@ -129,8 +129,8 @@ const RESPAWN_COOLDOWN = 5000; // 5 seconds to respawn
 // =============================================================================
 const httpServer = createServer();
 const io = new Server(httpServer, {
-    cors: { origin: '*' }
-    // Default path is /socket.io - tailscale strips /api prefix when routing to backend
+    cors: { origin: '*' },
+    path: '/api/socket.io' // Explicit path for reverse proxy routing
 });
 
 // =============================================================================
