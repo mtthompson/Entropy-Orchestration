@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Trail, Stars, Environment } from '@react-three/drei';
+import { Trail, Stars, Environment, Html } from '@react-three/drei';
 import { EffectComposer, Bloom, ChromaticAberration, Glitch, N8AO, DepthOfField, ToneMapping, Vignette } from '@react-three/postprocessing';
 import { BlendFunction, GlitchMode, ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
@@ -10,7 +10,9 @@ import { Scenery } from './Scenery';
 import { Audience } from './Audience';
 import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail } from './ParticleEffects';
 import { GameUI } from './GameUI';
-import { useAudio } from './useAudio';
+import { useMidiAudio as useAudio } from './useMidiAudio';
+// import { useAudio } from './useAudio';
+
 import { ToastNotification } from './ToastNotification';
 import { AdminPanel } from './AdminPanel';
 import { PerformanceOverlay } from './PerformanceOverlay';
@@ -25,28 +27,56 @@ const SERVER_URL = isDev ? 'http://localhost:3000' : window.location.origin;
 const socketPath = isDev ? '/socket.io' : '/api/socket.io';
 const socket = io(SERVER_URL, { query: { role: 'admin' }, path: socketPath });
 
-// =============================================================================
-// SYNTHWAVE GRID FLOOR - Enhanced with Shader
-// =============================================================================
+const HILL_AMPLIFY = 3.0;
+
+function getTerrainHeight(heightMap, x, z) {
+    if (!heightMap || !heightMap.matrix) return 0;
+
+    const { matrix, width, depth, elementSize, gridWidth, gridDepth } = heightMap;
+
+    // Convert world coords to grid coords (Visual TerrainMesh stretches grid to fit width/depth)
+    // To match visual mesh, we map [-width/2, width/2] to [0, gridWidth-1]
+    const gridX = ((x + width / 2) / width) * (gridWidth - 1);
+    const gridZ = ((z + depth / 2) / depth) * (gridDepth - 1);
+
+    // Clamp to grid bounds
+    const i0 = Math.max(0, Math.min(gridWidth - 2, Math.floor(gridX)));
+    const j0 = Math.max(0, Math.min(gridDepth - 2, Math.floor(gridZ)));
+    const i1 = i0 + 1;
+    const j1 = j0 + 1;
+
+    // Bilinear interpolation
+    const fx = gridX - i0;
+    const fz = gridZ - j0;
+
+    const h00 = matrix[i0]?.[j0] || 0;
+    const h10 = matrix[i1]?.[j0] || 0;
+    const h01 = matrix[i0]?.[j1] || 0;
+    const h11 = matrix[i1]?.[j1] || 0;
+
+    const h0 = h00 * (1 - fx) + h10 * fx;
+    const h1 = h01 * (1 - fx) + h11 * fx;
+
+    return h0 * (1 - fz) + h1 * fz;
+}
+
 function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
     const width = floorSize?.width || 250;
     const depth = floorSize?.depth || 250;
-    
-    // Use theme colors or fallback to defaults
     const primaryColor = theme?.primaryColor || '#ff00ff';
+    const floorColor = '#1a0a2e'; // Match TerrainMesh color
 
     return (
         <group>
-            {/* Simple dark base floor far below - acts as void/abyss */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]} receiveShadow>
-                <planeGeometry args={[width * 3, depth * 3]} />
-                <meshBasicMaterial color="#000000" />
-            </mesh>
-
-            {/* Subtle edge glow at horizon */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -4.9, 0]}>
-                <ringGeometry args={[Math.max(width, depth) * 0.8, Math.max(width, depth) * 1.5, 64]} />
-                <meshBasicMaterial color={primaryColor} transparent opacity={0.05} side={THREE.DoubleSide} />
+            {/* Infinite base floor matching terrain color */}
+            {/* Raised slightly to ensure it meets the terrain perfectly */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+                <planeGeometry args={[10000, 10000]} />
+                <meshStandardMaterial
+                    color={floorColor}
+                    roughness={0.9}
+                    metalness={0.1}
+                />
             </mesh>
         </group>
     );
@@ -57,66 +87,77 @@ function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
 // =============================================================================
 function TerrainMesh({ heightMap, theme, graphicsSettings }) {
     const meshRef = useRef();
-    
-    // Amplification factor for hills to make them more visible
-    const HILL_AMPLIFY = 3.0;
-    
-    // Generate terrain geometry from heightmap matrix
+
+    // Generate terrain geometry with vertex colors
     const geometry = useMemo(() => {
         if (!heightMap || !heightMap.matrix || heightMap.matrix.length === 0) {
             console.log('[TerrainMesh] No heightmap data');
             return null;
         }
-        
+
         const { matrix, width, depth, gridWidth, gridDepth } = heightMap;
-        console.log(`[TerrainMesh] Creating terrain mesh: ${gridWidth}x${gridDepth}, size: ${width}x${depth}`);
-        
-        // PlaneGeometry segments = vertices - 1
         const geo = new THREE.PlaneGeometry(
             width,
             depth,
             gridWidth - 1,
             gridDepth - 1
         );
-        
-        // Rotate to XZ plane
+
         geo.rotateX(-Math.PI / 2);
-        
+
         const positions = geo.attributes.position.array;
         const vertexCount = positions.length / 3;
-        
-        // Apply amplified heights
+
+        // Prepare color attribute
+        const colors = new Float32Array(vertexCount * 3);
+        const primaryColor = new THREE.Color(theme?.primaryColor || '#ff00ff');
+        const secondaryColor = new THREE.Color(theme?.secondaryColor || '#00ffff');
+        const terrainColor = new THREE.Color('#1a0a2e');
+
         let maxHeight = 0;
-        for (let vertIdx = 0; vertIdx < vertexCount; vertIdx++) {
-            const ix = vertIdx % gridWidth;
-            const iz = Math.floor(vertIdx / gridWidth);
-            const posIdx = vertIdx * 3;
-            
-            if (matrix[ix] && matrix[ix][iz] !== undefined) {
-                // Amplify height for visibility
-                const h = matrix[ix][iz] * HILL_AMPLIFY;
-                positions[posIdx + 1] = h;
-                if (h > maxHeight) maxHeight = h;
+        for (let i = 0; i < gridWidth; i++) {
+            for (let j = 0; j < gridDepth; j++) {
+                const vertIdx = j * gridWidth + i;
+                const posIdx = vertIdx * 3;
+
+                if (matrix[i] && matrix[i][j] !== undefined) {
+                    const h = matrix[i][j] * HILL_AMPLIFY;
+                    positions[posIdx + 1] = h;
+                    if (h > maxHeight) maxHeight = h;
+
+                    // Assign color based on height/position
+                    const hFactor = Math.max(0, Math.min(1, h / 15)); // Normalize height
+
+                    // Blend from terrain color to primary at peaks
+                    const color = terrainColor.clone().lerp(primaryColor, hFactor);
+
+                    // Add some secondary color randomness at peaks
+                    if (hFactor > 0.5) {
+                        const noise = Math.sin(i * 0.5) * Math.cos(j * 0.5);
+                        if (noise > 0.5) {
+                            color.lerp(secondaryColor, (hFactor - 0.5) * 2);
+                        }
+                    }
+
+                    colors[posIdx] = color.r;
+                    colors[posIdx + 1] = color.g;
+                    colors[posIdx + 2] = color.b;
+                }
             }
         }
-        
-        console.log(`[TerrainMesh] Applied heights (amplified ${HILL_AMPLIFY}x), max height: ${maxHeight.toFixed(2)}`);
-        
+
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geo.computeVertexNormals();
         geo.attributes.position.needsUpdate = true;
-        
+
         return geo;
-    }, [heightMap]);
-    
+    }, [heightMap, theme]);
+
     if (!geometry) return null;
-    
-    const primaryColor = theme?.primaryColor || '#ff00ff';
-    // Darker, more distinct off-track color (dirt/grass-like but synthwave)
-    const terrainColor = '#1a0a2e'; // Deep purple-black for off-track
-    
+
     return (
         <group>
-            {/* Main terrain surface - darker and more rugged looking */}
+            {/* Main terrain surface - using vertex colors */}
             <mesh
                 ref={meshRef}
                 geometry={geometry}
@@ -124,23 +165,23 @@ function TerrainMesh({ heightMap, theme, graphicsSettings }) {
                 receiveShadow
             >
                 <meshStandardMaterial
-                    color={terrainColor}
+                    vertexColors={true}
                     metalness={0.2}
-                    roughness={0.9}
-                    flatShading={true}  // Flat shading makes hills more visible
+                    roughness={0.8}
+                    flatShading={true}
                 />
             </mesh>
-            
-            {/* Wireframe overlay - more prominent for terrain readability */}
+
+            {/* Wireframe overlay */}
             <mesh
                 geometry={geometry}
                 position={[0, 0.02, 0]}
             >
                 <meshBasicMaterial
-                    color={primaryColor}
+                    color={theme?.primaryColor || '#ff00ff'}
                     wireframe={true}
                     transparent={true}
-                    opacity={0.25}
+                    opacity={0.15}
                 />
             </mesh>
         </group>
@@ -153,51 +194,70 @@ function TerrainMesh({ heightMap, theme, graphicsSettings }) {
 function TrackSurface({ trackData, theme }) {
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
-    
+
     // Track floor color - bright enough to be clearly distinct from off-track
     const trackFloorColor = '#3a3a5e'; // Lighter blue-gray for track surface
-    
+
     // Create geometry for arena (single polygon) or race track (outer with inner hole)
     const geometry = useMemo(() => {
+        let resultGeo = null;
+
         // Arena: has floorPolygon (single closed polygon)
         if (trackData?.floorPolygon && trackData.floorPolygon.length >= 3) {
             const shape = new THREE.Shape();
             const pts = trackData.floorPolygon;
-            shape.moveTo(pts[0].x, pts[0].z);
+            shape.moveTo(pts[0].x, -pts[0].z);
             for (let i = 1; i < pts.length; i++) {
-                shape.lineTo(pts[i].x, pts[i].z);
+                shape.lineTo(pts[i].x, -pts[i].z);
             }
-            shape.lineTo(pts[0].x, pts[0].z);
-            return new THREE.ShapeGeometry(shape);
+            shape.lineTo(pts[0].x, -pts[0].z);
+            resultGeo = new THREE.ShapeGeometry(shape);
         }
-        
+
         // Race track: has outerPolygon and innerPolygon
-        if (trackData?.outerPolygon && trackData?.innerPolygon && 
+        else if (trackData?.outerPolygon && trackData?.innerPolygon &&
             trackData.outerPolygon.length >= 3 && trackData.innerPolygon.length >= 3) {
             const shape = new THREE.Shape();
             const outer = trackData.outerPolygon;
             const inner = trackData.innerPolygon;
-            
+
             // Build outer boundary
-            shape.moveTo(outer[0].x, outer[0].z);
+            shape.moveTo(outer[0].x, -outer[0].z);
             for (let i = 1; i < outer.length; i++) {
-                shape.lineTo(outer[i].x, outer[i].z);
+                shape.lineTo(outer[i].x, -outer[i].z);
             }
-            shape.lineTo(outer[0].x, outer[0].z);
-            
+            shape.lineTo(outer[0].x, -outer[0].z);
+
             // Create hole with inner boundary (reversed winding)
             const hole = new THREE.Path();
-            hole.moveTo(inner[0].x, inner[0].z);
+            hole.moveTo(inner[0].x, -inner[0].z);
             for (let i = inner.length - 1; i >= 0; i--) {
-                hole.lineTo(inner[i].x, inner[i].z);
+                hole.lineTo(inner[i].x, -inner[i].z);
             }
             shape.holes.push(hole);
-            
-            return new THREE.ShapeGeometry(shape);
+
+            resultGeo = new THREE.ShapeGeometry(shape);
         }
-        
-        return null;
-    }, [trackData?.floorPolygon, trackData?.outerPolygon, trackData?.innerPolygon]);
+
+        if (resultGeo && trackData.heightMap) {
+            const posAttr = resultGeo.attributes.position;
+            const vertex = new THREE.Vector3();
+            // Apply heightmap displacement
+            // NOTE: ShapeGeometry is on XY plane. We rotate it -90 on X to lie on XZ.
+            // This means geometry Y becomes world -Z.
+            // So we query height at (x, -y).
+            for (let i = 0; i < posAttr.count; i++) {
+                vertex.fromBufferAttribute(posAttr, i);
+                const h = getTerrainHeight(trackData.heightMap, vertex.x, -vertex.y);
+                const amplifiedH = h * HILL_AMPLIFY;
+                // Set Z (which becomes Y after mesh rotation)
+                posAttr.setZ(i, amplifiedH);
+            }
+            resultGeo.computeVertexNormals();
+        }
+
+        return resultGeo;
+    }, [trackData?.floorPolygon, trackData?.outerPolygon, trackData?.innerPolygon, trackData?.heightMap]);
 
     if (!geometry) return null;
 
@@ -213,27 +273,7 @@ function TrackSurface({ trackData, theme }) {
                 />
             </mesh>
 
-            {/* Subtle grid pattern on track */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.16, 0]}>
-                <primitive object={geometry.clone()} attach="geometry" />
-                <meshBasicMaterial
-                    color={secondaryColor}
-                    wireframe
-                    transparent
-                    opacity={0.12}
-                />
-            </mesh>
-            
-            {/* Track edge glow */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.17, 0]}>
-                <primitive object={geometry.clone()} attach="geometry" />
-                <meshBasicMaterial
-                    color={primaryColor}
-                    wireframe
-                    transparent
-                    opacity={0.25}
-                />
-            </mesh>
+
         </group>
     );
 }
@@ -241,7 +281,7 @@ function TrackSurface({ trackData, theme }) {
 // =============================================================================
 // CAR COMPONENT WITH TRAIL
 // =============================================================================
-function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
+function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isLocating }) {
     const meshRef = useRef();
     const targetPos = useRef(new THREE.Vector3(...position));
     const beaconRef = useRef();
@@ -256,7 +296,7 @@ function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
     useFrame((state, delta) => {
         if (meshRef.current) {
             meshRef.current.position.lerp(targetPos.current, 0.3);
-            
+
             // Locate effect: scale up and pulse emissive
             if (isLocating) {
                 const pulse = Math.sin(state.clock.elapsedTime * 10) * 0.5 + 1.5;
@@ -281,8 +321,11 @@ function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
                     });
                 }
             }
-            // Rotate based on movement 
-            if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
+
+            // Apply rotation from quaternion if available, otherwise fallback to velocity
+            if (quaternion) {
+                meshRef.current.quaternion.set(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
+            } else if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
                 meshRef.current.rotation.y = Math.atan2(velocity.x, velocity.z);
             }
         }
@@ -365,6 +408,35 @@ function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
                         <Wheels />
                     </group>
                 );
+            case 'Skull': // Sleek & Bony
+                return (
+                    <group>
+                        {/* Main Spine/Body */}
+                        <mesh position={[0, -0.1, 0]}>
+                            <boxGeometry args={[1.2, 0.4, 3.2]} />
+                            {mat}
+                        </mesh>
+                        {/* Sharp Nose */}
+                        <mesh position={[0, -0.1, -1.8]} rotation={[Math.PI / 2, 0, 0]}>
+                            <coneGeometry args={[0.6, 0.8, 4]} />
+                            {mat}
+                        </mesh>
+                        {/* Ribs / Side structures */}
+                        {[1, 0.5, 0, -0.5, -1].map((z, i) => (
+                            <group key={i}>
+                                <mesh position={[0.8, -0.1, z]}>
+                                    <boxGeometry args={[0.4, 0.2, 0.2]} />
+                                    {mat}
+                                </mesh>
+                                <mesh position={[-0.8, -0.1, z]}>
+                                    <boxGeometry args={[0.4, 0.2, 0.2]} />
+                                    {mat}
+                                </mesh>
+                            </group>
+                        ))}
+                        <Wheels />
+                    </group>
+                );
             case 'Classic':
             default: // Arcade Racer
                 return (
@@ -398,7 +470,7 @@ function Car({ position, velocity, color, hp, isDying, maskType, isLocating }) {
             // Pulse effect based on speed
             const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
             engineFlameRef.current = Math.min(1, speed / 20);
-            
+
             // Update flame mesh directly without state
             if (flameRef.current) {
                 const ef = engineFlameRef.current;
@@ -484,15 +556,15 @@ function Explosion({ position, color, onComplete }) {
 
     useFrame((state, delta) => {
         if (completedRef.current) return;
-        
+
         lifeRef.current -= delta * 2;
-        
+
         if (lifeRef.current <= 0) {
             completedRef.current = true;
             onComplete?.();
             return;
         }
-        
+
         // Update sprite directly without state
         if (spriteRef.current) {
             const life = lifeRef.current;
@@ -800,7 +872,7 @@ function EliminationBanner({ eliminations }) {
                         padding: '25px 50px',
                         borderRadius: 16,
                         textAlign: 'center',
-                        fontFamily: 'monospace',
+                        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                         boxShadow: `0 0 50px ${elim.color}, 0 0 100px rgba(255,0,255,0.4)`,
                         border: `3px solid ${elim.color}`,
                         opacity: opacity,
@@ -808,8 +880,8 @@ function EliminationBanner({ eliminations }) {
                         animation: 'eliminationSlam 0.3s ease-out'
                     }}>
                         {/* Header */}
-                        <div style={{ 
-                            fontSize: 14, 
+                        <div style={{
+                            fontSize: 14,
                             letterSpacing: 4,
                             color: '#ff0055',
                             fontWeight: 600,
@@ -817,16 +889,16 @@ function EliminationBanner({ eliminations }) {
                         }}>
                             💥 ELIMINATED 💥
                         </div>
-                        
+
                         {/* Icon */}
-                        <div style={{ 
-                            fontSize: 48, 
+                        <div style={{
+                            fontSize: 48,
                             marginBottom: 8,
                             filter: `drop-shadow(0 0 15px ${elim.color})`
                         }}>
                             {maskIcon}
                         </div>
-                        
+
                         {/* Name */}
                         <div style={{
                             fontSize: 32,
@@ -908,38 +980,51 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
 // =============================================================================
 // TRACK WALL COMPONENT - Memoized for performance (NO useFrame per wall!)
 // =============================================================================
-const TrackWall = React.memo(function TrackWall({ wall, theme }) {
+const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
     const wallColor = theme?.wallColor || '#ff00ff';
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
 
     // Use pre-computed values if available, otherwise compute (for backwards compatibility)
-    const { length, centerX, centerZ, angle, height } = useMemo(() => {
+    const { length, centerX, centerZ, angle, height, slopeAngle, yPos } = useMemo(() => {
+        // Calculate terrain height at endpoints
+        const y1 = getTerrainHeight(heightMap, wall.x1, wall.z1) * HILL_AMPLIFY;
+        const y2 = getTerrainHeight(heightMap, wall.x2, wall.z2) * HILL_AMPLIFY;
+        const avgY = (y1 + y2) / 2;
+
+        let len, ang;
+
         if (wall.length !== undefined) {
             // Pre-computed values from cache
-            return {
-                length: wall.length,
-                centerX: wall.centerX,
-                centerZ: wall.centerZ,
-                angle: wall.angle,
-                height: wall.height || 5
-            };
+            len = wall.length;
+            ang = wall.angle;
+        } else {
+            len = Math.sqrt(
+                Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+            );
+            ang = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
         }
-        // Fallback computation
-        const len = Math.sqrt(
-            Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
-        );
+
+        // Calculate slope (pitch) to match terrain
+        // Rotate around Z axis because wall is aligned along X
+        const slope = Math.atan2(y2 - y1, len);
+
+        // Use 3D length to prevent gaps when pitched
+        const len3D = Math.sqrt(len * len + (y2 - y1) * (y2 - y1));
+
         return {
-            length: len,
+            length: len3D,
             centerX: (wall.x1 + wall.x2) / 2,
             centerZ: (wall.z1 + wall.z2) / 2,
-            angle: Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1),
-            height: wall.height || 5
+            angle: ang,
+            height: wall.height || 5,
+            slopeAngle: slope,
+            yPos: avgY
         };
-    }, [wall]);
+    }, [wall, heightMap]);
 
     // Memoize materials to prevent recreation
-    const darkWallColor = useMemo(() => 
+    const darkWallColor = useMemo(() =>
         '#' + new THREE.Color(wallColor).offsetHSL(0, 0, -0.3).getHexString(),
         [wallColor]
     );
@@ -948,7 +1033,7 @@ const TrackWall = React.memo(function TrackWall({ wall, theme }) {
     // Animation now handled by TrackBoundaries with a single shared useFrame
 
     return (
-        <group position={[centerX, 0, centerZ]} rotation={[0, -angle, 0]}>
+        <group position={[centerX, yPos, centerZ]} rotation={[0, -angle, slopeAngle]}>
             {/* Main wall panel - static emissive intensity */}
             <mesh position={[0, height / 2, 0]}>
                 <boxGeometry args={[length, height, 0.08]} />
@@ -981,21 +1066,22 @@ const TrackWall = React.memo(function TrackWall({ wall, theme }) {
 // =============================================================================
 // TRACK BOUNDARIES - Container for all walls (Memoized)
 // =============================================================================
-const TrackBoundaries = React.memo(function TrackBoundaries({ boundaries, theme }) {
+const TrackBoundaries = React.memo(function TrackBoundaries({ boundaries, theme, heightMap }) {
     if (!boundaries) return null;
     return (
         <group>
             {boundaries.map((wall, i) => (
-                <TrackWall key={`${wall.x1}-${wall.z1}-${wall.x2}-${wall.z2}`} wall={wall} theme={theme} />
+                <TrackWall key={`${wall.x1}-${wall.z1}-${wall.x2}-${wall.z2}`} wall={wall} theme={theme} heightMap={heightMap} />
             ))}
         </group>
     );
 }, (prevProps, nextProps) => {
-    // Custom comparison - only re-render if boundaries array reference changes or theme changes
-    return prevProps.boundaries === nextProps.boundaries && 
-           prevProps.theme?.wallColor === nextProps.theme?.wallColor &&
-           prevProps.theme?.primaryColor === nextProps.theme?.primaryColor &&
-           prevProps.theme?.secondaryColor === nextProps.theme?.secondaryColor;
+    // Custom comparison - only re-render if boundaries array reference changes or theme changes or heightMap changes
+    return prevProps.boundaries === nextProps.boundaries &&
+        prevProps.theme?.wallColor === nextProps.theme?.wallColor &&
+        prevProps.theme?.primaryColor === nextProps.theme?.primaryColor &&
+        prevProps.theme?.secondaryColor === nextProps.theme?.secondaryColor &&
+        prevProps.heightMap === nextProps.heightMap;
 });
 
 // =============================================================================
@@ -1082,6 +1168,114 @@ function SpeedLines({ active, color = '#ffffff' }) {
 }
 
 // =============================================================================
+// OFF-SCREEN INDICATOR FOR PLAYERS
+// =============================================================================
+function OffScreenIndicator({ players, gameState }) {
+    const { camera, size } = useThree();
+    const [offScreenPoints, setOffScreenPoints] = useState([]);
+
+    useFrame(() => {
+        const points = [];
+        const isRacing = gameState === 'RACING' || gameState === 'COUNTDOWN' || gameState === 'DEMO';
+
+        if (!isRacing) return;
+
+        Object.entries(players).forEach(([id, player]) => {
+            // Only show arrows for HUMAN players who are DRIVERS
+            if (!player.position || player.isCPU || player.type !== 'driver') return;
+
+            const pos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
+
+            // Check if player is behind camera
+            const toPlayer = pos.clone().sub(camera.position);
+            const dot = toPlayer.dot(camera.getWorldDirection(new THREE.Vector3()));
+
+            // Project to screen space
+            pos.project(camera);
+
+            const isOffScreen = Math.abs(pos.x) > 0.95 || Math.abs(pos.y) > 0.95 || dot < 0;
+
+            if (isOffScreen) {
+                // Clamp to edge of screen
+                let sx = pos.x;
+                let sy = pos.y;
+
+                if (dot < 0) {
+                    // Behind camera? Flip to front but keep direction
+                    sx = -sx;
+                    sy = -sy;
+                }
+
+                const mag = Math.max(Math.abs(sx), Math.abs(sy));
+                sx /= mag;
+                sy /= mag;
+
+                // Protect UI areas (top/bottom more than sides)
+                sx *= 0.92;
+                sy *= 0.88;
+
+                // Calculate rotation to point at player
+                const angle = Math.atan2(sy, sx);
+
+                points.push({
+                    id,
+                    x: sx * size.width / 2,
+                    y: -sy * size.height / 2, // Flip Y for DOM
+                    angle,
+                    color: player.color,
+                    name: player.name
+                });
+            }
+        });
+
+        if (JSON.stringify(points) !== JSON.stringify(offScreenPoints)) {
+            setOffScreenPoints(points);
+        }
+    });
+
+    if (offScreenPoints.length === 0) return null;
+
+    return (
+        <Html fullscreen pointerEvents="none">
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                {offScreenPoints.map(p => (
+                    <div
+                        key={p.id}
+                        style={{
+                            position: 'absolute',
+                            left: `calc(50% + ${p.x}px)`,
+                            top: `calc(50% + ${p.y}px)`,
+                            width: 0,
+                            height: 0,
+                            borderTop: '10px solid transparent',
+                            borderBottom: '10px solid transparent',
+                            borderLeft: `20px solid ${p.color}`,
+                            transform: `translate(-50%, -50%) rotate(${p.angle}rad)`,
+                            filter: `drop-shadow(0 0 5px ${p.color})`,
+                        }}
+                    >
+                        <div style={{
+                            position: 'absolute',
+                            left: -40,
+                            top: 20,
+                            color: 'white',
+                            fontSize: 10,
+                            fontWeight: 'bold',
+                            textShadow: '1px 1px 2px black',
+                            width: 60,
+                            textAlign: 'center',
+                            transform: `rotate(${-p.angle}rad)` // Keep text upright
+                        }}>
+                            {p.name}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </Html>
+    );
+}
+
+// =============================================================================
 // SCREEN FLASH EFFECT (On Damage)
 // =============================================================================
 function ScreenFlash({ active, color = '#ff0000' }) {
@@ -1125,7 +1319,7 @@ function FlyingCamera({ trackData }) {
         const trackWidth = trackData?.floorSize?.width || 250;
         const trackDepth = trackData?.floorSize?.depth || 250;
         const radius = Math.max(trackWidth, trackDepth) * 0.6;
-        
+
         // Set initial position
         camera.position.set(radius * 1.2, 30, 0);
         camera.lookAt(0, 5, 0);
@@ -1146,7 +1340,7 @@ function FlyingCamera({ trackData }) {
         const y = 30 + Math.sin(t * 0.5) * 10; // Gentle up/down motion
 
         camera.position.set(x, y, z);
-        
+
         // Look at center with slight offset for dynamic feel
         camera.lookAt(
             Math.sin(t * 0.5) * 20,
@@ -1172,15 +1366,15 @@ function CameraController({ players, gameState }) {
     // Initialize camera position immediately when players are available
     useEffect(() => {
         const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
-        
+
         if (activePlayers.length > 0 && !initialized.current) {
             // Sort by race progress (laps + waypoints), highest first = leader
             const sorted = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
             const topPack = sorted.slice(0, 3);
-            
+
             const avgX = topPack.reduce((sum, p) => sum + p.position.x, 0) / topPack.length;
             const avgZ = topPack.reduce((sum, p) => sum + p.position.z, 0) / topPack.length;
-            
+
             camera.position.set(avgX, 25, avgZ + 35);
             camera.lookAt(avgX, 0, avgZ);
             initialized.current = true;
@@ -1190,7 +1384,7 @@ function CameraController({ players, gameState }) {
     useFrame((state, delta) => {
         // Follow action during racing states (including demo mode)
         const shouldFollow = gameState === 'RACING' || gameState === 'COUNTDOWN' || gameState === 'DEMO';
-        
+
         if (!shouldFollow) {
             return;
         }
@@ -1200,56 +1394,60 @@ function CameraController({ players, gameState }) {
 
         if (activePlayers.length > 0) {
             // Sort by race progress descending - leader has most laps + waypoints completed
-            const sorted = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
-            const topPack = sorted.slice(0, 3);
+            let sorted = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
 
-            // Calculate center of pack
-            const avgX = topPack.reduce((sum, p) => sum + p.position.x, 0) / topPack.length;
-            const avgZ = topPack.reduce((sum, p) => sum + p.position.z, 0) / topPack.length;
-
-            // Calculate average velocity of pack
-            let avgVelX = 0;
-            let avgVelZ = 0;
-            let count = 0;
-
-            for (const p of topPack) {
-                if (p.velocity) {
-                    avgVelX += p.velocity.x;
-                    avgVelZ += p.velocity.z;
-                    count++;
+            // CRITICAL: Filter for human players only, UNLESS in DEMO mode
+            const isDemo = gameState === 'DEMO';
+            if (!isDemo) {
+                const humans = sorted.filter(p => !p.isCPU);
+                if (humans.length > 0) {
+                    sorted = humans;
                 }
             }
 
-            if (count > 0) {
-                avgVelX /= count;
-                avgVelZ /= count;
+            // STABILIZATION VS CHAOS:
+            // Averaging the pack is chaotic because the set of "top 3" changes rapidly.
+            // Instead, let's follow the LEADER strictly, but with a wide FOV.
+            const leader = sorted[0];
+
+            if (leader && leader.position) {
+                // Determine heading vector from orientation or velocity
+                let heading = new THREE.Vector3(0, 0, -1);
+                if (leader.q) {
+                    const q = new THREE.Quaternion(leader.q[0], leader.q[1], leader.q[2], leader.q[3]);
+                    heading.applyQuaternion(q);
+                    heading.y = 0; // Keep horizontal for camera logic
+                    heading.normalize();
+                } else {
+                    heading.set(leader.velocity?.x || 0, 0, leader.velocity?.z || 0);
+                    if (heading.length() > 5) {
+                        heading.normalize();
+                    } else {
+                        heading.copy(smoothVel.current);
+                    }
+                }
+
+                // Smoothly update camera heading
+                smoothVel.current.lerp(heading, 0.08); // More responsive lerp
+
+                // Camera Offset: behind movement direction
+                const cameraDist = 35;
+                const cameraHeight = 18;
+
+                // Position camera behind leader
+                targetPos.current.set(
+                    leader.position.x - smoothVel.current.x * cameraDist,
+                    cameraHeight,
+                    leader.position.z - smoothVel.current.z * cameraDist
+                );
+
+                // Look ahead of leader
+                targetLookAt.current.set(
+                    leader.position.x + smoothVel.current.x * 20,
+                    0,
+                    leader.position.z + smoothVel.current.z * 20
+                );
             }
-
-            // Update smooth velocity
-            const currentDir = new THREE.Vector3(avgVelX, 0, avgVelZ);
-            // If moving fast enough, update direction
-            if (currentDir.length() > 5) {
-                currentDir.normalize();
-                smoothVel.current.lerp(currentDir, 0.05);
-            }
-
-            // Camera Offset: behind movement direction
-            const cameraDist = 35;
-            const cameraHeight = 25;
-
-            // Position camera behind pack
-            targetPos.current.set(
-                avgX - smoothVel.current.x * cameraDist,
-                cameraHeight,
-                avgZ - smoothVel.current.z * cameraDist
-            );
-
-            // Look ahead of pack
-            targetLookAt.current.set(
-                avgX + smoothVel.current.x * 20,
-                0,
-                avgZ + smoothVel.current.z * 20
-            );
         }
 
         camera.position.lerp(targetPos.current, 0.05);
@@ -1274,21 +1472,21 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
     const [explosions, setExplosions] = useState([]);
     const prevPlayersRef = useRef({});
     const { gl } = useThree();
-    
+
     // Performance monitoring
     const lastTime = useRef(performance.now());
     const frameCount = useRef(0);
     const fpsBuffer = useRef([]);
-    
+
     useFrame(() => {
         const now = performance.now();
         const delta = now - lastTime.current;
-        
+
         if (delta > 0) {
             const fps = 1000 / delta;
             fpsBuffer.current.push(fps);
             if (fpsBuffer.current.length > 60) fpsBuffer.current.shift();
-            
+
             frameCount.current++;
             if (frameCount.current % 30 === 0) {
                 const avgFps = Math.round(fpsBuffer.current.reduce((a, b) => a + b, 0) / fpsBuffer.current.length);
@@ -1363,32 +1561,32 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
         'roman': 'dawn',
         'prison': 'lobby'
     };
-    
-    const envPreset = trackData?.theme?.sceneryType 
+
+    const envPreset = trackData?.theme?.sceneryType
         ? envPresetMap[trackData.theme.sceneryType] || 'sunset'
         : 'sunset';
 
     return (
         <>
-            <color attach="background" args={['#0a0012']} />
-            <fog attach="fog" args={['#0a0012', 30, 250]} />
+            <color attach="background" args={['#1a0a2e']} />
+            <fog attach="fog" args={['#1a0a2e', 30, 900]} />
 
             {/* HDR Environment Mapping */}
             {graphicsSettings?.enableHDR && (
-                <Environment 
+                <Environment
                     preset={envPreset}
                     background={false}
-                    environmentIntensity={0.8}
+                    environmentIntensity={1.0}
                 />
             )}
 
             {/* Realistic Directional Lighting with Shadows */}
-            <ambientLight intensity={0.3} />
+            <ambientLight intensity={0.6} />
             {graphicsSettings?.shadowQuality > 0 ? (
                 <>
                     <directionalLight
                         position={[-30, 50, 30]}
-                        intensity={1.5}
+                        intensity={2.5}
                         color="#ffffff"
                         castShadow
                         shadow-mapSize-width={graphicsSettings.shadowQuality}
@@ -1404,7 +1602,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                     />
                     <directionalLight
                         position={[30, 40, -30]}
-                        intensity={0.8}
+                        intensity={1.2}
                         color="#ff00ff"
                         castShadow
                         shadow-mapSize-width={graphicsSettings.shadowQuality}
@@ -1418,33 +1616,33 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                 </>
             ) : (
                 <>
-                    <pointLight position={[0, 50, 0]} intensity={1} color="#ff00ff" />
-                    <pointLight position={[20, 30, 20]} intensity={0.5} color="#00ffff" />
+                    <pointLight position={[0, 50, 0]} intensity={1.5} color="#ff00ff" />
+                    <pointLight position={[20, 30, 20]} intensity={0.8} color="#00ffff" />
                 </>
             )}
 
-            <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
+            <Stars radius={400} depth={100} count={3000} factor={4} saturation={0} fade speed={1} />
 
             <SynthwaveGrid floorSize={trackData?.floorSize} graphicsSettings={graphicsSettings} theme={theme} />
-            
+
             {/* Terrain Hills - renders heightmap as 3D mesh */}
             {trackData?.heightMap && (
                 <TerrainMesh heightMap={trackData.heightMap} theme={theme} graphicsSettings={graphicsSettings} />
             )}
-            
+
             {/* Track Surface Overlay - distinguishes track from outer area */}
             <TrackSurface trackData={trackData} theme={theme} />
-            
+
             <Scenery trackData={trackData} graphicsSettings={graphicsSettings} theme={theme} />
-            
+
             {/* Mii-like Audience around the track */}
             <Audience trackData={trackData} theme={theme} />
-            
+
             {/* Ambient Particle Effects */}
             <AmbientParticles theme={theme} />
 
             {/* Track Walls */}
-            <TrackBoundaries boundaries={trackData?.boundaries} theme={theme} />
+            <TrackBoundaries boundaries={trackData?.boundaries} theme={theme} heightMap={trackData?.heightMap} />
 
             {/* Start/Finish Lines */}
             {trackData?.startLine && (
@@ -1465,7 +1663,10 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
             {gameState === 'LOBBY' && !isDemo ? (
                 <FlyingCamera trackData={trackData} />
             ) : (
-                <CameraController players={worldState.players || {}} gameState={gameState} />
+                <>
+                    <CameraController players={worldState.players || {}} gameState={gameState} />
+                    <OffScreenIndicator players={worldState.players || {}} gameState={gameState} />
+                </>
             )}
 
             {/* Cars */}
@@ -1476,6 +1677,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                         key={id}
                         position={[player.position.x, player.position.y, player.position.z]}
                         velocity={player.velocity}
+                        quaternion={player.q}
                         color={player.color}
                         hp={player.hp}
                         maskType={player.maskType}
@@ -1515,7 +1717,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
             <EffectComposer multisampling={8}>
                 {/* SSAO - Screen Space Ambient Occlusion */}
                 {graphicsSettings?.enableSSAO && (
-                    <N8AO 
+                    <N8AO
                         aoRadius={2}
                         intensity={1.5}
                         quality="performance"
@@ -1547,8 +1749,8 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
 
                 {/* Tone Mapping */}
                 {graphicsSettings?.toneMapping && graphicsSettings.toneMapping !== 'None' && (
-                    <ToneMapping 
-                        mode={ToneMappingMode[graphicsSettings.toneMapping] || ToneMappingMode.ACES_FILMIC} 
+                    <ToneMapping
+                        mode={ToneMappingMode[graphicsSettings.toneMapping] || ToneMappingMode.ACES_FILMIC}
                     />
                 )}
 
@@ -1557,9 +1759,9 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                     blendFunction={BlendFunction.NORMAL}
                     offset={[0.0005, 0.0005]}
                 />
-                
+
                 {/* Vignette for cinematic look */}
-                <Vignette 
+                <Vignette
                     offset={0.5}
                     darkness={0.5}
                     eskil={false}
@@ -1589,7 +1791,7 @@ function QROverlay() {
             <div style={{
                 textAlign: 'center',
                 marginBottom: 10,
-                fontFamily: 'monospace',
+                fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                 fontSize: 12,
                 fontWeight: 700,
                 color: '#ff00ff',
@@ -1601,7 +1803,7 @@ function QROverlay() {
             <div style={{
                 textAlign: 'center',
                 marginTop: 10,
-                fontFamily: 'monospace',
+                fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                 fontSize: 11,
                 fontWeight: 600,
                 color: '#0a0020'
@@ -1639,21 +1841,21 @@ function PlayerList({ players, gameState }) {
             position: 'fixed',
             top: 20,
             left: 20,
-            fontFamily: 'monospace',
+            fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
             zIndex: 1000,
             background: 'rgba(0, 0, 20, 0.85)',
             borderRadius: 12,
             padding: 16,
             border: isRacing ? '2px solid rgba(255,0,255,0.6)' : '2px solid rgba(0,255,255,0.4)',
-            boxShadow: isRacing 
-                ? '0 0 20px rgba(255,0,255,0.3)' 
+            boxShadow: isRacing
+                ? '0 0 20px rgba(255,0,255,0.3)'
                 : '0 0 20px rgba(0,255,255,0.2)',
             minWidth: 200
         }}>
             {/* Header */}
-            <div style={{ 
-                fontSize: 12, 
-                marginBottom: 12, 
+            <div style={{
+                fontSize: 12,
+                marginBottom: 12,
                 letterSpacing: 2,
                 fontWeight: 700,
                 display: 'flex',
@@ -1675,7 +1877,7 @@ function PlayerList({ players, gameState }) {
                     </>
                 )}
             </div>
-            
+
             {activePlayers.map(([id, player], index) => {
                 // During race, hide real identity with masked name
                 const displayName = isRacing
@@ -1694,12 +1896,12 @@ function PlayerList({ players, gameState }) {
                         gap: 10,
                         marginBottom: 8,
                         padding: '8px 10px',
-                        background: isRacing 
-                            ? 'rgba(255,0,255,0.1)' 
+                        background: isRacing
+                            ? 'rgba(255,0,255,0.1)'
                             : 'rgba(255,255,255,0.05)',
                         borderRadius: 8,
-                        border: isLowHP 
-                            ? '1px solid rgba(255,0,0,0.5)' 
+                        border: isLowHP
+                            ? '1px solid rgba(255,0,0,0.5)'
                             : '1px solid rgba(255,255,255,0.1)',
                         animation: isLowHP ? 'playerPulse 0.5s infinite' : 'none'
                     }}>
@@ -1711,7 +1913,7 @@ function PlayerList({ players, gameState }) {
                         }}>
                             {maskIcon}
                         </span>
-                        
+
                         {/* Name and HP */}
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{
@@ -1721,8 +1923,8 @@ function PlayerList({ players, gameState }) {
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
-                                textShadow: isRacing 
-                                    ? 'none' 
+                                textShadow: isRacing
+                                    ? 'none'
                                     : `0 0 8px ${player.color}`
                             }}>
                                 {displayName}
@@ -1744,7 +1946,7 @@ function PlayerList({ players, gameState }) {
                                 }} />
                             </div>
                         </div>
-                        
+
                         {/* HP Number */}
                         <span style={{
                             fontSize: 11,
@@ -1807,7 +2009,7 @@ export default function App() {
     const [trackList, setTrackList] = useState([]);
     const [cpuCount, setCpuCount] = useState(0);
     const [toasts, setToasts] = useState([]);
-    
+
     // Track preloading cache for instant track switching (eliminates lag)
     const preloadedTracksRef = useRef(new Map()); // trackId -> { boundaries, theme, geometries }
 
@@ -1824,9 +2026,9 @@ export default function App() {
             bloomIntensity: 0.8,
             toneMapping: 'ACES',
             particleLimit: 10000,
-            showPerformance: false
+            showPerformance: isDev
         };
-        
+
         try {
             const saved = localStorage.getItem('graphicsSettings');
             if (saved) {
@@ -1851,7 +2053,7 @@ export default function App() {
 
     // Performance monitoring
     const [performanceStats, setPerformanceStats] = useState({ fps: 60, drawCalls: 0, particles: 0 });
-    
+
     // Admin panel visibility
     const [adminPanelVisible, setAdminPanelVisible] = useState(true);
 
@@ -1864,8 +2066,19 @@ export default function App() {
         setToasts(prev => [...prev, { id, message, type, timestamp: Date.now() }]);
     };
 
+    // Countdown tick handler - memoized to prevent re-renders
+    const handleCountdownTick = React.useCallback((count) => {
+        if (count > 0) playSfx('countdown');
+    }, [playSfx]);
+
     // Track player eliminations for reveal banner
     useEffect(() => {
+        // Prevent elimination spam on game restart
+        if (gameState.state === 'LOBBY') {
+            prevPlayersRef.current = worldState.players || {};
+            return;
+        }
+
         const prevPlayers = prevPlayersRef.current;
         const currentPlayers = worldState.players || {};
 
@@ -1891,7 +2104,7 @@ export default function App() {
 
         // Clean up old eliminations (older than 5 seconds)
         setEliminations(elims => elims.filter(e => Date.now() - e.timestamp < 5000));
-    }, [worldState.players, playSfx]);
+    }, [worldState.players, playSfx, gameState.state]);
 
     useEffect(() => {
         socket.on('connect', () => {
@@ -1914,7 +2127,7 @@ export default function App() {
                     powerups: state.powerups,
                     traps: state.traps
                 };
-                
+
                 for (const [id, player] of Object.entries(state.players)) {
                     expanded.players[id] = {
                         position: player.p ? { x: player.p[0], y: player.p[1], z: player.p[2] } : null,
@@ -1934,7 +2147,7 @@ export default function App() {
                         isCPU: player.isCPU
                     };
                 }
-                
+
                 // Store for delta merging
                 window.__playerCache = expanded.players;
                 setWorldState(expanded);
@@ -1947,7 +2160,7 @@ export default function App() {
                         powerups: state.powerups,
                         traps: state.traps
                     };
-                    
+
                     for (const [id, delta] of Object.entries(state.players)) {
                         const cached = cache[id] || {};
                         merged.players[id] = {
@@ -1968,7 +2181,7 @@ export default function App() {
                             isCPU: delta.isCPU !== undefined ? delta.isCPU : cached.isCPU
                         };
                     }
-                    
+
                     // Update cache with merged data
                     window.__playerCache = merged.players;
                     return merged;
@@ -1978,6 +2191,12 @@ export default function App() {
 
         socket.on('gameState', (state) => {
             setGameState(state);
+
+            // Clear eliminations on reset to avoid spam
+            if (state.state === 'LOBBY' || state.state === 'COUNTDOWN') {
+                setEliminations([]);
+            }
+
             if (state.state === 'COUNTDOWN') playSfx('join'); // Ping on countdown
             if (state.state === 'WINNER') playSfx('boost'); // Victory sound
         });
@@ -2024,7 +2243,7 @@ export default function App() {
         socket.on('allTracks', (tracks) => {
             console.log(`[PRELOAD] Received ${tracks.length} tracks for preloading`);
             const cache = preloadedTracksRef.current;
-            
+
             for (const track of tracks) {
                 // Pre-compute wall geometries and cache them
                 const precomputedWalls = track.boundaries.map(wall => {
@@ -2035,7 +2254,7 @@ export default function App() {
                     const centerZ = (wall.z1 + wall.z2) / 2;
                     const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
                     const height = wall.height || 5;
-                    
+
                     return {
                         ...wall,
                         length,
@@ -2045,7 +2264,7 @@ export default function App() {
                         height
                     };
                 });
-                
+
                 cache.set(track.id, {
                     id: track.id,
                     name: track.name,
@@ -2189,8 +2408,8 @@ export default function App() {
                     }
                 }}
             >
-                <Scene 
-                    worldState={worldState} 
+                <Scene
+                    worldState={worldState}
                     trackData={trackData}
                     theme={trackTheme}
                     setEngineRpm={setEngineRpm}
@@ -2206,7 +2425,7 @@ export default function App() {
                 gameState={gameState.state}
                 gameTimer={gameState.timer}
                 winner={gameState.winner}
-                onCountdownTick={(count) => count > 0 && playSfx('countdown')}
+                onCountdownTick={handleCountdownTick}
             />
             <QROverlay />
             <PlayerList players={worldState.players} gameState={gameState.state} />
@@ -2216,7 +2435,7 @@ export default function App() {
 
             {/* Admin UI */}
             <ToastNotification toasts={toasts} setToasts={setToasts} />
-            <PerformanceOverlay stats={performanceStats} visible={graphicsSettings.showPerformance && adminPanelVisible} />
+            <PerformanceOverlay stats={performanceStats} visible={graphicsSettings.showPerformance} />
             <AdminPanel
                 socket={socket}
                 tracks={trackList}
@@ -2240,7 +2459,7 @@ export default function App() {
                     padding: '10px 20px',
                     backgroundColor: 'rgba(255, 0, 0, 0.8)',
                     color: '#fff',
-                    fontFamily: 'monospace',
+                    fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                     borderRadius: 8,
                     zIndex: 1000
                 }}>

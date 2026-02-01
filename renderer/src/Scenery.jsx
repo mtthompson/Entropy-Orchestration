@@ -10,29 +10,29 @@ import * as THREE from 'three';
 export function Scenery({ trackData, graphicsSettings, theme }) {
     const sceneryType = theme?.sceneryType || 'stadium';
     const envIntensity = graphicsSettings?.enableHDR ? 1.2 : 0.8;
-    
+
     return (
         <group>
             {/* Sun/Sky - varies by theme */}
             <ThemeSky theme={theme} sceneryType={sceneryType} />
-            
+
             {/* Theme-specific scenery */}
-            {sceneryType === 'stadium' && <StadiumScenery envIntensity={envIntensity} theme={theme} />}
+            {sceneryType === 'stadium' && <StadiumScenery envIntensity={envIntensity} theme={theme} trackData={trackData} />}
             {sceneryType === 'industrial' && <IndustrialScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'neon_forest' && <NeonForestScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'nature' && <NatureScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'volcanic' && <VolcanicScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'dragon' && <DragonScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'mystic' && <MysticScenery envIntensity={envIntensity} theme={theme} />}
-            {sceneryType === 'classic' && <ClassicScenery envIntensity={envIntensity} theme={theme} />}
+            {sceneryType === 'classic' && <ClassicScenery envIntensity={envIntensity} theme={theme} trackData={trackData} />}
             {sceneryType === 'warning' && <WarningScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'speed' && <SpeedScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'roman' && <RomanScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'prison' && <PrisonScenery envIntensity={envIntensity} theme={theme} />}
-            
+
             {/* Floating 67 Memes - keep the easter egg */}
             <Scattered67s />
-            
+
             {/* Common elements */}
             <FloatingDebris color={theme?.primaryColor || '#ff00ff'} />
         </group>
@@ -43,7 +43,7 @@ export function Scenery({ trackData, graphicsSettings, theme }) {
 function ThemeSky({ theme }) {
     const color = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
-    
+
     return (
         <group>
             {/* Giant neon sun */}
@@ -61,13 +61,13 @@ function ThemeSky({ theme }) {
 }
 
 // Stadium - spotlights, grandstands feel
-function StadiumScenery({ envIntensity, theme }) {
+function StadiumScenery({ envIntensity, theme, trackData }) {
     return (
         <group>
             <ArenaLights color1={theme?.primaryColor} color2={theme?.secondaryColor} />
             <Mountains envIntensity={envIntensity} color="#2a0a4e" />
             <LaserBeams color={theme?.secondaryColor || '#00ff00'} />
-            <NeonPalms count={30} envIntensity={envIntensity} color={theme?.primaryColor} />
+            <NeonPalms count={40} envIntensity={envIntensity} color={theme?.primaryColor} trackData={trackData} />
         </group>
     );
 }
@@ -87,7 +87,7 @@ function IndustrialScenery({ envIntensity, theme }) {
         }
         return arr;
     }, []);
-    
+
     return (
         <group>
             {beams.map((beam, i) => (
@@ -140,7 +140,7 @@ function NeonForestScenery({ envIntensity, theme }) {
         }
         return arr;
     }, [theme]);
-    
+
     return (
         <group>
             {trees.map((tree, i) => (
@@ -193,7 +193,7 @@ function VolcanicScenery({ envIntensity, theme }) {
         }
         return arr;
     }, []);
-    
+
     return (
         <group>
             {rocks.map((rock, i) => (
@@ -223,14 +223,14 @@ function DragonScenery({ envIntensity, theme }) {
         }
         return arr;
     }, []);
-    
+
     // Single useFrame for all lanterns via parent group bobbing
     useFrame((state) => {
         if (groupRef.current) {
             groupRef.current.position.y = Math.sin(state.clock.elapsedTime) * 0.5;
         }
     });
-    
+
     return (
         <group ref={groupRef}>
             {lanterns.map((l, i) => (
@@ -272,7 +272,7 @@ function MysticScenery({ envIntensity, theme }) {
         }
         return arr;
     }, [theme]);
-    
+
     // Single useFrame rotates entire group instead of 35 individual hooks
     useFrame((state) => {
         if (groupRef.current) {
@@ -280,7 +280,7 @@ function MysticScenery({ envIntensity, theme }) {
             groupRef.current.position.y = Math.sin(state.clock.elapsedTime) * 2;
         }
     });
-    
+
     return (
         <group ref={groupRef}>
             {crystals.map((c, i) => (
@@ -301,12 +301,12 @@ function FloatingCrystal({ position, scale, color }) {
 }
 
 // Classic racing - checkered flags, banners
-function ClassicScenery({ envIntensity, theme }) {
+function ClassicScenery({ envIntensity, theme, trackData }) {
     return (
         <group>
             <ArenaLights color1="#ffffff" color2="#ff0000" />
             <Mountains envIntensity={envIntensity} color="#333" />
-            <NeonPalms count={20} envIntensity={envIntensity} color="#ffffff" />
+            <NeonPalms count={30} envIntensity={envIntensity} color="#ffffff" trackData={trackData} />
         </group>
     );
 }
@@ -321,7 +321,7 @@ function WarningScenery({ envIntensity, theme }) {
         }
         return arr;
     }, []);
-    
+
     return (
         <group>
             {barriers.map((b, i) => (
@@ -363,17 +363,21 @@ function RomanScenery({ envIntensity, theme }) {
         }
         return arr;
     }, []);
-    
+
     return (
         <group>
             {pillars.map((p, i) => (
-                <RomanPillar key={i} position={[p.x, 0, p.z]} />
+                <RomanPillar
+                    key={i}
+                    position={[p.x, 0, p.z]}
+                    color={i % 3 === 0 ? theme?.primaryColor : (i % 3 === 1 ? theme?.secondaryColor : "#e8d4b8")}
+                />
             ))}
         </group>
     );
 }
 
-function RomanPillar({ position }) {
+function RomanPillar({ position, color = "#e8d4b8" }) {
     return (
         <group position={position}>
             <mesh position={[0, 1, 0]}>
@@ -382,13 +386,13 @@ function RomanPillar({ position }) {
             </mesh>
             <mesh position={[0, 15, 0]}>
                 <cylinderGeometry args={[1.5, 2, 26, 8]} />
-                <meshStandardMaterial color="#e8d4b8" />
+                <meshStandardMaterial color={color} />
             </mesh>
             <mesh position={[0, 29, 0]}>
                 <cylinderGeometry args={[3, 1.5, 2, 8]} />
                 <meshStandardMaterial color="#d4a574" />
             </mesh>
-            <pointLight position={[0, 30, 0]} color="#ff6600" intensity={1} distance={30} />
+            <pointLight position={[0, 30, 0]} color={color} intensity={1} distance={30} />
         </group>
     );
 }
@@ -475,54 +479,158 @@ function LaserBeams({ color = '#00ff00', count = 4 }) {
 }
 
 function Mountains({ envIntensity, color = '#2a0a4e' }) {
+    return (
+        <group>
+            {/* Layer 1: Closest, most detailed */}
+            <MountainLayer
+                radius={350}
+                height={90}
+                color={color}
+                envIntensity={envIntensity}
+                seed={1}
+                opacity={1.0}
+                rotationOffset={0}
+            />
+            {/* Layer 2: Transition layer */}
+            <MountainLayer
+                radius={450}
+                height={115}
+                color={new THREE.Color(color).multiplyScalar(0.85).getStyle()}
+                envIntensity={envIntensity}
+                seed={4}
+                opacity={0.9}
+                rotationOffset={1.5}
+            />
+            {/* Layer 3: Mid-distance, darker */}
+            <MountainLayer
+                radius={600}
+                height={160}
+                color={new THREE.Color(color).multiplyScalar(0.7).getStyle()}
+                envIntensity={envIntensity}
+                seed={2}
+                opacity={0.8}
+                rotationOffset={3.0}
+            />
+            {/* Layer 4: Farthest, massive silhouette */}
+            <MountainLayer
+                radius={850}
+                height={250}
+                color={new THREE.Color(color).multiplyScalar(0.4).getStyle()}
+                envIntensity={envIntensity}
+                seed={3}
+                opacity={0.6}
+                rotationOffset={4.5}
+            />
+        </group>
+    );
+}
+
+function MountainLayer({ radius, height, color, envIntensity, seed, opacity, rotationOffset = 0 }) {
     const geometry = useMemo(() => {
-        const geo = new THREE.PlaneGeometry(500, 100, 50, 12);
+        const geo = new THREE.CylinderGeometry(radius, radius, height, 128, 16, true);
         const positions = geo.attributes.position;
+        const vertex = new THREE.Vector3();
+
         for (let i = 0; i < positions.count; i++) {
-            positions.setZ(i, Math.random() * 25);
+            vertex.fromBufferAttribute(positions, i);
+            const angle = Math.atan2(vertex.z, vertex.x);
+            const yNorm = (vertex.y + height / 2) / height;
+
+            if (yNorm > 0.1) {
+                // Vary noise by seed
+                const noise1 = Math.sin(angle * (6 + seed)) + Math.cos(angle * (13 + seed)) * 0.5;
+                const noise2 = Math.sin(angle * (25 + seed * 5)) * 0.3 + Math.cos(angle * (50 + seed)) * 0.1;
+
+                const displacement = (noise1 * 40) + (noise2 * 10);
+                const heightMod = yNorm * ((noise1 * (height * 0.3)) + (noise2 * 10));
+
+                const scale = 1 + (displacement / radius) * yNorm;
+                vertex.x *= scale;
+                vertex.z *= scale;
+                vertex.y += heightMod;
+            }
+            positions.setXYZ(i, vertex.x, vertex.y, vertex.z);
         }
+
         geo.computeVertexNormals();
         return geo;
-    }, []);
+    }, [radius, height, seed]);
 
     return (
-        <mesh position={[0, 0, -180]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, -20, 0]} rotation={[0, rotationOffset, 0]}>
             <primitive object={geometry} />
-            <meshStandardMaterial color={color} wireframe emissive={color} emissiveIntensity={0.2} envMapIntensity={envIntensity} />
+            <meshStandardMaterial
+                color={color}
+                flatShading={true}
+                emissive={color}
+                emissiveIntensity={0.2 + opacity * 0.3} // Farthest layers glow less? Or more? Adjusted to blend.
+                envMapIntensity={envIntensity}
+                side={THREE.BackSide}
+                transparent={opacity < 1}
+                opacity={opacity}
+            />
         </mesh>
     );
 }
 
-function NeonPalms({ count = 50, envIntensity, color = '#00ffff' }) {
+function NeonPalms({ count = 50, envIntensity, color = '#00ffff', trackData }) {
     const meshRef = useRef();
     const dummy = useMemo(() => new THREE.Object3D(), []);
 
     const particles = useMemo(() => {
         const temp = [];
+        const trackWidth = trackData?.width || 50;
+        const isArena = trackData?.type === 'arena';
+        const arenaRadius = trackData?.radius || 100;
+
         for (let i = 0; i < count; i++) {
             const angle = (i / count) * Math.PI * 2;
-            const radius = 110 + Math.random() * 70;
-            temp.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, scale: 1.5 + Math.random() * 1.5 });
+            let radius;
+
+            if (isArena) {
+                radius = arenaRadius * 1.5 + Math.random() * 50;
+            } else {
+                radius = 120 + Math.random() * 80;
+            }
+
+            temp.push({
+                x: Math.cos(angle) * radius,
+                z: Math.sin(angle) * radius,
+                scale: 1.5 + Math.random() * 1.5,
+                colorMod: Math.random() // Used for color variation
+            });
         }
         return temp;
-    }, [count]);
+    }, [count, trackData]);
 
     useEffect(() => {
         if (meshRef.current) {
+            const baseColor = new THREE.Color(color);
+            const altColor = new THREE.Color('#ffffff');
+
             particles.forEach((p, i) => {
                 dummy.position.set(p.x, 0, p.z);
                 dummy.scale.set(p.scale, p.scale, p.scale);
+                dummy.rotation.y = Math.random() * Math.PI;
                 dummy.updateMatrix();
                 meshRef.current.setMatrixAt(i, dummy.matrix);
+
+                // Varied colors
+                const finalColor = baseColor.clone();
+                if (p.colorMod > 0.7) {
+                    finalColor.lerp(altColor, (p.colorMod - 0.7) * 2);
+                }
+                meshRef.current.setColorAt(i, finalColor);
             });
             meshRef.current.instanceMatrix.needsUpdate = true;
+            if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
         }
-    }, [particles, dummy]);
+    }, [particles, dummy, color]);
 
     return (
         <instancedMesh ref={meshRef} args={[null, null, count]}>
             <cylinderGeometry args={[1, 2, 30, 6]} />
-            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} envMapIntensity={envIntensity} metalness={0.8} roughness={0.3} />
+            <meshStandardMaterial emissive={color} emissiveIntensity={0.6} envMapIntensity={envIntensity} metalness={0.8} roughness={0.3} />
         </instancedMesh>
     );
 }
@@ -562,7 +670,7 @@ function FloatingDebris({ color = '#ff00ff' }) {
 // Static 67 - no individual useFrame
 function Floating67({ position, scale = 1 }) {
     const color = '#67ff67';
-    
+
     return (
         <group position={position} scale={scale}>
             {/* Number "6" */}
@@ -576,7 +684,7 @@ function Floating67({ position, scale = 1 }) {
             {/* Number "7" */}
             <group position={[2.5, 0, 0]}>
                 <mesh position={[0, 2, 0]}><boxGeometry args={[2, 0.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
-                <mesh position={[0.5, 0, 0]} rotation={[0, 0, 0.2]}><boxGeometry args={[0.5, 4.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
+                <mesh position={[0.35, 0, 0]} rotation={[0, 0, -0.3]}><boxGeometry args={[0.5, 4.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
             </group>
             <pointLight color={color} intensity={2} distance={15} />
         </group>
@@ -586,7 +694,7 @@ function Floating67({ position, scale = 1 }) {
 // Parent handles all animation with single useFrame
 function Scattered67s() {
     const groupRef = useRef();
-    
+
     // Single useFrame animates entire group (rotation + bob)
     useFrame((state) => {
         if (groupRef.current) {
@@ -594,7 +702,7 @@ function Scattered67s() {
             groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.5) * 2;
         }
     });
-    
+
     const positions = useMemo(() => {
         const temp = [];
         for (let i = 0; i < 10; i++) {
@@ -604,7 +712,7 @@ function Scattered67s() {
         }
         return temp;
     }, []);
-    
+
     return (
         <group ref={groupRef}>
             {positions.map((p, i) => (

@@ -56,7 +56,7 @@ export function ToastNotification({ toasts, setToasts }) {
                                 borderRadius: '8px',
                                 padding: '12px 24px',
                                 color: color,
-                                fontFamily: 'monospace',
+                                fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                                 fontSize: '14px',
                                 fontWeight: 'bold',
                                 textTransform: 'uppercase',

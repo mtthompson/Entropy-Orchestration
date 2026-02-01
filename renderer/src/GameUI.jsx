@@ -47,7 +47,7 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
 
     if (gameState === 'LOBBY') {
         const activeMask = MASK_DISPLAY[activeMaskIndex];
-        
+
         return (
             <div style={styles.overlay}>
                 <div style={styles.lobbyBox}>
@@ -56,7 +56,7 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                         <span style={styles.titleGlow}>DEMOLITION</span>
                         <span style={styles.titleAccent}> ARENA</span>
                     </h1>
-                    
+
                     {/* Hidden Identity Section */}
                     <div style={styles.identitySection}>
                         <div style={styles.maskShowcase}>
@@ -67,8 +67,8 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                                         ...styles.maskIcon,
                                         transform: i === activeMaskIndex ? 'scale(1.4)' : 'scale(0.9)',
                                         opacity: i === activeMaskIndex ? 1 : 0.3,
-                                        filter: i === activeMaskIndex 
-                                            ? 'drop-shadow(0 0 15px #ff00ff) drop-shadow(0 0 30px #00ffff)' 
+                                        filter: i === activeMaskIndex
+                                            ? 'drop-shadow(0 0 15px #ff00ff) drop-shadow(0 0 30px #00ffff)'
                                             : 'none'
                                     }}
                                 >
@@ -108,7 +108,7 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                         </div>
                     </div>
                 </div>
-                
+
                 {/* CSS Animations */}
                 <style>{`
                     @keyframes maskPulse {
@@ -160,14 +160,14 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                     boxShadow: '0 0 80px rgba(255,215,0,0.6), inset 0 0 60px rgba(255,215,0,0.1)'
                 }}>
                     {/* Trophy */}
-                    <div style={{ 
-                        fontSize: '5rem', 
+                    <div style={{
+                        fontSize: '5rem',
                         marginBottom: 10,
                         animation: 'trophyBounce 0.6s ease-in-out infinite'
                     }}>👑</div>
-                    
+
                     {/* Victory Text */}
-                    <h1 style={{ 
+                    <h1 style={{
                         fontSize: '3.5rem',
                         color: '#ffd700',
                         fontFamily: '"Segoe UI", Arial, sans-serif',
@@ -176,26 +176,26 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                         marginBottom: '20px',
                         textShadow: '0 0 20px #ffd700, 0 0 40px #ffd700'
                     }}>VICTORY!</h1>
-                    
+
                     {/* Winner Name - Big Reveal */}
                     <div style={{
                         fontSize: '4.5rem',
                         color: '#ffffff',
                         textShadow: '0 0 30px #00ff00, 0 0 60px #00ffff',
-                        fontFamily: 'monospace',
+                        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                         fontWeight: 'bold',
                         letterSpacing: 4,
                         animation: 'winnerReveal 0.8s ease-out'
                     }}>
                         {winner || 'DRAW'}
                     </div>
-                    
+
                     {/* Subtitle */}
-                    <div style={{ 
-                        marginTop: 25, 
-                        fontSize: '1.2rem', 
+                    <div style={{
+                        marginTop: 25,
+                        fontSize: '1.2rem',
                         color: '#aaa',
-                        fontFamily: 'monospace',
+                        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
                         letterSpacing: 2
                     }}>
                         LAST ONE STANDING
@@ -245,7 +245,7 @@ const styles = {
         pointerEvents: 'none',
         zIndex: 2000
     },
-    
+
     // New Lobby Styles
     lobbyBox: {
         backgroundColor: 'rgba(5, 0, 20, 0.95)',
@@ -272,7 +272,7 @@ const styles = {
         color: '#ff00ff',
         textShadow: '0 0 10px #ff00ff, 0 0 30px #ff00ff'
     },
-    
+
     // Identity Section
     identitySection: {
         margin: '30px 0',
@@ -300,16 +300,16 @@ const styles = {
         fontSize: '1.4rem',
         fontWeight: 700,
         color: '#00ffff',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         letterSpacing: '3px',
         textShadow: '0 0 10px #00ffff'
     },
     maskDesc: {
         fontSize: '1rem',
         color: '#aaa',
-        fontFamily: 'monospace'
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif'
     },
-    
+
     // Mystery Banner
     mysteryBanner: {
         display: 'flex',
@@ -336,18 +336,18 @@ const styles = {
         fontSize: '1.5rem',
         fontWeight: 700,
         color: '#ffd700',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         letterSpacing: '2px',
         textShadow: '0 0 15px #ffd700'
     },
     mysterySubtext: {
         fontSize: '1.1rem',
         color: '#ffffff',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         marginTop: '6px',
         opacity: 0.9
     },
-    
+
     // Join Section
     joinSection: {
         display: 'flex',
@@ -360,7 +360,7 @@ const styles = {
         fontSize: '2rem',
         fontWeight: 700,
         color: '#00ff00',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         textShadow: '0 0 15px #00ff00, 0 0 30px #00ff00',
         letterSpacing: '2px'
     },
@@ -368,7 +368,7 @@ const styles = {
         fontSize: '2.5rem',
         animation: 'floatArrow 1s ease-in-out infinite'
     },
-    
+
     // Controls Grid
     controlsGrid: {
         display: 'grid',
@@ -392,10 +392,10 @@ const styles = {
         fontSize: '1rem',
         fontWeight: 600,
         color: '#ffffff',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         letterSpacing: '1px'
     },
-    
+
     // Legacy styles (kept for other states)
     box: {
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -408,24 +408,24 @@ const styles = {
     title: {
         fontSize: '3rem',
         color: '#00ffff',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         marginBottom: '20px',
         textShadow: '0 0 10px #00ffff'
     },
     subtitle: {
         fontSize: '1.5rem',
         color: '#ff00ff',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         marginBottom: '30px'
     },
     instruction: {
         fontSize: '1.5rem',
         color: '#ffffff',
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         margin: '10px 0'
     },
     bigText: {
-        fontFamily: 'monospace',
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         fontWeight: 'bold',
         textShadow: '0 0 30px currentColor'
     }

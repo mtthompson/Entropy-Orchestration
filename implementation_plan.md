@@ -19,6 +19,17 @@ Build upon the solid gameplay foundation by implementing the "Mask" theme, N64-s
     *   **Content Tools:**
     *   `TrackBuilder.js`: Utility to generate wall bodies from a simple path array.
     *   Define 12 Maps using this tool.
+    ## Optimization & Visual Fixes
+#### [MODIFY] [AudiencePlacement.js](file:///c:/Users/Matthew/Documents/git_repos/Entropy-Orchestration/renderer/src/AudiencePlacement.js)
+- **Rotation**: Flip the calculated angle by 180 degrees (remove `+ Math.PI` or add another `PI`).
+- **Density**: Increase spacing between groups or reduce density.
+
+#### [MODIFY] [Audience.jsx](file:///c:/Users/Matthew/Documents/git_repos/Entropy-Orchestration/renderer/src/Audience.jsx)
+- **Remove Bleaches**: Delete the `Grandstand` component's box geometries.
+- **Performance**: Switch from individual `MiiCharacter` components to a single `InstancedCrowd` system.
+    - Flatten the list of positions.
+    - Instead of 4-5 "Grandstands" with 30 people each (150 components), we might have 50 groups of 10 people (500 instances) but rendered as ONE mesh.
+    - Generate a cloud of points around each "center" returned by `AudiencePlacement.js`.
     *   **Game Manager:**
         *   New Class `GameManager`.
         *   Manage `gameState` (LOBBY, RACING, ENDED).

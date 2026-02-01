@@ -3,22 +3,41 @@ const { createTrackFromPath, createArena, validateSpawnPoints } = require('./Gam
 // Helper to build track with floor polygons from createTrackFromPath result
 function buildRaceTrack(path, width, trackDef) {
     const result = createTrackFromPath(path, width, true);
+
+    // Validate spawn points against the generated (smoothed) boundaries
+    const safeSpawns = trackDef.spawnPoints
+        ? validateSpawnPoints(trackDef.spawnPoints, result.boundaries, width * 0.2)
+        : [];
+
     return {
         ...trackDef,
         path,
+        width, // Store width for physics/terrain generation
         boundaries: result.boundaries,
         outerPolygon: result.outerPolygon,
-        innerPolygon: result.innerPolygon
+        innerPolygon: result.innerPolygon,
+        spawnPoints: safeSpawns
     };
 }
 
 // Helper to build arena with floor polygon from createArena result
 function buildArena(radius, segments, trackDef) {
     const result = createArena(radius, segments);
+
+    // Validate spawn points against arena boundaries
+    const safeSpawns = trackDef.spawnPoints
+        ? validateSpawnPoints(trackDef.spawnPoints, result.boundaries, 10)
+        : [];
+
     return {
         ...trackDef,
+        radius, // Store radius for powerup spawning
+        // Arenas don't have a single "width", but treating radius as comparable for some logic?
+        // Actually heightMap logic uses trackWidth for PATHS.
+        // Arenas usually use flat presets.
         boundaries: result.boundaries,
-        floorPolygon: result.floorPolygon
+        floorPolygon: result.floorPolygon,
+        spawnPoints: safeSpawns
     };
 }
 
@@ -30,14 +49,22 @@ function buildArena(radius, segments, trackDef) {
 function generateAlignedSpawns(pathPoints, offset, count) {
     const spawns = [];
     const p1 = pathPoints[0];
-    const p2 = pathPoints[1];
-    const dx = p2.x - p1.x;
-    const dz = p2.z - p1.z;
+
+    // For alignment, use the direction FROM the last point TO the first point
+    // This ensures players facing "forward" are correctly aligned with the track direction at the start line
+    const pPrev = pathPoints[pathPoints.length - 1];
+    const dx = p1.x - pPrev.x;
+    const dz = p1.z - pPrev.z;
     const len = Math.sqrt(dx * dx + dz * dz);
+
+    // Forward direction (unit vector)
     const nx = dx / len;
     const nz = dz / len;
+
+    // Perpendicular direction (for side-by-side rows)
     const px = -nz;
     const pz = nx;
+
     const rotation = Math.atan2(dx, dz);
 
     const colSpacing = 10;
@@ -46,6 +73,7 @@ function generateAlignedSpawns(pathPoints, offset, count) {
     for (let i = 0; i < count; i++) {
         const row = Math.floor(i / 4);
         const col = i % 4;
+        // Push BACK from p1 along the incoming direction
         const baseX = p1.x - nx * (offset + row * rowSpacing);
         const baseZ = p1.z - nz * (offset + row * rowSpacing);
         spawns.push({
@@ -74,9 +102,9 @@ function generateCircleSpawns(radius, count) {
 // Generate start line perpendicular to track at first path point
 function generateStartLine(pathPoints, trackWidth = 55) {
     const p1 = pathPoints[0];
-    const p2 = pathPoints[1];
-    const dx = p2.x - p1.x;
-    const dz = p2.z - p1.z;
+    const pPrev = pathPoints[pathPoints.length - 1]; // Use incoming segment
+    const dx = p1.x - pPrev.x;
+    const dz = p1.z - pPrev.z;
     const len = Math.sqrt(dx * dx + dz * dz);
     // Perpendicular direction (normal to track direction)
     const px = -dz / len;
@@ -89,6 +117,51 @@ function generateStartLine(pathPoints, trackWidth = 55) {
         x2: p1.x + px * halfWidth,
         z2: p1.z + pz * halfWidth
     };
+}
+
+/**
+ * Returns a random point guaranteed to be on the track or arena surface.
+ */
+function getRandomPointOnTrack(track) {
+    if (!track) return { x: 0, z: 0 };
+
+    if (track.type === 'arena') {
+        // Uniform distribution in circle
+        const angle = Math.random() * Math.PI * 2;
+        const r = (track.radius || 100) * Math.sqrt(Math.random()) * 0.85; // 85% of radius to stay away from walls
+        return {
+            x: Math.cos(angle) * r,
+            z: Math.sin(angle) * r
+        };
+    } else if (track.path && track.path.length > 1) {
+        // Pick a random segment
+        const idx = Math.floor(Math.random() * track.path.length);
+        const p1 = track.path[idx];
+        const p2 = track.path[(idx + 1) % track.path.length];
+
+        // Linear interpolation between p1 and p2
+        const t = Math.random();
+        const segX = p1.x + t * (p2.x - p1.x);
+        const segZ = p1.z + t * (p2.z - p1.z);
+
+        // Calculate segment normal
+        const dx = p2.x - p1.x;
+        const dz = p2.z - p1.z;
+        const len = Math.sqrt(dx * dx + dz * dz);
+        const nx = -dz / len;
+        const nz = dx / len;
+
+        // Offset laterally (within track width)
+        const trackWidth = track.width || 50;
+        const lateralOffset = (Math.random() - 0.5) * trackWidth * 0.7; // 70% of width for safety
+
+        return {
+            x: segX + nx * lateralOffset,
+            z: segZ + nz * lateralOffset
+        };
+    }
+
+    return { x: 0, z: 0 };
 }
 
 // =============================================================================
@@ -299,13 +372,10 @@ TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 70, {
 // TRACK 4: Cloverleaf
 // =============================================================================
 const CLOVER_PATH = [
-    { x: 0, z: 200 }, { x: -100, z: 150 }, { x: -150, z: 50 },
-    { x: -100, z: -50 }, { x: 0, z: -25 },
-    { x: 100, z: -50 }, { x: 150, z: -150 },
-    { x: 100, z: -200 }, { x: 0, z: -175 },
-    { x: -100, z: -200 }, { x: -150, z: -150 },
-    { x: -100, z: -75 }, { x: 0, z: -25 },
-    { x: 100, z: 50 }, { x: 150, z: 150 }, { x: 100, z: 200 }
+    { x: 0, z: 180 }, { x: -60, z: 150 }, { x: -120, z: 120 }, { x: -150, z: 60 }, { x: -120, z: 0 }, { x: -60, z: -30 },
+    { x: -120, z: -60 }, { x: -150, z: -120 }, { x: -120, z: -180 }, { x: -60, z: -210 }, { x: 0, z: -180 }, { x: 60, z: -210 },
+    { x: 120, z: -180 }, { x: 150, z: -120 }, { x: 120, z: -60 }, { x: 60, z: -30 }, { x: 120, z: 0 }, { x: 150, z: 60 },
+    { x: 120, z: 120 }, { x: 60, z: 150 }
 ];
 TRACKS.push(buildRaceTrack(CLOVER_PATH, 75, {
     id: 'track_04',
@@ -491,5 +561,6 @@ module.exports = {
     getThemeByTrackId,
     getTrackPath,
     getAllThemes,
+    getRandomPointOnTrack,
     TRACK_THEMES
 };

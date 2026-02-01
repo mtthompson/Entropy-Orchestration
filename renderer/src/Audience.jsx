@@ -1,4 +1,5 @@
 import React, { useRef, useMemo } from 'react';
+import { generateAudiencePositions } from './AudiencePlacement';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -7,210 +8,206 @@ import * as THREE from 'three';
 // Instanced low-poly humanoid spectators in grandstands around the track
 // =============================================================================
 
-// Single Mii-like character (used for small counts)
-function MiiCharacter({ position, color, scale = 1, phase = 0 }) {
-    const groupRef = useRef();
-    
-    useFrame((state) => {
-        if (groupRef.current) {
-            // Gentle swaying animation
-            groupRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 2 + phase) * 0.1;
-            // Occasional jumping
-            const jump = Math.sin(state.clock.elapsedTime * 4 + phase);
-            groupRef.current.position.y = position[1] + (jump > 0.9 ? (jump - 0.9) * 2 : 0);
-        }
-    });
-    
-    return (
-        <group ref={groupRef} position={position} scale={scale}>
-            {/* Head - sphere */}
-            <mesh position={[0, 1.4, 0]}>
-                <sphereGeometry args={[0.3, 8, 6]} />
-                <meshStandardMaterial color="#ffd5b5" />
-            </mesh>
-            {/* Body */}
-            <mesh position={[0, 0.8, 0]}>
-                <capsuleGeometry args={[0.25, 0.5, 4, 8]} />
-                <meshStandardMaterial color={color} />
-            </mesh>
-            {/* Arms */}
-            <mesh position={[0.35, 0.9, 0]} rotation={[0, 0, -0.3]}>
-                <capsuleGeometry args={[0.08, 0.3, 4, 6]} />
-                <meshStandardMaterial color="#ffd5b5" />
-            </mesh>
-            <mesh position={[-0.35, 0.9, 0]} rotation={[0, 0, 0.3]}>
-                <capsuleGeometry args={[0.08, 0.3, 4, 6]} />
-                <meshStandardMaterial color="#ffd5b5" />
-            </mesh>
-            {/* Legs */}
-            <mesh position={[0.12, 0.25, 0]}>
-                <capsuleGeometry args={[0.1, 0.3, 4, 6]} />
-                <meshStandardMaterial color="#333" />
-            </mesh>
-            <mesh position={[-0.12, 0.25, 0]}>
-                <capsuleGeometry args={[0.1, 0.3, 4, 6]} />
-                <meshStandardMaterial color="#333" />
-            </mesh>
-        </group>
-    );
-}
-
 // Instanced crowd for performance (many spectators)
-function InstancedCrowd({ positions, colors, count }) {
-    const meshRef = useRef();
+function InstancedCrowd({ data, count }) {
+    const bodyMeshRef = useRef();
+    const headMeshRef = useRef();
     const dummy = useMemo(() => new THREE.Object3D(), []);
-    const colorArray = useMemo(() => new Float32Array(count * 3), [count]);
-    
-    // Set up instances
-    useMemo(() => {
-        positions.forEach((pos, i) => {
-            dummy.position.set(pos.x, pos.y, pos.z);
-            dummy.scale.setScalar(0.8 + Math.random() * 0.2);
-            dummy.updateMatrix();
-            
-            // Set color
-            const color = new THREE.Color(colors[i % colors.length]);
-            colorArray[i * 3] = color.r;
-            colorArray[i * 3 + 1] = color.g;
-            colorArray[i * 3 + 2] = color.b;
-        });
-    }, [positions, colors, dummy, colorArray]);
-    
+
+    // Generate Clothing Colors (Bright/Varied)
+    const bodyColors = useMemo(() => {
+        const palette = ['#ff0066', '#00ffff', '#ffff00', '#00ff00', '#ff6600', '#6600ff', '#ffffff', '#ff00ff', '#3366ff', '#ff3333'];
+        const arr = new Float32Array(count * 3);
+        const tempColor = new THREE.Color();
+        for (let i = 0; i < count; i++) {
+            tempColor.set(palette[Math.floor(Math.random() * palette.length)]);
+            // Vary brightness slightly
+            tempColor.multiplyScalar(0.8 + Math.random() * 0.4);
+            arr[i * 3] = tempColor.r;
+            arr[i * 3 + 1] = tempColor.g;
+            arr[i * 3 + 2] = tempColor.b;
+        }
+        return arr;
+    }, [count]);
+
+    // Generate Head/Skin Colors
+    const headColors = useMemo(() => {
+        // Diverse skin tones
+        const skinTones = ['#8d5524', '#c68642', '#e0ac69', '#f1c27d', '#ffdbac', '#5c3a1e'];
+        // Mii-like fantasy colors too? Maybe keep it somewhat grounded or full alien. 
+        // Let's mix realistic skin tones with some random fun ones since it's a sci-fi game
+        const funColors = ['#A1C6EA', '#C8A2C8', '#D6F8D6']; // Light Alien skins
+        const palette = [...skinTones, ...skinTones, ...funColors];
+
+        const arr = new Float32Array(count * 3);
+        const tempColor = new THREE.Color();
+        for (let i = 0; i < count; i++) {
+            tempColor.set(palette[Math.floor(Math.random() * palette.length)]);
+            arr[i * 3] = tempColor.r;
+            arr[i * 3 + 1] = tempColor.g;
+            arr[i * 3 + 2] = tempColor.b;
+        }
+        return arr;
+    }, [count]);
+
     useFrame((state) => {
-        if (!meshRef.current) return;
-        
+        // We update both meshes with the same transforms (relative to their local offset)
+        if (!bodyMeshRef.current || !headMeshRef.current) return;
+
         const t = state.clock.elapsedTime;
-        positions.forEach((pos, i) => {
-            // Animate each instance
+        data.forEach((item, i) => {
             const phase = i * 0.5;
             const jump = Math.sin(t * 3 + phase);
             const sway = Math.sin(t * 2 + phase) * 0.1;
-            
-            dummy.position.set(pos.x, pos.y + (jump > 0.85 ? (jump - 0.85) * 3 : 0), pos.z);
-            dummy.rotation.z = sway;
-            dummy.scale.setScalar(0.8);
-            dummy.updateMatrix();
-            meshRef.current.setMatrixAt(i, dummy.matrix);
-        });
-        meshRef.current.instanceMatrix.needsUpdate = true;
-    });
-    
-    return (
-        <instancedMesh ref={meshRef} args={[null, null, count]}>
-            <capsuleGeometry args={[0.3, 1.2, 4, 8]} />
-            <meshStandardMaterial vertexColors={false} color="#ff6699" />
-        </instancedMesh>
-    );
-}
 
-// Grandstand structure with seating
-function Grandstand({ position, rotation, rows = 3, seatsPerRow = 10, theme }) {
-    const colors = useMemo(() => {
-        const palette = ['#ff0066', '#00ffff', '#ffff00', '#00ff00', '#ff6600', '#6600ff', '#ffffff', '#ff00ff'];
-        return Array(rows * seatsPerRow).fill(0).map(() => 
-            palette[Math.floor(Math.random() * palette.length)]
-        );
-    }, [rows, seatsPerRow]);
-    
-    const seats = useMemo(() => {
-        const arr = [];
-        for (let row = 0; row < rows; row++) {
-            for (let seat = 0; seat < seatsPerRow; seat++) {
-                arr.push({
-                    x: (seat - seatsPerRow / 2) * 1.2,
-                    y: row * 1.8 + 0.5,
-                    z: row * 1.0,
-                    color: colors[row * seatsPerRow + seat],
-                    phase: Math.random() * Math.PI * 2
-                });
-            }
-        }
-        return arr;
-    }, [rows, seatsPerRow, colors]);
-    
-    const structureColor = theme?.wallColor || '#333';
-    
+            // Base Position
+            const x = item.position[0];
+            const y = item.position[1] + (jump > 0.85 ? (jump - 0.85) * 3 : 0);
+            const z = item.position[2];
+
+            // BODY TRANSFORM
+            dummy.position.set(x, y, z);
+            dummy.rotation.set(0, item.rotationY, sway);
+            dummy.scale.setScalar(2.5); // Body scale
+            dummy.updateMatrix();
+            bodyMeshRef.current.setMatrixAt(i, dummy.matrix);
+
+            // HEAD TRANSFORM
+            // Head sits on top of body. 
+            // Body height is ~2.5 units scaled. 
+            // We need to offset head relative to the pivot.
+            // Actually, simpler to just parent? No, instanced mesh doesn't parent easily.
+            // We calculate head world pos.
+            // Rotate the offset vector [0, height, 0] by the sway/rotation.
+
+            // Simplified: Head follows body position but with local Y offset
+            // Keep rotation sync so they sway together
+            // Offset for head: roughly 0.8 (local) * 2.5 (scale) = ~2.0 units up?
+            // Let's just visually tweak offset.
+            // If origin is center of capsule, head is at y + half_height + radius?
+
+            // Re-use dummy for head, just shift Y locally?
+            // Warning: scaling applies to translation if we aren't careful? 
+            // setScalar scales the whole matrix.
+
+            // Let's set head position slightly higher based on 'up' vector rotated
+            // Ideally we construct the matrix: Translation * Rotation * Scale
+            // Head Position = BodyPosition + (UpVector * Offset * Rotation)
+
+            // Hacky but fast way: Just put head higher. Sway might look slightly disconnected if extreme, 
+            // but for simple swaying it's fine.
+
+            // Better: Translate 0, 1.2, 0 in local space
+            dummy.translateY(1.3); // Move up 1.3 units in LOCAL Y (which includes rotation)
+            // Head scale slightly different?
+            dummy.scale.setScalar(2.2); // Heads slightly smaller relative to giant body?
+            dummy.updateMatrix();
+            headMeshRef.current.setMatrixAt(i, dummy.matrix);
+        });
+
+        bodyMeshRef.current.instanceMatrix.needsUpdate = true;
+        headMeshRef.current.instanceMatrix.needsUpdate = true;
+    });
+
     return (
-        <group position={position} rotation={rotation}>
-            {/* Grandstand structure - stepped seating */}
-            {Array(rows).fill(0).map((_, row) => (
-                <mesh key={row} position={[0, row * 0.9, row * 0.5]}>
-                    <boxGeometry args={[seatsPerRow * 1.3, 0.8, 1.2]} />
-                    <meshStandardMaterial color="#1a1a1a" metalness={0.5} roughness={0.8} />
-                </mesh>
-            ))}
-            
-            {/* Back wall */}
-            <mesh position={[0, rows * 1.2, rows * 0.6]}>
-                <boxGeometry args={[seatsPerRow * 1.4, rows * 2.5, 0.3]} />
-                <meshStandardMaterial color={structureColor} metalness={0.6} roughness={0.5} />
-            </mesh>
-            
-            {/* Side walls */}
-            <mesh position={[-seatsPerRow * 0.65, rows * 0.8, rows * 0.3]}>
-                <boxGeometry args={[0.3, rows * 2, rows * 1.2]} />
-                <meshStandardMaterial color={structureColor} metalness={0.6} roughness={0.5} />
-            </mesh>
-            <mesh position={[seatsPerRow * 0.65, rows * 0.8, rows * 0.3]}>
-                <boxGeometry args={[0.3, rows * 2, rows * 1.2]} />
-                <meshStandardMaterial color={structureColor} metalness={0.6} roughness={0.5} />
-            </mesh>
-            
-            {/* Spectators */}
-            {seats.map((seat, i) => (
-                <MiiCharacter 
-                    key={i}
-                    position={[seat.x, seat.y, seat.z - rows * 0.2]}
-                    color={seat.color}
-                    scale={0.7}
-                    phase={seat.phase}
+        <group>
+            {/* BODY INSTANCES */}
+            <instancedMesh ref={bodyMeshRef} args={[null, null, count]}>
+                {/* Body: Capsule without top cap? Or just capsule */}
+                <capsuleGeometry args={[0.3, 2.0, 4, 8]} />
+                <meshStandardMaterial
+                    vertexColors={true}
+                    roughness={0.9}
+                    metalness={0.0}
+                    emissiveIntensity={0}
                 />
-            ))}
-            
-            {/* Railing */}
-            <mesh position={[0, 0.8, -0.5]}>
-                <boxGeometry args={[seatsPerRow * 1.3, 0.1, 0.05]} />
-                <meshStandardMaterial color="#888" metalness={0.8} />
-            </mesh>
+                <instancedBufferAttribute attach="geometry-attributes-color" args={[bodyColors, 3]} />
+            </instancedMesh>
+
+            {/* HEAD INSTANCES */}
+            <instancedMesh ref={headMeshRef} args={[null, null, count]}>
+                <sphereGeometry args={[0.35, 8, 8]} />
+                <meshStandardMaterial
+                    vertexColors={true}
+                    roughness={0.8}
+                    metalness={0.1}
+                    emissiveIntensity={0}
+                />
+                <instancedBufferAttribute attach="geometry-attributes-color" args={[headColors, 3]} />
+            </instancedMesh>
         </group>
     );
 }
 
-// Main Audience component - places grandstands around track
-export function Audience({ trackData, theme }) {
+// Main Audience component - places crowd clusters around track
+export function Audience({ trackData }) {
     const floorWidth = trackData?.floorSize?.width || 300;
     const floorDepth = trackData?.floorSize?.depth || 300;
-    
-    // Position grandstands around the perimeter
-    const grandstands = useMemo(() => {
-        const stands = [];
-        const radius = Math.max(floorWidth, floorDepth) * 0.52;
-        const count = 4; // 4 grandstands around track
-        
-        for (let i = 0; i < count; i++) {
-            const angle = (i / count) * Math.PI * 2 + Math.PI / 4;
-            stands.push({
-                position: [Math.cos(angle) * radius, 0, Math.sin(angle) * radius],
-                rotation: [0, -angle + Math.PI, 0],
-                rows: 3 + Math.floor(Math.random() * 2),
-                seats: 8 + Math.floor(Math.random() * 5)
-            });
+
+    // Generate all spectator positions
+    const crowdData = useMemo(() => {
+        // Get base cluster positions from logic
+        const polygon = trackData?.outerPolygon || trackData?.floorPolygon;
+        let clusters = [];
+
+        if (polygon && polygon.length > 2) {
+            clusters = generateAudiencePositions(polygon, 60, 18);
+        } else {
+            // Fallback circular clusters
+            const radius = Math.max(floorWidth, floorDepth) * 0.52;
+            const count = 8;
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2;
+                clusters.push({
+                    position: [Math.cos(angle) * radius, 0, Math.sin(angle) * radius],
+                    rotation: [0, -angle + Math.PI, 0] // Face center
+                });
+            }
         }
-        return stands;
-    }, [floorWidth, floorDepth]);
-    
+
+        // Expanded crowd points
+        // For each cluster, generate a patch of spectators
+        const allSpectators = [];
+
+        clusters.forEach(cluster => {
+            const cx = cluster.position[0];
+            const cy = cluster.position[1];
+            const cz = cluster.position[2];
+            const rotY = cluster.rotation[1];
+
+            // Create a small 5x3 patch at this location
+            // We want the patch to be aligned with rotY
+            // Local offsets: x (width), z (depth)
+            const rows = 3;
+            const cols = 6;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    // Local coords centered
+                    const lx = (c - cols / 2) * 1.5 + (Math.random() * 0.5);
+                    const lz = (r - rows / 2) * 1.5 + (Math.random() * 0.5);
+
+                    // Rotate local coords by rotY
+                    // x' = x cos θ + z sin θ
+                    // z' = -x sin θ + z cos θ
+                    const wx = lx * Math.cos(rotY) + lz * Math.sin(rotY);
+                    const wz = -lx * Math.sin(rotY) + lz * Math.cos(rotY);
+
+                    allSpectators.push({
+                        position: [cx + wx, cy + 2.5, cz + wz], // y=2.5 (raised for taller height)
+                        rotationY: rotY
+                    });
+                }
+            }
+        });
+
+        return allSpectators;
+
+    }, [trackData, floorWidth, floorDepth]);
+
     return (
         <group>
-            {grandstands.map((stand, i) => (
-                <Grandstand
-                    key={i}
-                    position={stand.position}
-                    rotation={stand.rotation}
-                    rows={stand.rows}
-                    seatsPerRow={stand.seats}
-                    theme={theme}
-                />
-            ))}
+            <InstancedCrowd data={crowdData} count={crowdData.length} />
         </group>
     );
 }
