@@ -48,22 +48,26 @@ function generateAudiencePositions(polygon, spacing = 20, offset = 15) {
 
         // Calculate normal (perpendicular)
         // Normal to (dx, dz) is (-dz, dx) or (dz, -dx)
-        let normal = { x: -segmentDir.z, z: segmentDir.x };
+        // We want the one pointing OUT of the polygon (assuming CCW winding)
+        // But polygon winding might vary. Robust way:
+        // Pick a point slightly "left" of the segment. If inside, "left" is IN, so we want "right".
 
-        // Determine "outward" direction.
-        // Test a point slightly shifted by normal. If it's INSIDE, then normal points IN, so we flip it.
+        let normal = { x: -segmentDir.z, z: segmentDir.x }; // "Left" relative to segment
+
         const midPoint = {
             x: (p1.x + p2.x) / 2,
             z: (p1.z + p2.z) / 2
         };
 
+        // Use a larger epsilon to avoid edge case precision issues on vertices
+        const testDist = 5.0;
         const testPoint = {
-            x: midPoint.x + normal.x * 0.1,
-            z: midPoint.z + normal.z * 0.1
+            x: midPoint.x + normal.x * testDist,
+            z: midPoint.z + normal.z * testDist
         };
 
         if (isPointInPolygon(testPoint, polygon)) {
-            // Normal points inside, flip it
+            // Normal points inside, flip it to point outside
             normal = { x: -normal.x, z: -normal.z };
         }
 
@@ -74,7 +78,6 @@ function generateAudiencePositions(polygon, spacing = 20, offset = 15) {
         const step = segLen / numInstances;
 
         for (let j = 0; j < numInstances; j++) {
-            // T goes from 0 to 1 along segment? No, center them.
             // visual placement: start at half step to center them in their slot
             const distAlong = (j + 0.5) * step;
 
@@ -84,10 +87,18 @@ function generateAudiencePositions(polygon, spacing = 20, offset = 15) {
             const posX = baseX + normal.x * offset;
             const posZ = baseZ + normal.z * offset;
 
+            // Final sanity check: Is this placement point actually outside?
+            // In tight concave corners, "offsetting outwards" from two adjacent segments
+            // might still result in crossing back over another part of the track.
+            // We check if the PLACEMENT point is inside. If so, skip it (it's clipping).
+            if (isPointInPolygon({ x: posX, z: posZ }, polygon)) {
+                continue;
+            }
+
             // Rotation: The grandstand should face the track.
-            // If the user said they are facing AWAY, then my previous logic (atan2 + PI) was wrong for the model.
-            // Let's try removing PI.
-            const angle = Math.atan2(normal.x, normal.z);
+            // normal points AWAY from track. We want to face TOWARDS track.
+            // angle of normal + PI
+            const angle = Math.atan2(normal.x, normal.z) + Math.PI;
 
             positions.push({
                 position: [posX, 0, posZ],

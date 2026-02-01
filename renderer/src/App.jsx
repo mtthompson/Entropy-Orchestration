@@ -70,7 +70,7 @@ const SynthwaveGrid = React.memo(({ floorSize, graphicsSettings, theme }) => {
         <group>
             {/* Infinite base floor matching terrain color */}
             {/* Raised slightly to ensure it meets the terrain perfectly */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.0, 0]} receiveShadow>
                 <planeGeometry args={[10000, 10000]} />
                 <meshStandardMaterial
                     color={floorColor}
@@ -175,7 +175,7 @@ const TerrainMesh = React.memo(({ heightMap, theme, graphicsSettings }) => {
             {/* Wireframe overlay */}
             <mesh
                 geometry={geometry}
-                position={[0, 0.02, 0]}
+                position={[0, 0.05, 0]}
             >
                 <meshBasicMaterial
                     color={theme?.primaryColor || '#ff00ff'}
@@ -191,6 +191,50 @@ const TerrainMesh = React.memo(({ heightMap, theme, graphicsSettings }) => {
 // =============================================================================
 // TRACK SURFACE OVERLAY - Renders solid floor inside track boundaries
 // =============================================================================
+const StartLine = React.memo(({ startLine }) => {
+    if (!startLine) return null;
+
+    const { x1, z1, x2, z2 } = startLine;
+    const cx = (x1 + x2) / 2;
+    const cz = (z1 + z2) / 2;
+    const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(z2 - z1, 2));
+    const angle = Math.atan2(z2 - z1, x2 - x1);
+
+    return (
+        <group position={[cx, 0.22, cz]} rotation={[0, -angle, 0]}>
+            {/* Main Checkerboard Line */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[length, 6]} />
+                <meshStandardMaterial
+                    color="#ffffff"
+                    roughness={0.8}
+                    metalness={0.1}
+                    side={THREE.DoubleSide}
+                />
+            </mesh>
+            {/* Checkered pattern overlay (approximate with strips) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+                <planeGeometry args={[length, 6, Math.floor(length / 2), 2]} />
+                <meshBasicMaterial
+                    color="#000000"
+                    wireframe={true}
+                    transparent={true}
+                    opacity={0.3}
+                />
+            </mesh>
+            {/* Glowing poles at ends */}
+            <mesh position={[-length / 2, 2.5, 0]}>
+                <cylinderGeometry args={[0.3, 0.3, 5, 8]} />
+                <meshStandardMaterial color="#00ff00" emissive="#00ff00" emissiveIntensity={2} />
+            </mesh>
+            <mesh position={[length / 2, 2.5, 0]}>
+                <cylinderGeometry args={[0.3, 0.3, 5, 8]} />
+                <meshStandardMaterial color="#00ff00" emissive="#00ff00" emissiveIntensity={2} />
+            </mesh>
+        </group>
+    );
+});
+
 const TrackSurface = React.memo(({ trackData, theme }) => {
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
@@ -264,7 +308,7 @@ const TrackSurface = React.memo(({ trackData, theme }) => {
     return (
         <group>
             {/* Main track floor - solid and bright */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.15, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.20, 0]}>
                 <primitive object={geometry} attach="geometry" />
                 <meshStandardMaterial
                     color={trackFloorColor}
@@ -272,6 +316,9 @@ const TrackSurface = React.memo(({ trackData, theme }) => {
                     roughness={0.6}
                 />
             </mesh>
+
+            {/* Start Line Overlay */}
+            {trackData?.startLine && <StartLine startLine={trackData.startLine} />}
         </group>
     );
 });
@@ -799,7 +846,7 @@ function LeaderboardDisplay({ entries, visible }) {
     return (
         <div style={{
             position: 'fixed',
-            top: 100,
+            top: 300,
             right: 20,
             background: 'rgba(0, 0, 0, 0.85)',
             borderRadius: 12,

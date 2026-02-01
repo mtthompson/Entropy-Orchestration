@@ -297,6 +297,7 @@ parentPort.on('message', (message) => {
                     let target;
                     let newWaypointIndex = cpu.waypointIndex;
 
+
                     if (isRacing) {
                         const waypoint = getNextWaypoint(
                             cpu.position,

@@ -412,12 +412,44 @@ TRACKS.push(buildArena(135, 6, {
 // TRACK 6: Dragon's Tail
 // =============================================================================
 const DRAGON_PATH = [
-    { x: -125, z: 225 }, { x: -75, z: 175 }, { x: 25, z: 175 },
-    { x: 75, z: 125 }, { x: 125, z: 75 }, { x: 75, z: 25 },
-    { x: -25, z: 25 }, { x: -75, z: -25 }, { x: -125, z: -75 },
-    { x: -75, z: -125 }, { x: 25, z: -125 }, { x: 75, z: -175 },
-    { x: 125, z: -225 }, { x: 75, z: -250 }, { x: -125, z: -250 },
-    { x: -175, z: -175 }, { x: -175, z: 175 }
+    { x: -125, z: 225 },
+    { x: -100, z: 200 }, // Midpoint
+    { x: -75, z: 175 },
+    { x: -25, z: 175 }, // Midpoint
+    { x: 25, z: 175 },
+    { x: 50, z: 150 }, // Midpoint
+    { x: 75, z: 125 },
+    { x: 100, z: 100 }, // Midpoint
+    { x: 125, z: 75 },
+    { x: 100, z: 50 }, // Midpoint
+    { x: 75, z: 25 },
+    { x: 25, z: 25 }, // Midpoint
+    { x: -25, z: 25 },
+    { x: -50, z: 0 }, // Midpoint
+    { x: -75, z: -25 },
+    { x: -100, z: -50 }, // Midpoint
+    { x: -125, z: -75 },
+    { x: -100, z: -100 }, // Midpoint
+    { x: -75, z: -125 },
+    { x: -25, z: -125 }, // Midpoint
+    { x: 25, z: -125 },
+    { x: 50, z: -150 }, // Midpoint
+    { x: 75, z: -175 },
+    { x: 100, z: -200 }, // Midpoint
+    { x: 125, z: -225 },
+    { x: 100, z: -237.5 }, // Midpoint
+    { x: 75, z: -250 },
+    { x: 25, z: -250 }, // Quarter point
+    { x: -25, z: -250 }, // Midpoint
+    { x: -75, z: -250 }, // Quarter point
+    { x: -125, z: -250 },
+    { x: -150, z: -212.5 }, // Midpoint
+    { x: -175, z: -175 },
+    { x: -175, z: -87.5 }, // Quarter point
+    { x: -175, z: 0 }, // Midpoint
+    { x: -175, z: 87.5 }, // Quarter point
+    { x: -175, z: 175 },
+    { x: -150, z: 200 } // Midpoint (closing loop)
 ];
 TRACKS.push(buildRaceTrack(DRAGON_PATH, 40, {
     id: 'track_06',

@@ -239,10 +239,12 @@ function broadcastTrackData(target = io) {
         floorSize: activeTrack.floorSize,
         path: activeTrack.path,
         type: activeTrack.type,
+        startLine: activeTrack.startLine, // Send start line to client
         // Floor polygons for rendering distinct track/arena surface
         floorPolygon: activeTrack.floorPolygon,
         outerPolygon: activeTrack.outerPolygon,
         innerPolygon: activeTrack.innerPolygon,
+        radius: activeTrack.radius,
         heightMap: activeHeightMap ? {
             width: activeHeightMap.width,
             depth: activeHeightMap.depth,
@@ -444,7 +446,7 @@ function spawnCPUOpponents(count) {
             color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)],
             hp: 100,
             type: 'driver',
-            isCPU: true,
+            isCPU: true, // Distinct from 'type' for some logic
             waypointIndex: 0, // Will be updated based on spawn position
             boost: 100,
             lapsCompleted: 0,
@@ -452,15 +454,40 @@ function spawnCPUOpponents(count) {
             maskType: MASK_TYPES[Math.floor(Math.random() * MASK_TYPES.length)]
         };
 
-        // Spawn CPUs slightly behind players to prevent instant collision
-        const xOffset = ((i % 2) * 2 - 1) * (4 + Math.floor(i / 2) * 3); // Spaced out laterally
-        const zOffset = -5 - (i * 8); // Start 5 units back, 8 apart (prevents starting behind finish line)
-        const spawnY = getSpawnHeight(spawn.x + xOffset, spawn.z + zOffset);
+        // LOCAL SPACE OFFSET CALCULATION
+        // Determine offsets relative to the spawn direction (rotation)
+        // Lateral offset: alternate left/right
+        const lateralOffset = ((i % 2) * 2 - 1) * (4 + Math.floor(i / 2) * 3);
+        // Backward offset: stagger them back so they don't spawn on top of each other
+        // -5 units initial setback, then 8 units per pair
+        const backwardOffset = 5 + (i * 8); // Positive means "back" if we subtract Forward
+
+        // Calculate rotation components
+        const yaw = spawn.rotation || 0;
+
+        // Forward vector (approximate)
+        // In this game's coord system: 0 rot usually means +Z or something.
+        // Let's rely on standard trig: x=sin, z=cos for Forward vector if Y-rot is yaw.
+        const forwardX = Math.sin(yaw);
+        const forwardZ = Math.cos(yaw);
+
+        // Right vector (90 deg clockwise)
+        const rightX = Math.cos(yaw); // sin(yaw + PI/2)
+        const rightZ = -Math.sin(yaw); // cos(yaw + PI/2)
+
+        // Final World Position
+        // Move laterally along Right vector
+        // Move backward (negative Forward) along Forward vector
+        // We subtract backwardOffset * Forward
+        const finalX = spawn.x + (rightX * lateralOffset) - (forwardX * backwardOffset);
+        const finalZ = spawn.z + (rightZ * lateralOffset) - (forwardZ * backwardOffset);
+
+        const spawnY = getSpawnHeight(finalX, finalZ);
 
         const body = new CANNON.Body({
             mass: 50,
             shape: new CANNON.Sphere(1.5), // Increased from 1.0
-            position: new CANNON.Vec3(spawn.x + xOffset, spawnY, spawn.z + zOffset),
+            position: new CANNON.Vec3(finalX, spawnY, finalZ),
             linearDamping: 0.1, // Increased from 0.05 for better stability
             angularDamping: 0.5, // Increased from 0.0 for better stability
             allowSleep: false,
@@ -469,7 +496,7 @@ function spawnCPUOpponents(count) {
             ccdIterations: 3
         });
         body.angularFactor.set(0, 1, 0); // Lock X/Z rotation (prevent rolling)
-        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.rotation || 0);
+        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw);
 
         world.addBody(body);
         cpu.body = body;
@@ -765,7 +792,7 @@ function updateCPUPhysicsFallback() {
 
             // CRITICAL: Clamp CPU velocity to prevent passing through walls
             const cpuSpeed = cpu.body.velocity.length();
-            let CPU_MAX_SPEED = 110; // Increased from 85 (Player is 100)
+            let CPU_MAX_SPEED = 230; // Increased from 110 (Player is 220)
             if (cpu.maskType === 'Skull') CPU_MAX_SPEED *= 1.1; // Skull mask bonus
 
             if (cpuSpeed > CPU_MAX_SPEED) {
@@ -1149,12 +1176,12 @@ function updatePlayerPhysics(player, input) {
     forward.normalize();
 
     // 3. Arcade Drive: target-speed approach and direct velocity alignment
-    const baseMaxSpeed = 100 * maxSpeedMod; // Increased from 70
+    const baseMaxSpeed = 220 * maxSpeedMod; // Increased from 100
     let targetSpeed = throttle * baseMaxSpeed;
 
-    let accelRate = 130; // Increased from 95
-    let brakeRate = 160; // Increased from 140
-    let coastRate = 70; // Increased from 60
+    let accelRate = 220; // Increased from 130
+    let brakeRate = 250; // Increased from 160
+    let coastRate = 100; // Increased from 70
 
     // Boost Logic with Hysteresis (Prevent infinite micro-boosting)
     const BOOST_START_THRESHOLD = 10; // Must have 10% boost to START boosting
@@ -1212,7 +1239,7 @@ function updatePlayerPhysics(player, input) {
     // FINAL SAFETY: CLAMP SPEED AND BOUNDARIES
     // =============================================
     const currentSpeed = player.body.velocity.length();
-    let maxSpeedValue = player.isCPU ? 110 : 100; // Standardize base speeds
+    let maxSpeedValue = player.isCPU ? 230 : 220; // Standardize base speeds (CPU slightly faster)
     if (maskType === 'Skull') maxSpeedValue *= 1.1;
 
     if (currentSpeed > maxSpeedValue) {
