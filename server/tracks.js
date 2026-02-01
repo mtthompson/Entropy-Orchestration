@@ -52,11 +52,11 @@ function generateAlignedSpawns(pathPoints, offset, count) {
     const spawns = [];
     const p1 = pathPoints[0];
 
-    // For alignment, use the direction FROM the last point TO the first point
-    // This ensures players facing "forward" are correctly aligned with the track direction at the start line
-    const pPrev = pathPoints[pathPoints.length - 1];
-    const dx = p1.x - pPrev.x;
-    const dz = p1.z - pPrev.z;
+    // For alignment, use the direction FROM the first point TO the second point
+    // This ensures players face the direction they're going to drive
+    const pNext = pathPoints[1];
+    const dx = pNext.x - p1.x;
+    const dz = pNext.z - p1.z;
     const len = Math.sqrt(dx * dx + dz * dz);
 
     // Forward direction (unit vector)
@@ -378,10 +378,10 @@ TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 90, {
 // TRACK 4: Cloverleaf
 // =============================================================================
 const CLOVER_PATH = [
-    { x: 0, z: 180 }, { x: -60, z: 150 }, { x: -120, z: 120 }, { x: -150, z: 60 }, { x: -120, z: 0 }, { x: -60, z: -30 },
-    { x: -120, z: -60 }, { x: -150, z: -120 }, { x: -120, z: -180 }, { x: -60, z: -210 }, { x: 0, z: -180 }, { x: 60, z: -210 },
-    { x: 120, z: -180 }, { x: 150, z: -120 }, { x: 120, z: -60 }, { x: 60, z: -30 }, { x: 120, z: 0 }, { x: 150, z: 60 },
-    { x: 120, z: 120 }, { x: 60, z: 150 }
+    { x: 60, z: 150 }, { x: 120, z: 120 }, { x: 150, z: 60 }, { x: 120, z: 0 }, { x: 60, z: -30 },
+    { x: 120, z: -60 }, { x: 150, z: -120 }, { x: 120, z: -180 }, { x: 60, z: -210 }, { x: 0, z: -180 }, { x: -60, z: -210 },
+    { x: -120, z: -180 }, { x: -150, z: -120 }, { x: -120, z: -60 }, { x: -60, z: -30 }, { x: -120, z: 0 }, { x: -150, z: 60 },
+    { x: -120, z: 120 }, { x: -60, z: 150 }, { x: 0, z: 180 }
 ];
 TRACKS.push(buildRaceTrack(CLOVER_PATH, 95, {
     id: 'track_04',

@@ -1818,6 +1818,7 @@ let gameTimer = 0;
 let winnerName = null;
 let demoModeActive = false;
 let demoModeTimer = null;
+let playerQueue = []; // Queue for players waiting to join during winner screen
 const DEMO_TIMEOUT = 60000; // 60 seconds of no players triggers demo
 
 // =============================================================================
@@ -1902,6 +1903,7 @@ function stopDemoMode() {
     gameState = 'LOBBY';
 
     removeCPUOpponents();
+    processPlayerQueue();
     io.emit('demoMode', { active: false });
     broadcastGameState();
 }
@@ -1928,6 +1930,74 @@ function broadcastGameState() {
         winner: winnerName,
         isDemo: demoModeActive
     });
+}
+
+function processPlayerQueue() {
+    if (playerQueue.length === 0) return;
+
+    console.log(`[QUEUE] Processing ${playerQueue.length} queued players...`);
+
+    for (const queuedPlayer of playerQueue) {
+        const { socketId, name, maskType } = queuedPlayer;
+        
+        // Check if socket still connected
+        const socket = io.sockets.sockets.get(socketId);
+        if (!socket) {
+            console.log(`[QUEUE] Socket ${socketId} disconnected, skipping ${name}`);
+            continue;
+        }
+
+        // Create player as driver
+        const color = CAR_COLORS[players.size % CAR_COLORS.length];
+        const newPlayer = {
+            id: socketId,
+            body: null,
+            hp: 100,
+            type: 'driver',
+            maskType: maskType,
+            color,
+            name: name,
+            boost: 100,
+            isShielded: false,
+            isGhost: false,
+            isJuggernaut: false,
+            lapsCompleted: 0,
+            waypointIndex: 0,
+            ammo: 0,
+            weaponType: 'none',
+            heldItem: null,
+            activePowerup: null,
+            input: { steering: 0, throttle: 0, boost: false }
+        };
+        players.set(socketId, newPlayer);
+
+        // Spawn at spawn point
+        if (!activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
+            console.error('[ERROR] No spawn points available on track!');
+            activeTrack.spawnPoints = [{ x: 0, z: 0, rotation: 0 }];
+        }
+
+        const spawnIndex = (players.size - 1) % activeTrack.spawnPoints.length;
+        const spawnPoint = activeTrack.spawnPoints[spawnIndex];
+        createPlayerBody(newPlayer,
+            spawnPoint.x + (Math.random() - 0.5) * 2,
+            spawnPoint.z + (Math.random() - 0.5) * 2,
+            spawnPoint.rotation || 0
+        );
+
+        socket.emit('joined', {
+            id: socketId,
+            color: newPlayer.color,
+            hp: newPlayer.hp,
+            ammo: newPlayer.ammo,
+            weaponType: newPlayer.weaponType
+        });
+
+        console.log(`[QUEUE] Added ${name} to race`);
+    }
+
+    playerQueue = []; // Clear queue
+    broadcastGameState();
 }
 
 function startCountdown() {
@@ -2128,6 +2198,7 @@ function endRace(winner) {
                     // Select new random track for lobby
                     selectRandomTrack();
 
+                    processPlayerQueue();
                     broadcastGameState();
                     io.emit('demoMode', { active: false });
                 }
@@ -2137,6 +2208,7 @@ function endRace(winner) {
                 // Select new random track for next round
                 selectRandomTrack();
 
+                processPlayerQueue();
                 broadcastGameState();
             }
         }
@@ -2411,76 +2483,82 @@ io.on('connection', (socket) => {
             // Determine spawn type - late joiners spawn as drivers behind the pack
             let type = 'driver';
             let lateJoiner = false;
+            let queued = false;
             if (gameState === 'WINNER') {
-                type = 'drone'; // Can't join during winner screen
+                // Queue player for next race instead of joining as drone
+                playerQueue.push({ socketId: socket.id, name: name || 'Player', maskType: maskType || 'Classic' });
+                queued = true;
+                console.log(`[QUEUE] ${name} queued for next race (currently ${playerQueue.length} in queue)`);
+                socket.emit('queued', { position: playerQueue.length });
             } else if (gameState === 'RACING') {
                 type = 'driver'; // Late joiners spawn as targets behind the pack
                 lateJoiner = true;
             }
 
-            // Create player object
-            const color = CAR_COLORS[players.size % CAR_COLORS.length];
-            const newPlayer = {
-                id: socket.id,
-                body: null,
-                hp: type === 'drone' ? 0 : 100,
-                type: type,
-                maskType: maskType || 'Classic',
-                color,
-                name: name || 'Player',
-                boost: 100,
-                isShielded: false,
-                isGhost: false,
-                isJuggernaut: false,
-                lapsCompleted: 0,
-                waypointIndex: 0,
-                ammo: 0,
-                weaponType: 'none',
-                heldItem: null,
-                activePowerup: null,
-                input: { steering: 0, throttle: 0, boost: false } // Initialize input for game loop
-            };
-            players.set(socket.id, newPlayer);
-            // ...
+            // Create player object (only if not queued)
+            if (!queued) {
+                const color = CAR_COLORS[players.size % CAR_COLORS.length];
+                const newPlayer = {
+                    id: socket.id,
+                    body: null,
+                    hp: type === 'drone' ? 0 : 100,
+                    type: type,
+                    maskType: maskType || 'Classic',
+                    color,
+                    name: name || 'Player',
+                    boost: 100,
+                    isShielded: false,
+                    isGhost: false,
+                    isJuggernaut: false,
+                    lapsCompleted: 0,
+                    waypointIndex: 0,
+                    ammo: 0,
+                    weaponType: 'none',
+                    heldItem: null,
+                    activePowerup: null,
+                    input: { steering: 0, throttle: 0, boost: false } // Initialize input for game loop
+                };
+                players.set(socket.id, newPlayer);
 
-            // If Driver, spawn body
-            if (type === 'driver') {
-                if (lateJoiner) {
-                    // Late joiner: spawn behind the pack as a target
-                    const rearPos = getPackRearPosition();
-                    createPlayerBody(newPlayer, rearPos.x, rearPos.z, rearPos.rotation);
-                    console.log(`[LATE JOIN] ${name} spawned behind pack at(${rearPos.x.toFixed(1)}, ${rearPos.z.toFixed(1)})`);
+                // If Driver, spawn body
+                if (type === 'driver') {
+                    if (lateJoiner) {
+                        // Late joiner: spawn behind the pack as a target
+                        const rearPos = getPackRearPosition();
+                        createPlayerBody(newPlayer, rearPos.x, rearPos.z, rearPos.rotation);
+                        console.log(`[LATE JOIN] ${name} spawned behind pack at(${rearPos.x.toFixed(1)}, ${rearPos.z.toFixed(1)})`);
 
-                    // Announce fresh meat to other players
-                    io.emit('lateJoiner', { name: name || 'Player' });
-                } else {
-                    // Normal join: use spawn points
-                    if (!activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
-                        console.error('[ERROR] No spawn points available on track!');
-                        activeTrack.spawnPoints = [{ x: 0, z: 0, rotation: 0 }]; // Fallback
+                        // Announce fresh meat to other players
+                        io.emit('lateJoiner', { name: name || 'Player' });
+                    } else {
+                        // Normal join: use spawn points
+                        if (!activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
+                            console.error('[ERROR] No spawn points available on track!');
+                            activeTrack.spawnPoints = [{ x: 0, z: 0, rotation: 0 }]; // Fallback
+                        }
+
+                        const spawnIndex = (players.size - 1) % activeTrack.spawnPoints.length;
+                        const spawnPoint = activeTrack.spawnPoints[spawnIndex];
+                        createPlayerBody(newPlayer,
+                            spawnPoint.x + (Math.random() - 0.5) * 2,
+                            spawnPoint.z + (Math.random() - 0.5) * 2,
+                            spawnPoint.rotation || 0
+                        );
                     }
-
-                    const spawnIndex = (players.size - 1) % activeTrack.spawnPoints.length;
-                    const spawnPoint = activeTrack.spawnPoints[spawnIndex];
-                    createPlayerBody(newPlayer,
-                        spawnPoint.x + (Math.random() - 0.5) * 2,
-                        spawnPoint.z + (Math.random() - 0.5) * 2,
-                        spawnPoint.rotation || 0
-                    );
                 }
-            }
 
-            socket.emit('joined', {
-                id: socket.id,
-                color: newPlayer.color,
-                hp: newPlayer.hp,
-                ammo: newPlayer.ammo,
-                weaponType: newPlayer.weaponType
-            });
+                socket.emit('joined', {
+                    id: socket.id,
+                    color: newPlayer.color,
+                    hp: newPlayer.hp,
+                    ammo: newPlayer.ammo,
+                    weaponType: newPlayer.weaponType
+                });
+            }
 
             // AUTO-START LOGIC
             // Start countdown if we have at least 1 player in LOBBY (Single Player allowed)
-            if (gameState === 'LOBBY') {
+            if (gameState === 'LOBBY' && !queued) {
                 const humanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
 
                 if (humanCount === 1 && gameTimer === 0) {
@@ -2520,8 +2598,10 @@ io.on('connection', (socket) => {
                 }
             }
 
-            console.log(`[JOIN] ${name} as ${type} `);
-            broadcastGameState();
+            console.log(`[JOIN] ${name} as ${queued ? 'queued' : type} `);
+            if (!queued) {
+                broadcastGameState();
+            }
 
             // Auto-start if 2 players in lobby and not started? 
             // Better to wait for Admin/Renderer start, or auto-start logic
@@ -2635,6 +2715,8 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         removePlayer(socket.id);
+        // Also remove from queue if present
+        playerQueue = playerQueue.filter(p => p.socketId !== socket.id);
         console.log(`[DISCONNECT] ${socket.id} `);
         checkWinCondition(); // Check if this caused a win
         broadcastGameState();

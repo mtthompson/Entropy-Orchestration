@@ -199,7 +199,7 @@ function vibrate(pattern) {
 // =============================================================================
 const MASKS = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
 
-function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0, serverState = 'LOBBY', hasJoined = false }) {
+function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0, serverState = 'LOBBY', hasJoined = false, queuePosition = 0 }) {
     const [name, setName] = useState(savedIdentity.name || '');
     const [maskIndex, setMaskIndex] = useState(() => {
         const savedMask = savedIdentity.maskType || 'Classic';
@@ -234,6 +234,19 @@ function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0, serverState 
                     textShadow: '0 0 10px #00ffff'
                 }}>
                     Starting in {serverTimer}s...
+                </div>
+            )}
+
+            {/* Queue Position */}
+            {queuePosition > 0 && (
+                <div style={{
+                    marginBottom: 20,
+                    fontSize: 20,
+                    color: '#ffff00',
+                    fontWeight: 600,
+                    textShadow: '0 0 15px #ffff00'
+                }}>
+                    Queued for next race - Position #{queuePosition}
                 </div>
             )}
 
@@ -306,6 +319,62 @@ function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0, serverState 
                     </button>
                 </>
             )}
+        </div>
+    );
+}
+
+// =============================================================================
+// QUEUED SCREEN
+// =============================================================================
+function QueuedScreen({ queuePosition, serverTimer }) {
+    return (
+        <div style={styles.container('#ffa500')}>
+            <h1 style={styles.title}>Queued for Next Race</h1>
+            
+            <div style={{
+                fontSize: 24,
+                fontWeight: 600,
+                marginBottom: 20,
+                color: '#ffff00',
+                textShadow: '0 0 15px #ffff00'
+            }}>
+                Position: #{queuePosition}
+            </div>
+
+            <div style={{
+                fontSize: 18,
+                marginBottom: 30,
+                textAlign: 'center',
+                color: '#ffffff',
+                opacity: 0.9
+            }}>
+                The current race is ending...<br/>
+                You'll join the next one automatically!
+            </div>
+
+            {serverTimer > 0 && (
+                <div style={{
+                    fontSize: 20,
+                    color: '#00ffff',
+                    fontWeight: 600,
+                    textShadow: '0 0 10px #00ffff'
+                }}>
+                    Next race starts in {serverTimer}s
+                </div>
+            )}
+
+            <div style={{
+                position: 'absolute',
+                bottom: 20,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: 14,
+                color: '#ffffff',
+                opacity: 0.7,
+                textAlign: 'center'
+            }}>
+                Waiting for winner screen to end...
+            </div>
         </div>
     );
 }
@@ -829,13 +898,14 @@ function ResultsScreen({ winner, countdown, onBackToLobby }) {
 // MAIN APP
 // =============================================================================
 export default function App() {
-    const [gameState, setGameState] = useState('lobby'); // lobby, driving, drone, results
+    const [gameState, setGameState] = useState('lobby'); // lobby, driving, drone, results, queued
     const [serverState, setServerState] = useState('LOBBY'); // LOBBY, COUNTDOWN, RACING, WINNER
     const [playerState, setPlayerState] = useState(null);
     const [playerId, setPlayerId] = useState(null);
     const [winner, setWinner] = useState(null);
     const [serverTimer, setServerTimer] = useState(0); // Track server's timer
     const [demoMessage, setDemoMessage] = useState(null);
+    const [queuePosition, setQueuePosition] = useState(0);
     const missingTicksRef = useRef(0); // Track consecutive ticks where player is missing
     const dismissedResultsRef = useRef(false); // Track if user manually dismissed results
 
@@ -883,13 +953,26 @@ export default function App() {
             // Only transition to driving screen if the race is starting or in progress
             // Late joiners (RACING) or start of race (COUNTDOWN) go straight in.
             // Lobby joiners stay in lobby view to see status.
-            if (serverState !== 'LOBBY') {
+            // Queued players who just joined go to lobby.
+            if (serverState !== 'LOBBY' && gameState !== 'queued') {
                 setGameState('driving');
+            } else if (gameState === 'queued') {
+                setGameState('lobby');
             }
+
+            // Reset queue position since we're now in the race
+            setQueuePosition(0);
 
             missingTicksRef.current = 0;
             dismissedResultsRef.current = false; // Reset dismissal flag
             vibrate(100);
+        });
+
+        socket.on('queued', ({ position }) => {
+            console.log('[CONTROLLER] Queued for next race! Position:', position);
+            setGameState('queued');
+            setQueuePosition(position);
+            vibrate([100, 100, 100]);
         });
 
         socket.on('damage', ({ hp, damage }) => {
@@ -1068,6 +1151,17 @@ export default function App() {
                         serverTimer={serverTimer}
                         serverState={serverState}
                         hasJoined={!!playerId}
+                        queuePosition={queuePosition}
+                    />
+                </>
+            );
+        case 'queued':
+            return (
+                <>
+                    {renderDemoToast()}
+                    <QueuedScreen 
+                        queuePosition={queuePosition}
+                        serverTimer={serverTimer}
                     />
                 </>
             );
