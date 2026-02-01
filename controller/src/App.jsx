@@ -916,6 +916,11 @@ export default function App() {
             vibrate(duration);
         });
 
+        socket.on('playerLocating', (data) => {
+            // Haptic feedback when being located
+            vibrate([200, 100, 200]);
+        });
+
         // Handle server game state changes (LOBBY, COUNTDOWN, RACING, WINNER)
         socket.on('gameState', ({ state, timer, winner: gameWinner }) => {
             console.log('[CONTROLLER] Server gameState:', state, 'timer:', timer, 'winner:', gameWinner);
@@ -976,6 +981,7 @@ export default function App() {
             socket.off('powerup');
             socket.off('becameDrone');
             socket.off('wallHit');
+            socket.off('playerLocating');
             socket.off('gameState');
             socket.off('demoMode');
             socket.off('disconnect');

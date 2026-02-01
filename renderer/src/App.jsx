@@ -1243,7 +1243,7 @@ function OffScreenIndicator({ players, gameState }) {
             // Project to screen space
             pos.project(camera);
 
-            const isOffScreen = Math.abs(pos.x) > 0.95 || Math.abs(pos.y) > 0.95 || dot < 0;
+            const isOffScreen = Math.abs(pos.x) > 0.85 || Math.abs(pos.y) > 0.85 || dot < 0;
 
             if (isOffScreen) {
                 // Clamp to edge of screen
@@ -1261,8 +1261,8 @@ function OffScreenIndicator({ players, gameState }) {
                 sy /= mag;
 
                 // Protect UI areas (top/bottom more than sides)
-                sx *= 0.92;
-                sy *= 0.88;
+                sx *= 0.88;
+                sy *= 0.82;
 
                 // Calculate rotation to point at player
                 const angle = Math.atan2(sy, sx);
@@ -1439,7 +1439,7 @@ function CameraController({ players, gameState }) {
             return;
         }
 
-        // Get top 3 players by race progress (leader = highest raceProgress)
+        // Get active players
         const activePlayers = Object.values(players).filter(p => p.type === 'driver' && p.position);
 
         if (activePlayers.length > 0) {
@@ -1455,63 +1455,71 @@ function CameraController({ players, gameState }) {
                 }
             }
 
-            // STABILIZATION VS CHAOS:
-            // Averaging the pack is chaotic because the set of "top 3" changes rapidly.
-            // Instead, let's follow the LEADER strictly, but with a wide FOV.
+            // IMPROVED: Follow the centroid of top players to reduce jumping
+            // Take top 4 players (or all if fewer) to keep more players on screen
+            const packSize = Math.min(4, sorted.length);
+            const pack = sorted.slice(0, packSize);
+
+            // Calculate centroid of the pack
+            const centroid = pack.reduce((acc, player) => {
+                acc.x += player.position.x;
+                acc.z += player.position.z;
+                return acc;
+            }, { x: 0, z: 0 });
+            centroid.x /= pack.length;
+            centroid.z /= pack.length;
+
+            // Use the leader's direction for camera orientation
             const leader = sorted[0];
-
-            if (leader && leader.position) {
-                // Get car's forward direction from quaternion (orientation)
-                let carForward = new THREE.Vector3(0, 0, -1); // Default forward is -Z in Three.js
-                if (leader.q) {
-                    const q = new THREE.Quaternion(leader.q[0], leader.q[1], leader.q[2], leader.q[3]);
-                    carForward.applyQuaternion(q);
-                    carForward.y = 0; // Keep horizontal for camera logic
-                    carForward.normalize();
-                }
-
-                // Use velocity as fallback if quaternion is not available or car is not moving
-                let heading = carForward.clone();
-                if (leader.velocity) {
-                    const velDir = new THREE.Vector3(leader.velocity.x, 0, leader.velocity.z);
-                    if (velDir.length() > 5) {
-                        heading.copy(velDir.normalize());
-                    }
-                }
-
-                // Smoothly update camera heading
-                smoothVel.current.lerp(heading, 0.08);
-
-                // Camera Offset: behind the car's rear (opposite of forward direction)
-                const cameraDist = 35;
-                const cameraHeight = 18;
-
-                // Position camera behind car's rear
-                targetPos.current.set(
-                    leader.position.x - smoothVel.current.x * cameraDist,
-                    cameraHeight,
-                    leader.position.z - smoothVel.current.z * cameraDist
-                );
-
-                // Look ahead in the car's forward direction
-                targetLookAt.current.set(
-                    leader.position.x + smoothVel.current.x * 20,
-                    0,
-                    leader.position.z + smoothVel.current.z * 20
-                );
+            let carForward = new THREE.Vector3(0, 0, -1); // Default forward is -Z in Three.js
+            if (leader.q) {
+                const q = new THREE.Quaternion(leader.q[0], leader.q[1], leader.q[2], leader.q[3]);
+                carForward.applyQuaternion(q);
+                carForward.y = 0; // Keep horizontal for camera logic
+                carForward.normalize();
             }
+
+            // Use velocity as fallback if quaternion is not available or car is not moving
+            let heading = carForward.clone();
+            if (leader.velocity) {
+                const velDir = new THREE.Vector3(leader.velocity.x, 0, leader.velocity.z);
+                if (velDir.length() > 5) {
+                    heading.copy(velDir.normalize());
+                }
+            }
+
+            // Smoothly update camera heading
+            smoothVel.current.lerp(heading, 0.08);
+
+            // Increased camera distance to show more players
+            const cameraDist = 45;
+            const cameraHeight = 20;
+
+            // Position camera behind the pack's centroid
+            targetPos.current.set(
+                centroid.x - smoothVel.current.x * cameraDist,
+                cameraHeight,
+                centroid.z - smoothVel.current.z * cameraDist
+            );
+
+            // Look ahead in the leader's forward direction
+            targetLookAt.current.set(
+                centroid.x + smoothVel.current.x * 25,
+                0,
+                centroid.z + smoothVel.current.z * 25
+            );
         }
 
-        camera.position.lerp(targetPos.current, 0.05);
+        camera.position.lerp(targetPos.current, 0.03); // Slower lerp for smoother movement
 
-        // Dynamic FOV based on leader speed
+        // Dynamic FOV based on pack spread and leader speed
         if (activePlayers.length > 0) {
             const sortedByProgress = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
             const leaderPlayer = sortedByProgress[0];
             if (leaderPlayer && leaderPlayer.velocity) {
                 const speed = Math.sqrt(leaderPlayer.velocity.x ** 2 + leaderPlayer.velocity.z ** 2);
-                const baseFov = 75;
-                const maxFov = 100;
+                const baseFov = 85; // Wider base FOV
+                const maxFov = 110; // Wider max FOV
                 const topSpeedScalar = 100; // Match server baseMaxSpeed
                 const targetFov = baseFov + (Math.min(1, speed / topSpeedScalar) * (maxFov - baseFov));
                 camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.05);
@@ -2190,6 +2198,7 @@ export default function App() {
     const [demoMode, setDemoMode] = useState(false);
     const [eliminations, setEliminations] = useState([]);
     const [screenShake, setScreenShake] = useState(0); // 0-1 intensity
+    const [screenFlash, setScreenFlash] = useState(false); // Damage flash effect
     const [locatingPlayers, setLocatingPlayers] = useState({}); // Track which players are being located
     const [trackTheme, setTrackTheme] = useState({
         primaryColor: '#ff00ff',
@@ -2613,10 +2622,14 @@ export default function App() {
 
         socket.on('damage', (data) => {
             playSfx('crash');
-            // Trigger screen shake based on damage amount
+            // Trigger screen shake and flash based on damage amount
             const intensity = Math.min(1, (data?.damage || 20) / 50);
             setScreenShake(intensity);
-            setTimeout(() => setScreenShake(0), 200);
+            setScreenFlash(true);
+            setTimeout(() => {
+                setScreenShake(0);
+                setScreenFlash(false);
+            }, 200);
         });
 
         // Player locate feature - flash and scale car
@@ -2736,6 +2749,8 @@ export default function App() {
                     locatingPlayers={locatingPlayers}
                 />
             </Canvas>
+
+            <ScreenFlash active={screenFlash} />
 
             <GameUI
                 gameState={gameState.state}

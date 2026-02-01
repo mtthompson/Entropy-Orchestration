@@ -24,8 +24,7 @@ function createMockPlayer() {
         input: { steering: 0, throttle: 0, boost: false },
         speed: 0,
         yaw: 0,
-        maskType: 'Classic',
-        isConsumingBoost: false // Initialize
+        maskType: 'Classic'
     };
 }
 
@@ -41,9 +40,7 @@ describe('Boost Logic Verification', () => {
         updatePlayerPhysics(player, player.input);
 
         // Should have consumed boost (1.0 per tick)
-        // Note: Logic is: player.boost = Math.max(0, player.boost - 1.0);
         expect(player.boost).toBe(49);
-        expect(player.isConsumingBoost).toBe(true);
     });
 
     test('Boost should regenerate when inactive', () => {
@@ -55,65 +52,47 @@ describe('Boost Logic Verification', () => {
 
         // Logic: player.boost = Math.min(100, player.boost + 0.4);
         expect(player.boost).toBe(50.4);
-        expect(player.isConsumingBoost).toBe(false);
     });
 
-    test('Boost should drain until 0 if start condition met', () => {
+    test('Boost should drain until 0 when active', () => {
         const player = createMockPlayer();
-        player.boost = 1.0; // Low boost
-        player.isConsumingBoost = true; // Was boosting
+        player.boost = 1.0;
         player.input = { steering: 0, throttle: 1, boost: true };
 
         updatePlayerPhysics(player, player.input);
 
         expect(player.boost).toBe(0);
-        expect(player.isConsumingBoost).toBe(true);
 
         // Next tick - still holding boost, but empty
         updatePlayerPhysics(player, player.input);
 
-        // Should stay at 0 and flag should persist as long as we "try" to boost?
-        // Wait, if boost is 0, logic: 
-        // if (player.isConsumingBoost && player.boost > 0) -> false (boost is 0)
-        // else if (player.boost >= 10) -> false (0 < 10)
-        // So isBoosting becomes false.
-
-        // Let's verify this transition
-        expect(player.boost).toBe(0.4); // It regenerated because isBoosting became false!
-        expect(player.isConsumingBoost).toBe(false);
+        // Should regenerate since boost <= 0
+        expect(player.boost).toBe(0.4);
     });
 
-    test('Boost should NOT start if below threshold', () => {
+    test('Boost should consume even at low levels', () => {
         const player = createMockPlayer();
-        player.boost = 5.0; // Below threshold of 10
-        player.isConsumingBoost = false; // Not currently boosting
+        player.boost = 0.5; // Low boost
         player.input = { steering: 0, throttle: 1, boost: true };
 
         updatePlayerPhysics(player, player.input);
 
-        // Should NOT boost
-        // Logic: 
-        // isConsumingBoost (false) && boost > 0 -> false
-        // boost >= 10 -> false
-        // -> isBoosting = false
-        // -> Regen path
-
-        expect(player.boost).toBe(5.4); // Regenerated instead of consumed
-        expect(player.isConsumingBoost).toBe(false);
+        // Should consume to 0
+        expect(player.boost).toBe(0);
     });
 
-    test('Boost SHOULD start if above threshold', () => {
+    test('Boost should regenerate to max', () => {
         const player = createMockPlayer();
-        player.boost = 10.0; // At threshold
-        player.isConsumingBoost = false;
-        player.input = { steering: 0, throttle: 1, boost: true };
+        player.boost = 99.5;
+        player.input = { steering: 0, throttle: 1, boost: false };
 
         updatePlayerPhysics(player, player.input);
 
-        // Should boost
-        // Logic: boost >= 10 -> true
+        // Should approach 100
+        expect(player.boost).toBe(99.9);
 
-        expect(player.boost).toBe(9.0); // Consumed
-        expect(player.isConsumingBoost).toBe(true);
+        // Another tick to reach 100
+        updatePlayerPhysics(player, player.input);
+        expect(player.boost).toBe(100);
     });
 });

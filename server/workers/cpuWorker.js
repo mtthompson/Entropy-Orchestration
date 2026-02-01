@@ -44,7 +44,7 @@ function getNextWaypoint(cpuPos, waypointIndex, path, lookahead = 8) { // Increa
         return { x: 0, z: 0, waypointIndex: 0 };
     }
 
-    const WAYPOINT_THRESHOLD = 15; // Increased slightly for smoother passing
+    const WAYPOINT_THRESHOLD = 10; // Reduced for more precise waypoint following
     let currentIndex = waypointIndex || 0;
 
     // Scan ahead to find the closest waypoint in the forward direction
@@ -197,7 +197,7 @@ function calculateSteering(cpuData, target, isRacing) {
 
     // Steering proportional to angle - NEGATIVE feedback to close the gap
     // Reduced sensitivity to prevent oscillation
-    const steeringSens = isRacing ? 2.5 : 1.5;
+    const steeringSens = isRacing ? 3.0 : 1.5;
     // Invert sign because Positive Steering -> Turns Right (Decreases Yaw in physics)
     // Wait, Physics: +Steer -> -Yaw (Left?).
     // R (-90). Current (-90). Diff 0.
@@ -217,7 +217,7 @@ function calculateSteering(cpuData, target, isRacing) {
 
     // Throttle: reduce when turning sharply
     const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-    let throttle = 0.6 + 0.4 * turnFactor; // 0.6 to 1.0 based on turn sharpness
+    let throttle = 0.4 + 0.6 * turnFactor; // 0.4 to 1.0 based on turn sharpness
 
     // Reverse Logic: REMOVED for now as it causes stalling without reverse physics
     // Just allow the turnFactor to slow it down (arc turn)

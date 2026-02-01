@@ -383,13 +383,13 @@ const CLOVER_PATH = [
     { x: 120, z: -180 }, { x: 150, z: -120 }, { x: 120, z: -60 }, { x: 60, z: -30 }, { x: 120, z: 0 }, { x: 150, z: 60 },
     { x: 120, z: 120 }, { x: 60, z: 150 }
 ];
-TRACKS.push(buildRaceTrack(CLOVER_PATH, 75, {
+TRACKS.push(buildRaceTrack(CLOVER_PATH, 95, {
     id: 'track_04',
     name: 'Cloverleaf',
     type: 'race',
-    smoothSegments: 1,
+    smoothSegments: 6,
     spawnPoints: generateAlignedSpawns(CLOVER_PATH, 10, 8),
-    startLine: generateStartLine(CLOVER_PATH, 75),
+    startLine: generateStartLine(CLOVER_PATH, 95),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
     floorSize: { width: 420, depth: 520 },
     sceneryType: 'nature'

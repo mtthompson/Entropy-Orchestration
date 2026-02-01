@@ -1183,30 +1183,11 @@ function updatePlayerPhysics(player, input) {
     let brakeRate = 250; // Increased from 160
     let coastRate = 100; // Increased from 70
 
-    // Boost Logic with Hysteresis (Prevent infinite micro-boosting)
-    const BOOST_START_THRESHOLD = 10; // Must have 10% boost to START boosting
+    // Boost Logic - consume when input is true and boost > 0
     let isBoosting = false;
 
-    if (boost) {
-        // If we were already consuming boost, keep going until it hits 0
-        if (player.isConsumingBoost && player.boost > 0) {
-            isBoosting = true;
-        }
-        // If we weren't boosting, we need to meet the threshold
-        else if (player.boost >= BOOST_START_THRESHOLD) {
-            isBoosting = true;
-        } else {
-            // Debug why not boosting if input is true
-            // console.log(`[DEBUG] Not boosting: ${player.boost} < ${BOOST_START_THRESHOLD}`);
-        }
-    }
-
-    // Persist state for next tick
-    player.isConsumingBoost = isBoosting;
-
-    if (isBoosting) {
-        targetSpeed *= 1.5; // Increased from 1.35
-        accelRate *= 1.35; // Increased from 1.25
+    if (boost && player.boost > 0) {
+        isBoosting = true;
         const oldBoost = player.boost;
         player.boost = Math.max(0, player.boost - 1.0);
         // if (Math.random() < 0.05) console.log(`[DEBUG_PHYSICS] ${ player.name } Decreasing: ${ oldBoost.toFixed(1) } -> ${ player.boost.toFixed(1) } `);
@@ -1214,7 +1195,7 @@ function updatePlayerPhysics(player, input) {
         // Debug why not boosting if input is true
         if (boost && player.boost >= 100) {
             // Suppress spam, but log once/sec or random
-            if (Math.random() < 0.01) console.log(`[PHYSICS] Input = True but isBoosting = False.Boost = ${player.boost.toFixed(1)} Threshold = ${BOOST_START_THRESHOLD} `);
+            if (Math.random() < 0.01) console.log(`[PHYSICS] Input = True but isBoosting = False.Boost = ${player.boost.toFixed(1)} `);
         }
         player.boost = Math.min(100, player.boost + 0.4 * boostRegenMod); // Increased regen (was 0.3)
     }

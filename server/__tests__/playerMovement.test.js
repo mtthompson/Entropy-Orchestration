@@ -65,7 +65,7 @@ function updatePlayerPhysicsTest(player, input) {
     // Boost multiplier
     if (boost && player.boost > 0) {
         force.scale(2.5, force);
-        player.boost = Math.max(0, player.boost - 0.8);
+        player.boost = Math.max(0, player.boost - 1.0);
     } else {
         player.boost = Math.min(100, player.boost + 0.3 * boostRegenMod);
     }
