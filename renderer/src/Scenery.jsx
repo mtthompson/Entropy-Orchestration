@@ -716,14 +716,26 @@ function FloatingDebris({ color = '#ff00ff' }) {
 // EASTER EGG - Floating 67s (BATCHED - single useFrame for all)
 // =============================================================================
 
-// Static 67 - no individual useFrame
+// Floating 67 with independent 6 and 7 bobbing
 function Floating67({ position, scale = 1 }) {
     const color = '#67ff67';
+    const sixRef = useRef();
+    const sevenRef = useRef();
+
+    // Animate 6 and 7 independently
+    useFrame((state) => {
+        if (sixRef.current) {
+            sixRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.0 + position[0] * 0.1) * 0.5;
+        }
+        if (sevenRef.current) {
+            sevenRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.0 + position[2] * 0.1 + Math.PI) * 0.5;
+        }
+    });
 
     return (
         <group position={position} scale={scale}>
             {/* Number "6" */}
-            <group position={[-2.5, 0, 0]}>
+            <group ref={sixRef} position={[-2.5, 0, 0]}>
                 <mesh position={[0, 2, 0]}><boxGeometry args={[2, 0.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
                 <mesh position={[0, 0, 0]}><boxGeometry args={[2, 0.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
                 <mesh position={[0, -2, 0]}><boxGeometry args={[2, 0.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
@@ -731,7 +743,7 @@ function Floating67({ position, scale = 1 }) {
                 <mesh position={[0.75, -1, 0]}><boxGeometry args={[0.5, 2.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
             </group>
             {/* Number "7" */}
-            <group position={[2.5, 0, 0]}>
+            <group ref={sevenRef} position={[2.5, 0, 0]}>
                 <mesh position={[0, 2, 0]}><boxGeometry args={[2, 0.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
                 <mesh position={[0.35, 0, 0]} rotation={[0, 0, -0.3]}><boxGeometry args={[0.5, 4.5, 0.5]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} /></mesh>
             </group>
@@ -744,11 +756,10 @@ function Floating67({ position, scale = 1 }) {
 function Scattered67s() {
     const groupRef = useRef();
 
-    // Single useFrame animates entire group (rotation + bob)
+    // Single useFrame animates entire group (rotation)
     useFrame((state) => {
         if (groupRef.current) {
             groupRef.current.rotation.y = state.clock.elapsedTime * 0.1;
-            groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.5) * 2;
         }
     });
 

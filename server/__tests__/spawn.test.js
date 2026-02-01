@@ -1,5 +1,6 @@
 const { getAllTracks } = require('../tracks');
 const { generateHeightMap, getTerrainHeight, getTerrainPreset } = require('../terrain');
+const { validateSpawnFloorHeights } = require('../../scripts/validate_spawn_floor');
 
 describe('Spawn Point Verification', () => {
     const tracks = getAllTracks();
@@ -52,6 +53,17 @@ describe('Spawn Point Verification', () => {
                 // 3.0 height diff over 2.0 units is steep but maybe drivable.
                 expect(maxDiff).toBeLessThan(5.0);
             });
+        });
+    });
+
+    // Test using the comprehensive spawn validation function
+    tracks.forEach(track => {
+        test(`Track ${track.id} (${track.name}) spawn points should be on floor and within bounds`, () => {
+            const result = validateSpawnFloorHeights(track);
+            expect(result.valid).toBe(true);
+            if (!result.valid) {
+                console.log(`Spawn validation failed for ${track.name}:`, result.issues);
+            }
         });
     });
 });

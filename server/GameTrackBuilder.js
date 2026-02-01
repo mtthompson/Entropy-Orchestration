@@ -169,73 +169,91 @@ function subdividePath(points, segments = 5, loop = true) {
  *                   outerPolygon: Array of {x, z} points for outer edge
  *                   innerPolygon: Array of {x, z} points for inner edge
  */
-function createTrackFromPath(originalPoints, width, loop = true) {
-    // Smooth the path first!
-    const points = subdividePath(originalPoints, 6, loop);
+function createTrackFromPath(originalPoints, width, loop = true, smoothSegments = 6) {
+    // Smooth the path for visuals, but use the original control points for collision/boundary generation
+    const smoothPoints = subdividePath(originalPoints, smoothSegments, loop);
+    const points = originalPoints.slice(); // centerline points used for boundary generation
     const boundaries = [];
     const halfWidth = width / 2;
     const height = 4;
 
-    // 1. Calculate Normals for each segment
-    const segmentNormals = [];
-    for (let i = 0; i < points.length; i++) {
-        const p1 = points[i];
-        const p2 = points[(i + 1) % points.length];
+    // 1. (No longer used) Normals per segment are computed implicitly below using the control points.
 
-        if (!loop && i === points.length - 1) {
-            segmentNormals.push({ x: 0, z: 0 }); // Placeholder
-            break;
-        }
-
-        const dx = p2.x - p1.x;
-        const dz = p2.z - p1.z;
-        const len = Math.sqrt(dx * dx + dz * dz);
-        segmentNormals.push({ x: -dz / len, z: dx / len });
-    }
-
-    // 2. Generate Offset Vertices at each Point (Vertex Normals)
+    // 2. Generate Offset Vertices by offsetting each segment, then intersect adjacent offsets to form joins.
     const leftVerts = [];
     const rightVerts = [];
 
-    const count = loop ? points.length : points.length;
-    // If not looping, we handle start/end differently, but simpler to just assumes loops for tracks.
-    // The user claimed "completely invalid", so gaps are likely the issue.
+    // Helper: intersect two infinite lines (p1->p2) and (p3->p4)
+    function intersectLines(a1, a2, b1, b2) {
+        const A1 = a2.z - a1.z;
+        const B1 = a1.x - a2.x;
+        const C1 = A1 * a1.x + B1 * a1.z;
 
-    for (let i = 0; i < points.length; i++) {
-        const p = points[i];
+        const A2 = b2.z - b1.z;
+        const B2 = b1.x - b2.x;
+        const C2 = A2 * b1.x + B2 * b1.z;
 
-        // Previous segment index
-        const prevIdx = (i - 1 + points.length) % points.length;
-        const currIdx = i;
+        const denom = A1 * B2 - A2 * B1;
+        if (Math.abs(denom) < 1e-9) return null; // parallel
 
-        // If open track start/end, handle edge case (not implemented for simplicity, assume loops)
-
-        // Average the normals of the two connecting segments
-        const n1 = segmentNormals[prevIdx];
-        const n2 = segmentNormals[currIdx]; // This segment starting at i
-
-        if (!loop && (i === 0 || i === points.length - 1)) {
-            // Simple cap for ends
-            // ...
-            // Let's stick to the current logic but connect the dots better.
-        }
-
-        // Miter Normal
-        let mx = n1.x + n2.x;
-        let mz = n1.z + n2.z;
-        const mLen = Math.sqrt(mx * mx + mz * mz);
-
-        // Properly scale miter to maintain constant track width
-        // miterScale = 1 / cos(θ/2), where mLen = 2*cos(θ/2)
-        // Clamp miterScale to prevent extreme spikes at sharp corners
-        const miterScale = (mLen > 0.001) ? Math.min(3.0, 2.0 / mLen) : 1.0;
-        mx = (mx / mLen) * miterScale;
-        mz = (mz / mLen) * miterScale;
-
-        leftVerts.push({ x: p.x + mx * halfWidth, z: p.z + mz * halfWidth });
-        rightVerts.push({ x: p.x - mx * halfWidth, z: p.z - mz * halfWidth });
+        const x = (B2 * C1 - B1 * C2) / denom;
+        const z = (A1 * C2 - A2 * C1) / denom;
+        return { x, z };
     }
 
+    // Build offset lines for each segment using the original control points
+    const leftLines = [];
+    const rightLines = [];
+    for (let i = 0; i < points.length; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        const dx = p2.x - p1.x;
+        const dz = p2.z - p1.z;
+        const len = Math.sqrt(dx * dx + dz * dz) || 1.0;
+        const nx = -dz / len;
+        const nz = dx / len;
+
+        leftLines.push({
+            p1: { x: p1.x + nx * halfWidth, z: p1.z + nz * halfWidth },
+            p2: { x: p2.x + nx * halfWidth, z: p2.z + nz * halfWidth }
+        });
+        rightLines.push({
+            p1: { x: p1.x - nx * halfWidth, z: p1.z - nz * halfWidth },
+            p2: { x: p2.x - nx * halfWidth, z: p2.z - nz * halfWidth }
+        });
+    }
+
+    // Intersect adjacent offset lines to get vertex positions
+    for (let i = 0; i < points.length; i++) {
+        const prev = (i - 1 + points.length) % points.length;
+        const cur = i;
+
+        const leftI = intersectLines(leftLines[prev].p1, leftLines[prev].p2, leftLines[cur].p1, leftLines[cur].p2);
+        const rightI = intersectLines(rightLines[prev].p1, rightLines[prev].p2, rightLines[cur].p1, rightLines[cur].p2);
+
+        // If lines are parallel or intersection failed, fallback to simple offset at the point
+        if (leftI) leftVerts.push(leftI);
+        else leftVerts.push({ x: points[i].x + (leftLines[cur].p1.x - points[i].x), z: points[i].z + (leftLines[cur].p1.z - points[i].z) });
+
+        if (rightI) rightVerts.push(rightI);
+        else rightVerts.push({ x: points[i].x + (rightLines[cur].p1.x - points[i].x), z: points[i].z + (rightLines[cur].p1.z - points[i].z) });
+    }
+
+    // For visuals, compute smooth outer/inner polygons from smoothed points
+    const smoothLeft = [];
+    const smoothRight = [];
+    for (let i = 0; i < smoothPoints.length; i++) {
+        const p1 = smoothPoints[i];
+        const p2 = smoothPoints[(i + 1) % smoothPoints.length];
+        const dx = p2.x - p1.x;
+        const dz = p2.z - p1.z;
+        const len = Math.sqrt(dx * dx + dz * dz) || 1.0;
+        const nx = -dz / len;
+        const nz = dx / len;
+        smoothLeft.push({ x: p1.x + nx * halfWidth, z: p1.z + nz * halfWidth });
+        smoothRight.push({ x: p1.x - nx * halfWidth, z: p1.z - nz * halfWidth });
+    }
+    
     // 3. Connect Vertices with Walls
     for (let i = 0; i < points.length; i++) {
         if (!loop && i === points.length - 1) break;

@@ -2,7 +2,9 @@ const { createTrackFromPath, createArena, validateSpawnPoints } = require('./Gam
 
 // Helper to build track with floor polygons from createTrackFromPath result
 function buildRaceTrack(path, width, trackDef) {
-    const result = createTrackFromPath(path, width, true);
+    // Allow per-track control over smoothing to avoid over-smoothing tight corners
+    const smoothSegments = trackDef.smoothSegments || 6;
+    const result = createTrackFromPath(path, width, true, smoothSegments);
 
     // Validate spawn points against the generated (smoothed) boundaries
     const safeSpawns = trackDef.spawnPoints
@@ -353,17 +355,18 @@ TRACKS.push(buildArena(160, 24, {
 // TRACK 3: The Switchback
 // =============================================================================
 const SWITCHBACK_PATH = [
-    { x: -150, z: 175 }, { x: -50, z: 175 }, { x: 50, z: 100 },
+    { x: -150, z: 165 }, { x: -50, z: 165 }, { x: 50, z: 100 },
     { x: 150, z: 100 }, { x: 150, z: 0 },
     { x: 50, z: 0 }, { x: -50, z: -75 },
     { x: -150, z: -75 }, { x: -150, z: -175 },
     { x: -50, z: -175 }, { x: 50, z: -125 }, { x: 150, z: -175 },
     { x: 150, z: -225 }, { x: -150, z: -225 }
 ];
-TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 70, {
+TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 90, {
     id: 'track_03',
     name: 'The Switchback',
     type: 'race',
+    smoothSegments: 2,
     spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 10, 8),
     startLine: generateStartLine(SWITCHBACK_PATH, 70),
     powerupBounds: { minX: -175, maxX: 175, minZ: -250, maxZ: 200 },
@@ -419,7 +422,7 @@ TRACKS.push(buildRaceTrack(DRAGON_PATH, 40, {
     id: 'track_06',
     name: "Dragon's Tail",
     type: 'race',
-    spawnPoints: generateAlignedSpawns(DRAGON_PATH, 15, 8),
+    spawnPoints: generateAlignedSpawns(DRAGON_PATH, 0, 8),
     startLine: generateStartLine(DRAGON_PATH, 40),
     powerupBounds: { minX: -200, maxX: 150, minZ: -275, maxZ: 250 },
     floorSize: { width: 480, depth: 600 },
@@ -456,7 +459,7 @@ TRACKS.push(buildRaceTrack(GP_PATH, 45, {
     id: 'track_08',
     name: 'Grand Prix',
     type: 'race',
-    spawnPoints: generateAlignedSpawns(GP_PATH, 15, 8),
+    spawnPoints: generateAlignedSpawns(GP_PATH, 0, 8),
     startLine: generateStartLine(GP_PATH, 45),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
     floorSize: { width: 420, depth: 520 },

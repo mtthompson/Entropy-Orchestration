@@ -945,8 +945,17 @@ function updatePlayerPhysics(player, input) {
         steerRate = maxSteerRate * speedFactor;
     }
 
-    // Apply steering as angular velocity (more direct control than torque)
-    player.body.angularVelocity.y = -steering * steerRate;
+    // Apply steering as angular velocity (smoothed to avoid instant jumps)
+    const targetAngVelY = -steering * steerRate;
+    const currentAngVelY = player.body.angularVelocity.y || 0;
+    // Smooth factor per tick (0 = no change, 1 = instant). Tuned for arcade feel.
+    const steerSmoothing = 0.28;
+    // Limit maximum change per tick to avoid large instantaneous yaw when inputs jitter
+    const maxAngChange = 0.45; // radians per tick
+    let angDelta = (targetAngVelY - currentAngVelY) * steerSmoothing;
+    if (angDelta > maxAngChange) angDelta = maxAngChange;
+    if (angDelta < -maxAngChange) angDelta = -maxAngChange;
+    player.body.angularVelocity.y = currentAngVelY + angDelta;
 
     // 2. Calculate Forward Direction based on current rotation
     const quaternion = player.body.quaternion;
@@ -955,7 +964,7 @@ function updatePlayerPhysics(player, input) {
     forward.normalize(); // Ensure normalized
 
     // 3. Apply Throttle Force (Aligned with heading)
-    const driveForce = 15000; // Increased from 6000 for better acceleration
+    const driveForce = 6000; // Tuned for arcade acceleration
     const force = forward.clone();
     force.scale(throttle * driveForce, force);
 
@@ -982,13 +991,13 @@ function updatePlayerPhysics(player, input) {
 
     // Apply opposing force to cancel sideways slide
     // Higher grip = more like a car, lower = more like ice
-    const grip = 0.3; // Much weaker grip for spheres
+    const grip = 0.6; // Tuned for tighter lateral grip
     const correctionForce = right.clone();
     correctionForce.scale(-lateralVelocity * grip * player.body.mass * 3, correctionForce);
     player.body.applyForce(correctionForce, player.body.position);
 
     // 5. Speed cap to prevent runaway (modified by mask)
-    const maxSpeed = 200 * maxSpeedMod; // Increased for racing speeds
+    const maxSpeed = 140 * maxSpeedMod; // Tuned max speed for better control
     if (speed > maxSpeed) {
         player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
     }
@@ -2235,8 +2244,8 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Only process input during RACING state
-            if (gameState !== 'RACING') {
+            // Only process input during RACING or COUNTDOWN states
+            if (gameState !== 'RACING' && gameState !== 'COUNTDOWN') {
                 return;
             }
 

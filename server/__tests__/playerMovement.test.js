@@ -104,13 +104,15 @@ function createMockWorld() {
 }
 
 function createMockBody(position = { x: 0, y: 1, z: 0 }, mass = 50) {
-    return new CANNON.Body({
+    const body = new CANNON.Body({
         mass,
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(position.x, position.y, position.z),
         linearDamping: 0.1, // Reduced damping for testing
         angularDamping: 0.6 // Match server value for consistency
     });
+    body.angularFactor.set(0, 1, 0); // Lock X/Z rotation (prevent rolling)
+    return body;
 }
 
 function createMockPlayer(id, options = {}) {
@@ -819,5 +821,62 @@ describe('Human Driving Simulation', () => {
 
         // Low speed steering should be more responsive
         expect(lowSpeedAngularVel).toBeGreaterThan(highSpeedAngularVel);
+    });
+
+    test('car drives straight for long distance with no steering input', () => {
+        const initialPos = player.body.position.clone();
+        const initialAngle = player.body.quaternion.clone();
+
+        // Drive straight for 10 seconds (600 physics ticks) with no steering
+        for (let i = 0; i < 600; i++) {
+            player.input = { steering: 0, throttle: 1, boost: false }; // Full throttle, no steering
+            updatePlayerPhysicsTest(player, player.input);
+            world.step(1/60);
+        }
+
+        const finalPos = player.body.position.clone();
+        const distance = finalPos.distanceTo(initialPos);
+
+        // Should have traveled a significant distance (much more than the curved path test)
+        expect(distance).toBeGreaterThan(100); // Should be much farther than the ~2-3 units from curved test
+
+        // Should still be moving mostly forward (negative Z direction)
+        expect(finalPos.z).toBeLessThan(initialPos.z - 50); // Should have moved backward in Z
+
+        // Should not have deviated much in X direction (straight line)
+        const xDeviation = Math.abs(finalPos.x - initialPos.x);
+        expect(xDeviation).toBeLessThan(5); // Allow small deviation due to physics imperfections
+
+        // Should still be moving at a reasonable speed
+        const finalSpeed = player.body.velocity.length();
+        expect(finalSpeed).toBeGreaterThan(10);
+    });
+
+    test('car responds to steering input during straight driving', () => {
+        // First drive straight for 2 seconds to get up to speed
+        for (let i = 0; i < 120; i++) {
+            player.input = { steering: 0, throttle: 1, boost: false };
+            updatePlayerPhysicsTest(player, player.input);
+            world.step(1/60);
+        }
+
+        const straightPos = player.body.position.clone();
+
+        // Now apply right steering for 2 seconds
+        for (let i = 0; i < 120; i++) {
+            player.input = { steering: 0.5, throttle: 1, boost: false }; // Right steering
+            updatePlayerPhysicsTest(player, player.input);
+            world.step(1/60);
+        }
+
+        const turnedPos = player.body.position.clone();
+
+        // Should have turned and moved in X direction (positive X = right turn)
+        const xMovement = turnedPos.x - straightPos.x;
+        expect(xMovement).toBeGreaterThan(2); // Should have moved right
+
+        // Should still be moving forward overall
+        const zMovement = turnedPos.z - straightPos.z;
+        expect(zMovement).toBeLessThan(-5); // Should still be moving forward (negative Z)
     });
 });
