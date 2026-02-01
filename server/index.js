@@ -401,12 +401,14 @@ function spawnCPUOpponents(count) {
 
         const body = new CANNON.Body({
             mass: 50,
-            shape: new CANNON.Sphere(1),
+            shape: new CANNON.Sphere(1.5), // Increased from 1.0
             position: new CANNON.Vec3(spawn.x + xOffset, spawnY, spawn.z + zOffset),
             linearDamping: 0.1, // Increased from 0.05 for better stability
-            angularDamping: 0.6, // Reduced for more responsive turning
+            angularDamping: 0.5, // Increased from 0.0 for better stability
             allowSleep: false,
-            material: carMaterial
+            material: carMaterial,
+            ccdSpeedThreshold: 15, // Only use CCD at high speeds
+            ccdIterations: 3
         });
         body.angularFactor.set(0, 1, 0); // Lock X/Z rotation (prevent rolling)
         body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), spawn.rotation || 0);
@@ -1405,6 +1407,35 @@ world.addEventListener('postStep', () => {
 // =============================================================================
 const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon', '67Meme']; // Weighted
 
+// =============================================================================
+// OBJECT POOLING
+// =============================================================================
+const powerupPool = [];
+const trapPool = [];
+const MAX_POOL_SIZE = 20;
+
+function initObjectPools() {
+    console.log(`[POOL] Initializing object pools (Size: ${MAX_POOL_SIZE})`);
+    for (let i = 0; i < MAX_POOL_SIZE; i++) {
+        // Powerup pool
+        const pBody = new CANNON.Body({
+            mass: 0,
+            shape: new CANNON.Sphere(1.5),
+            isTrigger: true
+        });
+        powerupPool.push(pBody);
+
+        // Trap pool
+        const tBody = new CANNON.Body({
+            mass: 0,
+            shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 1))
+        });
+        trapPool.push(tBody);
+    }
+}
+
+initObjectPools();
+
 function spawnPowerup() {
     // Prevent accumulation - cap at MAX_POWERUPS
     if (powerups.size >= MAX_POWERUPS) {
@@ -1412,23 +1443,26 @@ function spawnPowerup() {
         return;
     }
 
+    if (powerupPool.length === 0) {
+        console.warn(`[POWERUP] Pool exhausted, skipping spawn`);
+        return;
+    }
+
     const id = uuidv4();
     const type = EXTENDED_POWERUP_TYPES[Math.floor(Math.random() * EXTENDED_POWERUP_TYPES.length)];
 
     // Get random position on track
+    if (!activeTrack) return;
     const pos = getRandomPointOnTrack(activeTrack);
     const x = pos.x;
     const z = pos.z;
     const y = getSpawnHeight(x, z) + 0.5; // Slightly above ground
 
-    const body = new CANNON.Body({
-        mass: 0, // Static
-        shape: new CANNON.Sphere(1.5),
-        position: new CANNON.Vec3(x, y, z),
-        isTrigger: true
-    });
-
+    // Get body from pool
+    const body = powerupPool.pop();
+    body.position.set(x, y, z);
     world.addBody(body);
+
     powerups.set(id, { body, type, position: { x, y, z }, spawnTime: Date.now() });
 
     console.log(`[POWERUP] Spawned ${type} at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) [${powerups.size}/${MAX_POWERUPS}]`);
@@ -1436,7 +1470,9 @@ function spawnPowerup() {
     // Auto-expire after POWERUP_LIFETIME
     setTimeout(() => {
         if (powerups.has(id)) {
-            world.removeBody(powerups.get(id).body);
+            const p = powerups.get(id);
+            world.removeBody(p.body);
+            powerupPool.push(p.body); // Return to pool
             powerups.delete(id);
             console.log(`[POWERUP] Expired ${type} [${powerups.size}/${MAX_POWERUPS}]`);
         }
@@ -1446,7 +1482,7 @@ function spawnPowerup() {
 function checkPowerupCollisions() {
     for (const [pId, powerup] of powerups) {
         for (const [playerId, player] of players) {
-            if (player.type !== 'driver' || !player.body) continue;
+            if (player.type !== 'driver' || !player.body || !powerup.body) continue;
 
             const dist = player.body.position.distanceTo(powerup.body.position);
             if (dist < 2.5) {
@@ -1482,6 +1518,9 @@ function checkPowerupCollisions() {
 
                 // Remove powerup
                 world.removeBody(powerup.body);
+                if (powerupPool.length < MAX_POOL_SIZE) {
+                    powerupPool.push(powerup.body); // Return to pool
+                }
                 powerups.delete(pId);
                 break;
             }
@@ -1502,14 +1541,15 @@ function spawnTrap(x, z, ownerId) {
         return;
     }
 
+    if (trapPool.length === 0) {
+        console.warn(`[TRAP] Pool exhausted, skipping spawn`);
+        return;
+    }
+
     const id = uuidv4();
 
-    const body = new CANNON.Body({
-        mass: 0,
-        shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 1)),
-        position: new CANNON.Vec3(x, 0.5, z)
-    });
-
+    const body = trapPool.pop();
+    body.position.set(x, 0.5, z);
     world.addBody(body);
     traps.set(id, { body, ownerId, position: { x, y: 0.5, z } });
 
@@ -1518,7 +1558,9 @@ function spawnTrap(x, z, ownerId) {
     // Remove trap after 10 seconds
     setTimeout(() => {
         if (traps.has(id)) {
-            world.removeBody(traps.get(id).body);
+            const t = traps.get(id);
+            world.removeBody(t.body);
+            trapPool.push(t.body); // Return to pool
             traps.delete(id);
         }
     }, 10000);
@@ -1701,6 +1743,10 @@ function startCountdown() {
         activateTrackWalls(activeTrack.id);
     }
 
+    // Reset game BEFORE countdown starts so players are moved to spawn points immediately
+    // Fixes the "teleporting at start" issue
+    resetGame();
+
     gameState = 'COUNTDOWN';
     gameTimer = 3;
     broadcastGameState();
@@ -1743,15 +1789,16 @@ function startRace() {
         spawnCPUOpponents(cpuCount);
     }
 
-    // Reset all players to driver
-    resetGame();
+    // resetGame() removed from here - now called in startCountdown()
 
     // Emit track music style
-    io.emit('trackStyle', {
-        trackId: activeTrack.id,
-        trackName: activeTrack.name,
-        theme: getThemeByTrackId(activeTrack.id)
-    });
+    if (activeTrack) {
+        io.emit('trackStyle', {
+            trackId: activeTrack.id,
+            trackName: activeTrack.name,
+            theme: getThemeByTrackId(activeTrack.id)
+        });
+    }
 
     broadcastGameState();
     console.log('[GAME] Race Started!');
@@ -1795,9 +1842,15 @@ function resetGame() {
     }
 
     // Clear powerups and traps
-    for (const [id, p] of powerups) world.removeBody(p.body);
+    for (const [id, p] of powerups) {
+        world.removeBody(p.body);
+        powerupPool.push(p.body);
+    }
     powerups.clear();
-    for (const [id, t] of traps) world.removeBody(t.body);
+    for (const [id, t] of traps) {
+        world.removeBody(t.body);
+        trapPool.push(t.body);
+    }
     traps.clear();
 }
 
@@ -1948,14 +2001,14 @@ function createPlayerBody(player, x, z, rotation = 0) {
     const spawnY = getSpawnHeight(x, z); // Account for terrain height
     const body = new CANNON.Body({
         mass: 50,
-        shape: new CANNON.Sphere(1),
+        shape: new CANNON.Sphere(1.5), // Increased from 1.0 for better visibility/presence
         position: new CANNON.Vec3(x, spawnY, z),
-        linearDamping: 0.0, // No damping for arcade driving
-        angularDamping: 0.0, // No damping for arcade driving
+        linearDamping: 0.1, // Added damping to reduce judder
+        angularDamping: 0.5, // Added damping to reduce erratic spinning
         allowSleep: false,
         material: carMaterial,
-        ccdSpeedThreshold: 1,
-        ccdIterations: 5
+        ccdSpeedThreshold: 15, // Only use CCD at high speeds for performance
+        ccdIterations: 3
     });
     body.angularFactor.set(0, 1, 0); // Lock X/Z rotation (prevent rolling)
 
@@ -2572,6 +2625,13 @@ function gameLoop() {
                 if (!prev || prev.isGhost !== state.isGhost) delta.isGhost = state.isGhost;
                 if (!prev || prev.isJuggernaut !== state.isJuggernaut) delta.isJuggernaut = state.isJuggernaut;
 
+                // Only include race progress if it changed significantly (every waypoint or lap)
+                if (!prev || prev.raceProgress !== state.raceProgress) {
+                    delta.lapsCompleted = state.lapsCompleted;
+                    delta.waypointIndex = state.waypointIndex;
+                    delta.raceProgress = state.raceProgress;
+                }
+
                 // New player? Include all static data
                 if (!prev) {
                     delta.maskType = state.maskType;
@@ -2579,11 +2639,6 @@ function gameLoop() {
                     delta.name = state.name;
                     delta.isCPU = state.isCPU;
                 }
-
-                // Always include race progress for race position calculations
-                delta.lapsCompleted = state.lapsCompleted;
-                delta.waypointIndex = state.waypointIndex;
-                delta.raceProgress = state.raceProgress;
 
                 deltaState.players[id] = delta;
 
@@ -2595,6 +2650,18 @@ function gameLoop() {
                     prev.isShielded = state.isShielded;
                     prev.isGhost = state.isGhost;
                     prev.isJuggernaut = state.isJuggernaut;
+                    prev.raceProgress = state.raceProgress;
+                } else {
+                    // New player: Add to cache so we can do deltas next tick
+                    previousPlayerState.set(id, {
+                        hp: state.hp,
+                        boost: state.boost,
+                        type: state.type,
+                        isShielded: state.isShielded,
+                        isGhost: state.isGhost,
+                        isJuggernaut: state.isJuggernaut,
+                        raceProgress: state.raceProgress
+                    });
                 }
             }
 

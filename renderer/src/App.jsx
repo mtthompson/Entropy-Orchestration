@@ -10,8 +10,8 @@ import { Scenery } from './Scenery';
 import { Audience } from './Audience';
 import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail } from './ParticleEffects';
 import { GameUI } from './GameUI';
-import { useMidiAudio as useAudio } from './useMidiAudio';
-// import { useAudio } from './useAudio';
+// import { useMidiAudio as useAudio } from './useMidiAudio';
+import { useAudio } from './useAudio';
 
 import { ToastNotification } from './ToastNotification';
 import { AdminPanel } from './AdminPanel';
@@ -279,6 +279,128 @@ function TrackSurface({ trackData, theme }) {
 }
 
 // =============================================================================
+// MASK GEOMETRY SWITCHER - moved outside for performance
+const Wheels = ({ blackMat, color }) => (
+    <>
+        <mesh position={[1.2, -0.4, 1.2]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.45, 0.45, 0.6, 12]} />
+            {blackMat}
+        </mesh>
+        <mesh position={[-1.2, -0.4, 1.2]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.45, 0.45, 0.6, 12]} />
+            {blackMat}
+        </mesh>
+        <mesh position={[1.2, -0.4, -1.2]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.45, 0.45, 0.6, 12]} />
+            {blackMat}
+        </mesh>
+        <mesh position={[-1.2, -0.4, -1.2]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.45, 0.45, 0.6, 12]} />
+            {blackMat}
+        </mesh>
+    </>
+);
+
+const GeometricModel = React.memo(({ maskType, color }) => {
+    const mat = <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} metalness={0.9} roughness={0.3} />;
+    const blackMat = <meshStandardMaterial color="#222" metalness={0.1} roughness={0.9} />;
+
+    switch (maskType) {
+        case 'Oni': // Spiky Aggressive
+            return (
+                <group>
+                    <mesh position={[0, 0, 0]}>
+                        <boxGeometry args={[2.4, 0.9, 3.7]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[0.75, 0.75, 1.5]} rotation={[Math.PI / 4, 0, 0]}>
+                        <coneGeometry args={[0.3, 1.2, 8]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[-0.75, 0.75, 1.5]} rotation={[Math.PI / 4, 0, 0]}>
+                        <coneGeometry args={[0.3, 1.2, 8]} />
+                        {mat}
+                    </mesh>
+                    <Wheels blackMat={blackMat} color={color} />
+                </group>
+            );
+        case 'Tech': // Boxy Cyberpunk
+            return (
+                <group>
+                    <mesh position={[0, 0, 0]}>
+                        <boxGeometry args={[2.1, 0.75, 4.5]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[0, 0.6, -0.75]}>
+                        <boxGeometry args={[1.5, 0.6, 1.8]} />
+                        <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} />
+                    </mesh>
+                    <Wheels blackMat={blackMat} color={color} />
+                </group>
+            );
+        case 'Clown': // Wacky Round - Fixed weird geometry
+            return (
+                <group>
+                    <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                        <capsuleGeometry args={[1.0, 2.2, 4, 16]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[0, 1.2, 0.5]}>
+                        <sphereGeometry args={[0.6]} />
+                        <meshStandardMaterial color="red" emissive="red" />
+                    </mesh>
+                    <Wheels blackMat={blackMat} color={color} />
+                </group>
+            );
+        case 'Skull': // Sleek & Bony
+            return (
+                <group>
+                    <mesh position={[0, -0.15, 0]}>
+                        <boxGeometry args={[1.8, 0.6, 4.8]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[0, -0.15, -2.7]} rotation={[Math.PI / 2, 0, 0]}>
+                        <coneGeometry args={[0.9, 1.2, 4]} />
+                        {mat}
+                    </mesh>
+                    {[1.5, 0.75, 0, -0.75, -1.5].map((z, i) => (
+                        <group key={i}>
+                            <mesh position={[1.2, -0.15, z]}>
+                                <boxGeometry args={[0.6, 0.3, 0.3]} />
+                                {mat}
+                            </mesh>
+                            <mesh position={[-1.2, -0.15, z]}>
+                                <boxGeometry args={[0.6, 0.3, 0.3]} />
+                                {mat}
+                            </mesh>
+                        </group>
+                    ))}
+                    <Wheels blackMat={blackMat} color={color} />
+                </group>
+            );
+        case 'Classic':
+        default: // Arcade Racer
+            return (
+                <group>
+                    <mesh position={[0, -0.3, 0]}>
+                        <boxGeometry args={[2.4, 0.75, 4.5]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[0, 0.45, -0.3]}>
+                        <boxGeometry args={[1.8, 0.75, 2.2]} />
+                        {mat}
+                    </mesh>
+                    <mesh position={[0, 0.9, 1.8]}>
+                        <boxGeometry args={[2.4, 0.15, 0.6]} />
+                        {mat}
+                    </mesh>
+                    <Wheels blackMat={blackMat} color={color} />
+                </group>
+            );
+    }
+});
+
+// =============================================================================
 // CAR COMPONENT WITH TRAIL
 // =============================================================================
 function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isLocating }) {
@@ -295,12 +417,29 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
 
     useFrame((state, delta) => {
         if (meshRef.current) {
+            // Smooth Interpolation (Lerp/Slerp)
+            // This prevents "choppiness" by smoothly moving towards server updates
             meshRef.current.position.lerp(targetPos.current, 0.3);
+
+            if (quaternion) {
+                // Physics uses negative Z as forward, but Three.js models face positive Z
+                const physicsQuat = new THREE.Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
+                const correctionQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+                physicsQuat.multiply(correctionQuat);
+
+                // Slerp for smooth rotation
+                meshRef.current.quaternion.slerp(physicsQuat, 0.15);
+            } else if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
+                const targetRotY = Math.atan2(velocity.x, velocity.z);
+                const currentRot = meshRef.current.rotation.y;
+                // Simple lerp for rotation y
+                meshRef.current.rotation.y += (targetRotY - currentRot) * 0.1;
+            }
 
             // Locate effect: scale up and pulse emissive
             if (isLocating) {
                 const pulse = Math.sin(state.clock.elapsedTime * 10) * 0.5 + 1.5;
-                meshRef.current.scale.setScalar(1.5);
+                meshRef.current.scale.lerp(new THREE.Vector3(1.5, 1.5, 1.5), 0.1);
                 meshRef.current.children.forEach(c => {
                     if (c.material) c.material.emissiveIntensity = pulse;
                 });
@@ -309,198 +448,42 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
                     beaconRef.current.material.opacity = Math.sin(state.clock.elapsedTime * 8) * 0.3 + 0.5;
                 }
             } else {
-                meshRef.current.scale.setScalar(1);
-                if (hp < 30) {
-                    // Flash whole group?
-                    meshRef.current.children.forEach(c => {
-                        if (c.material) c.material.emissiveIntensity = Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1;
-                    });
-                } else {
-                    meshRef.current.children.forEach(c => {
-                        if (c.material) c.material.emissiveIntensity = 0.5;
-                    });
-                }
+                meshRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+                const intensity = hp < 30 ? Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1 : 0.5;
+                meshRef.current.children.forEach((c) => {
+                    if (c.material) c.material.emissiveIntensity = intensity;
+                });
             }
 
-            // Apply rotation from quaternion if available, otherwise fallback to velocity
-            if (quaternion) {
-                // Physics uses negative Z as forward, but Three.js models face positive Z
-                // Apply 180-degree Y rotation to align visual car with physics direction
-                const physicsQuat = new THREE.Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
-                const correctionQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-                physicsQuat.multiply(correctionQuat);
-                meshRef.current.quaternion.copy(physicsQuat);
-            } else if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
-                meshRef.current.rotation.y = Math.atan2(velocity.x, velocity.z);
+            // Speed effects
+            if (velocity) {
+                const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                const ef = Math.min(1, speed / 20);
+                if (flameRef.current) {
+                    flameRef.current.visible = ef > 0.1;
+                    if (ef > 0.1) {
+                        flameRef.current.scale.set(0.4 + ef * 0.3, 0.3 + ef * 0.2, 0.5 + ef * 1.5);
+                        flameRef.current.material.opacity = 0.6 + ef * 0.3;
+                    }
+                }
+                if (underglowRef.current) {
+                    underglowRef.current.intensity = 0.8 + ef * 0.5;
+                }
             }
         }
     });
 
-    // MASK GEOMETRY SWITCHER - memoized to prevent recreation
-    const GeometricModel = () => {
-        const mat = <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} metalness={0.9} roughness={0.3} />;
-        const blackMat = <meshStandardMaterial color="#222" metalness={0.1} roughness={0.9} />;
-
-        const Wheels = () => (
-            <>
-                <mesh position={[0.8, -0.3, 0.8]} rotation={[0, 0, Math.PI / 2]}>
-                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
-                    {blackMat}
-                </mesh>
-                <mesh position={[-0.8, -0.3, 0.8]} rotation={[0, 0, Math.PI / 2]}>
-                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
-                    {blackMat}
-                </mesh>
-                <mesh position={[0.8, -0.3, -0.8]} rotation={[0, 0, Math.PI / 2]}>
-                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
-                    {blackMat}
-                </mesh>
-                <mesh position={[-0.8, -0.3, -0.8]} rotation={[0, 0, Math.PI / 2]}>
-                    <cylinderGeometry args={[0.3, 0.3, 0.4, 12]} />
-                    {blackMat}
-                </mesh>
-            </>
-        );
-
-        switch (maskType) {
-            case 'Oni': // Spiky Aggressive
-                return (
-                    <group>
-                        {/* Body */}
-                        <mesh position={[0, 0, 0]}>
-                            <boxGeometry args={[1.6, 0.6, 2.5]} />
-                            {mat}
-                        </mesh>
-                        {/* Horns */}
-                        <mesh position={[0.5, 0.5, 1]} rotation={[Math.PI / 4, 0, 0]}>
-                            <coneGeometry args={[0.2, 0.8, 8]} />
-                            {mat}
-                        </mesh>
-                        <mesh position={[-0.5, 0.5, 1]} rotation={[Math.PI / 4, 0, 0]}>
-                            <coneGeometry args={[0.2, 0.8, 8]} />
-                            {mat}
-                        </mesh>
-                        <Wheels />
-                    </group>
-                );
-            case 'Tech': // Boxy Cyberpunk
-                return (
-                    <group>
-                        <mesh position={[0, 0, 0]}>
-                            <boxGeometry args={[1.4, 0.5, 3]} />
-                            {mat}
-                        </mesh>
-                        <mesh position={[0, 0.4, -0.5]}>
-                            <boxGeometry args={[1.0, 0.4, 1.2]} />
-                            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} />
-                        </mesh>
-                        <Wheels />
-                    </group>
-                );
-            case 'Clown': // Wacky Round
-                return (
-                    <group>
-                        <mesh position={[0, 0, 0]}>
-                            <capsuleGeometry args={[0.7, 1.5, 4, 8]} rotation={[Math.PI / 2, 0, 0]} /> {/* Capsule need latest drei or three? three has it. */}
-                            {/* Fallback to cylinder/sphere if capsule fails: Sphere scale */}
-                            <sphereGeometry args={[1, 16, 16]} />
-                            {mat}
-                        </mesh>
-                        <mesh position={[0, 0.8, 0]}>
-                            <sphereGeometry args={[0.4]} />
-                            <meshStandardMaterial color="red" emissive="red" />
-                        </mesh>
-                        <Wheels />
-                    </group>
-                );
-            case 'Skull': // Sleek & Bony
-                return (
-                    <group>
-                        {/* Main Spine/Body */}
-                        <mesh position={[0, -0.1, 0]}>
-                            <boxGeometry args={[1.2, 0.4, 3.2]} />
-                            {mat}
-                        </mesh>
-                        {/* Sharp Nose */}
-                        <mesh position={[0, -0.1, -1.8]} rotation={[Math.PI / 2, 0, 0]}>
-                            <coneGeometry args={[0.6, 0.8, 4]} />
-                            {mat}
-                        </mesh>
-                        {/* Ribs / Side structures */}
-                        {[1, 0.5, 0, -0.5, -1].map((z, i) => (
-                            <group key={i}>
-                                <mesh position={[0.8, -0.1, z]}>
-                                    <boxGeometry args={[0.4, 0.2, 0.2]} />
-                                    {mat}
-                                </mesh>
-                                <mesh position={[-0.8, -0.1, z]}>
-                                    <boxGeometry args={[0.4, 0.2, 0.2]} />
-                                    {mat}
-                                </mesh>
-                            </group>
-                        ))}
-                        <Wheels />
-                    </group>
-                );
-            case 'Classic':
-            default: // Arcade Racer
-                return (
-                    <group>
-                        <mesh position={[0, -0.2, 0]}>
-                            <boxGeometry args={[1.6, 0.5, 3]} />
-                            {mat}
-                        </mesh>
-                        <mesh position={[0, 0.3, -0.2]}>
-                            <boxGeometry args={[1.2, 0.5, 1.5]} />
-                            {mat}
-                        </mesh>
-                        {/* Spoiler */}
-                        <mesh position={[0, 0.6, 1.2]}>
-                            <boxGeometry args={[1.6, 0.1, 0.4]} />
-                            {mat}
-                        </mesh>
-                        <Wheels />
-                    </group>
-                );
-        }
-    };
-
-    // Calculate speed for visual effects - use ref to avoid re-renders every frame
-    const engineFlameRef = useRef(0);
     const flameRef = useRef();
     const underglowRef = useRef();
-
-    useFrame((state) => {
-        if (meshRef.current && velocity) {
-            // Pulse effect based on speed
-            const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-            engineFlameRef.current = Math.min(1, speed / 20);
-
-            // Update flame mesh directly without state
-            if (flameRef.current) {
-                const ef = engineFlameRef.current;
-                flameRef.current.visible = ef > 0.1;
-                if (ef > 0.1) {
-                    flameRef.current.scale.set(0.4 + ef * 0.3, 0.3 + ef * 0.2, 0.5 + ef * 1.5);
-                    flameRef.current.material.opacity = 0.6 + ef * 0.3;
-                }
-            }
-            if (underglowRef.current) {
-                underglowRef.current.intensity = 0.8 + engineFlameRef.current * 0.5;
-            }
-        }
-    });
-
-    // Calculate if car is moving fast enough for tire effects
     const speed = velocity ? Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) : 0;
     const showTireEffects = speed > 5;
 
     return (
-        <Trail width={3} length={10} color={trailColor} attenuation={(t) => t * t}>
-            <group ref={meshRef} position={position} castShadow receiveShadow>
-                <GeometricModel />
+        <Trail width={3 * 1.5} length={10} color={trailColor} attenuation={(t) => t * t}>
+            <group ref={meshRef} castShadow receiveShadow>
+                <GeometricModel maskType={maskType} color={color} />
 
-                {/* Engine Flame Effect - controlled via ref */}
+                {/* Engine Flame Effect */}
                 <mesh ref={flameRef} position={[0, 0.1, 1.5]} visible={false}>
                     <coneGeometry args={[1, 2, 8]} />
                     <meshBasicMaterial
@@ -511,7 +494,7 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
                     />
                 </mesh>
 
-                {/* Underglow - controlled via ref */}
+                {/* Underglow */}
                 <pointLight
                     ref={underglowRef}
                     position={[0, -0.5, 0]}
@@ -520,36 +503,35 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
                     distance={6}
                 />
 
-                {/* Tire Smoke when moving */}
+                {/* Tire Smoke */}
                 {showTireEffects && (
                     <>
-                        <TireSmoke position={[0.8, 0, 0.8]} active={true} color={color} />
-                        <TireSmoke position={[-0.8, 0, 0.8]} active={true} color={color} />
+                        <TireSmoke position={[1.2, 0, 1.2]} active={true} color={color} />
+                        <TireSmoke position={[-1.2, 0, 1.2]} active={true} color={color} />
                     </>
                 )}
 
-                {/* Locate Beacon - vertical light beam when locating */}
+                {/* Locate Beacon */}
                 {isLocating && (
                     <mesh ref={beaconRef} position={[0, 10, 0]}>
                         <cylinderGeometry args={[0.4, 0.8, 20, 8]} />
-                        {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.beaconMaterial ? (
-                            <primitive object={window.__preloadedAssets.beaconMaterial} attach="material" />
-                        ) : (
-                            <meshStandardMaterial
-                                color={color}
-                                emissive={color}
-                                emissiveIntensity={3}
-                                transparent
-                                opacity={0.6}
-                                side={THREE.DoubleSide}
-                            />
-                        )}
+                        <meshStandardMaterial
+                            color={color}
+                            emissive={color}
+                            emissiveIntensity={3}
+                            transparent
+                            opacity={0.6}
+                            side={THREE.DoubleSide}
+                        />
                     </mesh>
                 )}
             </group>
         </Trail>
     );
 }
+
+
+
 
 // =============================================================================
 // EXPLOSION PARTICLES
@@ -719,14 +701,22 @@ function Trap({ position }) {
 
     return (
         <mesh ref={meshRef} position={position}>
-            <boxGeometry args={[2, 1, 2]} />
-            <meshStandardMaterial
-                color="#ff0000"
-                emissive="#ff0000"
-                emissiveIntensity={0.5}
-                transparent
-                opacity={0.7}
-            />
+            {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.trapGeometry ? (
+                <primitive object={window.__preloadedAssets.trapGeometry} attach="geometry" />
+            ) : (
+                <boxGeometry args={[2, 1, 2]} />
+            )}
+            {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.trapMaterial ? (
+                <primitive object={window.__preloadedAssets.trapMaterial} attach="material" />
+            ) : (
+                <meshStandardMaterial
+                    color="#ff0000"
+                    emissive="#ff0000"
+                    emissiveIntensity={0.5}
+                    transparent
+                    opacity={0.7}
+                />
+            )}
         </mesh>
     );
 }
@@ -767,26 +757,50 @@ function Projectile({ position, direction, type }) {
             {/* Main projectile body */}
             <mesh ref={meshRef}>
                 {type === 'missile' ? (
-                    <coneGeometry args={[0.3, 1.2, 8]} />
+                    typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.missileGeometry ? (
+                        <primitive object={window.__preloadedAssets.missileGeometry} attach="geometry" />
+                    ) : (
+                        <coneGeometry args={[0.3, 1.2, 8]} />
+                    )
                 ) : (
-                    <cylinderGeometry args={[0.1, 0.1, 2, 8]} />
+                    typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.laserGeometry ? (
+                        <primitive object={window.__preloadedAssets.laserGeometry} attach="geometry" />
+                    ) : (
+                        <cylinderGeometry args={[0.1, 0.1, 2, 8]} />
+                    )
                 )}
-                <meshStandardMaterial
-                    color={color}
-                    emissive={color}
-                    emissiveIntensity={2.5}
-                />
+                {type === 'missile' ? (
+                    typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.missileMaterial ? (
+                        <primitive object={window.__preloadedAssets.missileMaterial} attach="material" />
+                    ) : (
+                        <meshStandardMaterial color="#ff6600" emissive="#ff6600" emissiveIntensity={2.5} />
+                    )
+                ) : (
+                    typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.laserMaterial ? (
+                        <primitive object={window.__preloadedAssets.laserMaterial} attach="material" />
+                    ) : (
+                        <meshStandardMaterial color="#00aaff" emissive="#00aaff" emissiveIntensity={2.5} />
+                    )
+                )}
             </mesh>
 
             {/* Glowing trail sphere */}
             <mesh position={[0, 0, 0.5]}>
-                <sphereGeometry args={[0.4, 8, 8]} />
-                <meshBasicMaterial
-                    color={color}
-                    transparent
-                    opacity={0.6}
-                    blending={THREE.AdditiveBlending}
-                />
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.projectileTrailGeometry ? (
+                    <primitive object={window.__preloadedAssets.projectileTrailGeometry} attach="geometry" />
+                ) : (
+                    <sphereGeometry args={[0.4, 8, 8]} />
+                )}
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.projectileTrailMaterial ? (
+                    <primitive object={window.__preloadedAssets.projectileTrailMaterial} attach="material" color={color} />
+                ) : (
+                    <meshBasicMaterial
+                        color={color}
+                        transparent
+                        opacity={0.6}
+                        blending={THREE.AdditiveBlending}
+                    />
+                )}
             </mesh>
 
             {/* Point light for glow effect */}
@@ -966,7 +980,7 @@ function EliminationBanner({ eliminations }) {
 // =============================================================================
 // CHECKERED LINE (Start/Finish)
 // =============================================================================
-function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
+const CheckeredLine = React.memo(function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
     // Calculate position, rotation, length
     const length = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.z - p1.z, 2));
     const centerX = (p1.x + p2.x) / 2;
@@ -992,10 +1006,11 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
 
     texture.repeat.set(length / 2, 1);
 
+    const geometry = useMemo(() => new THREE.PlaneGeometry(length, 4), [length]);
+
     return (
         <group position={[centerX, 0.05, centerZ]} rotation={[-Math.PI / 2, 0, -angle]}>
-            <mesh>
-                <planeGeometry args={[length, 4]} />
+            <mesh geometry={geometry}>
                 <meshBasicMaterial map={texture} side={THREE.DoubleSide} />
             </mesh>
             {/* Poles */}
@@ -1014,7 +1029,7 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
             </mesh>
         </group>
     );
-}
+});
 
 // =============================================================================
 // TRACK WALL COMPONENT - Memoized for performance (NO useFrame per wall!)
@@ -2228,6 +2243,34 @@ export default function App() {
             cache.octahedronGeometry = new THREE.OctahedronGeometry(0.9, 0);
             cache.sphereGeometry = new THREE.SphereGeometry(1.2, 16, 16);
             cache.beaconGeometrySmall = new THREE.CylinderGeometry(0.1, 0.5, 20, 8);
+
+            // Trap & Projectile assets
+            cache.trapGeometry = new THREE.BoxGeometry(2, 1, 2);
+            cache.trapMaterial = new THREE.MeshStandardMaterial({
+                color: "#ff0000",
+                emissive: "#ff0000",
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: 0.7
+            });
+            cache.missileGeometry = new THREE.ConeGeometry(0.3, 1.2, 8);
+            cache.laserGeometry = new THREE.CylinderGeometry(0.1, 0.1, 2, 8);
+            cache.projectileTrailGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+            cache.missileMaterial = new THREE.MeshStandardMaterial({
+                color: "#ff6600",
+                emissive: "#ff6600",
+                emissiveIntensity: 2.5
+            });
+            cache.laserMaterial = new THREE.MeshStandardMaterial({
+                color: "#00aaff",
+                emissive: "#00aaff",
+                emissiveIntensity: 2.5
+            });
+            cache.projectileTrailMaterial = new THREE.MeshBasicMaterial({
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
 
             // expose cache immediately
             window.__preloadedAssets = cache;
