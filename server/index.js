@@ -152,12 +152,48 @@ function preloadAllTrackWalls() {
     console.log(`[TRACK] Finished pre-building walls for ${allTracks.length} tracks`);
 }
 
+// Helper to broadcast track data to all clients (or a specific socket)
+function broadcastTrackData(target = io) {
+    if (!activeTrack) return;
+
+    target.emit('trackData', {
+        id: activeTrack.id,
+        name: activeTrack.name,
+        boundaries: activeTrack.boundaries,
+        floorSize: activeTrack.floorSize,
+        path: activeTrack.path,
+        type: activeTrack.type,
+        // Floor polygons for rendering distinct track/arena surface
+        floorPolygon: activeTrack.floorPolygon,
+        outerPolygon: activeTrack.outerPolygon,
+        innerPolygon: activeTrack.innerPolygon,
+        heightMap: activeHeightMap ? {
+            width: activeHeightMap.width,
+            depth: activeHeightMap.depth,
+            gridWidth: activeHeightMap.gridWidth,
+            gridDepth: activeHeightMap.gridDepth,
+            elementSize: activeHeightMap.elementSize,
+            matrix: activeHeightMap.matrix,
+            hillScale: activeHeightMap.hillScale
+        } : null
+    });
+
+    target.emit('trackStyle', {
+        trackId: activeTrack.id,
+        trackName: activeTrack.name,
+        theme: getThemeByTrackId(activeTrack.id)
+    });
+}
+
 // Select random track - now just swaps pre-built walls instead of creating new ones
 function selectRandomTrack() {
     activeTrack = getRandomTrack();
     console.log(`[TRACK] Selected: ${activeTrack.name}`);
     activateTrackWalls(activeTrack.id);
     createTerrainHeightfield(); // Update terrain for new track
+
+    // Broadcast to all clients so visuals match physics
+    broadcastTrackData();
 }
 
 // Activate pre-built walls for a specific track
@@ -181,11 +217,6 @@ function activateTrackWalls(trackId) {
     } else {
         console.error(`[TRACK] No pre-built walls found for track ${trackId}`);
     }
-}
-
-// Legacy function for compatibility - now uses pre-built walls
-function createTrackWalls() {
-    activateTrackWalls(activeTrack.id);
 }
 
 // Pre-build all walls on startup
@@ -220,8 +251,8 @@ function updateWallPositions() {
         let wallHeight = 5;
         // Keep rotation flat - only Y axis rotation for direction
         const wallData = activeTrack.boundaries.find(w =>
-            Math.abs((w.x1 + w.x2) / 2 - wall.position.x) < 0.1 &&
-            Math.abs((w.z1 + w.z2) / 2 - wall.position.z) < 0.1
+            Math.abs((w.x1 + w.x2) / 2 - wall.position.x) < 0.5 &&
+            Math.abs((w.z1 + w.z2) / 2 - wall.position.z) < 0.5
         );
         if (wallData) {
             wallHeight = wallData.height ?? 5;
@@ -1604,32 +1635,10 @@ function startDemoMode() {
     activeTrack = getRandomRaceTrack();
     console.log(`[DEMO] Selected race track: ${activeTrack.name}`);
 
-    // Clear existing walls and create new ones for the selected track
-    for (const wall of trackWalls) {
-        world.removeBody(wall);
-    }
-    trackWalls.length = 0;
-    createTrackWalls();
-    createTerrainHeightfield(); // Generate terrain for demo track
-
-    // Broadcast track data so renderer displays correct track and music plays
-    io.emit('trackData', {
-        ...activeTrack,
-        heightMap: activeHeightMap ? {
-            width: activeHeightMap.width,
-            depth: activeHeightMap.depth,
-            gridWidth: activeHeightMap.gridWidth,
-            gridDepth: activeHeightMap.gridDepth,
-            elementSize: activeHeightMap.elementSize,
-            matrix: activeHeightMap.matrix,
-            hillScale: activeHeightMap.hillScale
-        } : null
-    });
-    io.emit('trackStyle', {
-        trackId: activeTrack.id,
-        trackName: activeTrack.name,
-        theme: getThemeByTrackId(activeTrack.id)
-    });
+    // Update physics walls and broadcast to clients
+    activateTrackWalls(activeTrack.id);
+    createTerrainHeightfield();
+    broadcastTrackData();
 
     // Spawn 4-6 CPU opponents
     const cpuCount = 4 + Math.floor(Math.random() * 3);
@@ -1689,7 +1698,7 @@ function startCountdown() {
     if (!activeTrack || !activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
         console.error('[ERROR] Track not properly initialized, resetting to default');
         activeTrack = getDefaultTrack();
-        createTrackWalls();
+        activateTrackWalls(activeTrack.id);
     }
 
     gameState = 'COUNTDOWN';
@@ -1979,28 +1988,8 @@ io.on('connection', (socket) => {
     const role = socket.handshake.query.role || 'controller';
     console.log(`[CONNECT] ${socket.id} as ${role}`);
 
-    // Send track data to all clients on connection
-    socket.emit('trackData', {
-        id: activeTrack.id,
-        name: activeTrack.name,
-        boundaries: activeTrack.boundaries,
-        floorSize: activeTrack.floorSize,
-        path: activeTrack.path,
-        type: activeTrack.type,
-        // Floor polygons for rendering distinct track/arena surface
-        floorPolygon: activeTrack.floorPolygon,
-        outerPolygon: activeTrack.outerPolygon,
-        innerPolygon: activeTrack.innerPolygon,
-        heightMap: activeHeightMap ? {
-            width: activeHeightMap.width,
-            depth: activeHeightMap.depth,
-            gridWidth: activeHeightMap.gridWidth,
-            gridDepth: activeHeightMap.gridDepth,
-            elementSize: activeHeightMap.elementSize,
-            matrix: activeHeightMap.matrix,
-            hillScale: activeHeightMap.hillScale
-        } : null
-    });
+    // Send track data to all clients on connection (visuals, physics orientation, terrain)
+    broadcastTrackData(socket);
 
     // Send initial game state
     socket.emit('gameState', { state: gameState, timer: gameTimer, winner: winnerName, isDemo: demoModeActive });
@@ -2078,32 +2067,7 @@ io.on('connection', (socket) => {
                 createTerrainHeightfield(); // Generate terrain for new track
 
                 // Broadcast new track data
-                io.emit('trackData', {
-                    id: activeTrack.id,
-                    name: activeTrack.name,
-                    boundaries: activeTrack.boundaries,
-                    floorSize: activeTrack.floorSize,
-                    path: activeTrack.path,
-                    type: activeTrack.type,
-                    // Floor polygons for rendering
-                    floorPolygon: activeTrack.floorPolygon,
-                    outerPolygon: activeTrack.outerPolygon,
-                    innerPolygon: activeTrack.innerPolygon,
-                    heightMap: activeHeightMap ? {
-                        width: activeHeightMap.width,
-                        depth: activeHeightMap.depth,
-                        gridWidth: activeHeightMap.gridWidth,
-                        gridDepth: activeHeightMap.gridDepth,
-                        elementSize: activeHeightMap.elementSize,
-                        matrix: activeHeightMap.matrix,
-                        hillScale: activeHeightMap.hillScale
-                    } : null
-                });
-                io.emit('trackStyle', {
-                    trackId: activeTrack.id,
-                    trackName: activeTrack.name,
-                    theme: getThemeByTrackId(activeTrack.id)
-                });
+                broadcastTrackData();
                 io.to('renderers').emit('cpuCount', cpuPlayers.size);
 
                 // Reset game state
@@ -2643,6 +2607,17 @@ function gameLoop() {
                 previousPlayerState.delete(id);
             }
         }
+
+        // DEBUG: Emit actual physics wall positions occasionally (e.g., every 60 ticks = 1s)
+        if (tickCounter % 60 === 0) {
+            const debugWalls = trackWalls.map(w => ({
+                position: { x: w.position.x, y: w.position.y, z: w.position.z },
+                quaternion: { x: w.quaternion.x, y: w.quaternion.y, z: w.quaternion.z, w: w.quaternion.w },
+                halfExtents: { x: w.shapes[0].halfExtents.x, y: w.shapes[0].halfExtents.y, z: w.shapes[0].halfExtents.z }
+            }));
+            io.emit('debugWallPositions', debugWalls);
+        }
+
     } catch (error) {
         console.error('[GAMELOOP] Error in game loop:', error.message);
         console.error(error.stack);

@@ -562,7 +562,7 @@ function Explosion({ position, color, onComplete }) {
         try {
             const pre = (window && window.__preloadedAssets && window.__preloadedAssets.explosionTexture);
             if (pre) return pre;
-        } catch (e) {}
+        } catch (e) { }
         return new THREE.TextureLoader().load('/explosion.png');
     }, []);
     const lifeRef = useRef(1);
@@ -1077,6 +1077,23 @@ const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
                 <boxGeometry args={[length + 0.1, 0.15, 0.12]} />
                 <meshBasicMaterial color={secondaryColor} />
             </mesh>
+
+            {/* CORNER PILLAR - Visual joint to close gaps */}
+            <mesh position={[-length / 2, height / 2, 0]}>
+                <cylinderGeometry args={[0.55, 0.55, height, 12]} />
+                <meshStandardMaterial
+                    color={darkWallColor}
+                    emissive={wallColor}
+                    emissiveIntensity={0.5}
+                    metalness={0.8}
+                    roughness={0.2}
+                />
+            </mesh>
+            {/* Pillar cap */}
+            <mesh position={[-length / 2, height, 0]}>
+                <cylinderGeometry args={[0.6, 0.6, 0.2, 12]} />
+                <meshBasicMaterial color={primaryColor} />
+            </mesh>
         </group>
     );
 });
@@ -1487,12 +1504,66 @@ function CameraController({ players, gameState }) {
 }
 
 // =============================================================================
+// DEBUG BOUNDARIES - Renders server physics bodies
+// =============================================================================
+function DebugBoundaries({ active }) {
+    const [debugWalls, setDebugWalls] = useState([]);
+
+    useEffect(() => {
+        if (!active) return;
+
+        const onDebugWalls = (data) => setDebugWalls(data);
+        socket.on('debugWallPositions', onDebugWalls);
+
+        return () => {
+            socket.off('debugWallPositions', onDebugWalls);
+        };
+    }, [active]);
+
+    // Clear on track change
+    useEffect(() => {
+        const onTrackData = () => setDebugWalls([]);
+        socket.on('trackData', onTrackData);
+        return () => socket.off('trackData', onTrackData);
+    }, []);
+
+    if (!active || debugWalls.length === 0) return null;
+
+    return (
+        <group>
+            {debugWalls.map((wall, i) => (
+                <mesh
+                    key={i}
+                    position={[wall.position.x, wall.position.y, wall.position.z]}
+                    quaternion={[wall.quaternion.x, wall.quaternion.y, wall.quaternion.z, wall.quaternion.w]}
+                >
+                    <boxGeometry args={[wall.halfExtents.x * 2, wall.halfExtents.y * 2, wall.halfExtents.z * 2]} />
+                    <meshBasicMaterial color="red" wireframe />
+                </mesh>
+            ))}
+        </group>
+    );
+}
+
+// =============================================================================
 // MAIN SCENE
 // =============================================================================
 function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers }) {
     const [explosions, setExplosions] = useState([]);
+    const [showDebug, setShowDebug] = useState(false);
     const prevPlayersRef = useRef({});
     const { gl } = useThree();
+
+    // Debug Toggle (F9)
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'F9') {
+                setShowDebug(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     // Performance monitoring
     const lastTime = useRef(performance.now());
@@ -1661,6 +1732,9 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
 
             {/* Ambient Particle Effects */}
             <AmbientParticles theme={theme} />
+
+            {/* Debug Walls (Server Physics) */}
+            <DebugBoundaries active={showDebug} />
 
             {/* Track Walls */}
             <TrackBoundaries boundaries={trackData?.boundaries} theme={theme} heightMap={trackData?.heightMap} />
@@ -2081,7 +2155,7 @@ export default function App() {
             // Explosion sprite texture
             const loader = new THREE.TextureLoader();
             loader.load('/explosion.png', (tex) => {
-                try { tex.encoding = THREE.sRGBEncoding; } catch (e) {}
+                try { tex.encoding = THREE.sRGBEncoding; } catch (e) { }
                 tex.needsUpdate = true;
                 cache.explosionTexture = tex;
                 // also set a sprite material for quick reuse
