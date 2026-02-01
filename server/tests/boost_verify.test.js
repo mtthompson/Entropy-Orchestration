@@ -63,11 +63,11 @@ describe('Boost Logic Verification', () => {
 
         expect(player.boost).toBe(0);
 
-        // Next tick - still holding boost, but empty
+        // Next tick - still holding boost, but empty - should stay at 0
         updatePlayerPhysics(player, player.input);
 
-        // Should regenerate since boost <= 0
-        expect(player.boost).toBe(0.4);
+        // Should stay at 0 since boost input is still true
+        expect(player.boost).toBe(0);
     });
 
     test('Boost should consume even at low levels', () => {

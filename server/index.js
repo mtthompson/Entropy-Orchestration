@@ -117,9 +117,9 @@ const PORT = process.env.PORT || 3000;
 const TICK_RATE = 60;
 const DAMAGE_THRESHOLD = 20; // Increased from 15 to make it harder to kill
 const MAX_SPEED = 250; // Increased from 210
-const POWERUP_SPAWN_INTERVAL = 7000; // 5-10s average
+const POWERUP_SPAWN_INTERVAL = 5000; // 5-10s average
 const POWERUP_TYPES = ['Repair', 'Boost'];
-const MAX_POWERUPS = 10; // Prevent accumulation during idle
+const MAX_POWERUPS = 15; // Prevent accumulation during idle
 const MAX_TRAPS = 15; // Prevent trap spam
 const POWERUP_LIFETIME = 30000; // Powerups expire after 30 seconds
 const RESPAWN_COOLDOWN = 5000; // 5 seconds to respawn
@@ -1203,12 +1203,10 @@ function updatePlayerPhysics(player, input) {
         const oldBoost = player.boost;
         player.boost = Math.max(0, player.boost - 1.0);
         // if (Math.random() < 0.05) console.log(`[DEBUG_PHYSICS] ${ player.name } Decreasing: ${ oldBoost.toFixed(1) } -> ${ player.boost.toFixed(1) } `);
-    } else {
-        // Debug why not boosting if input is true
-        if (boost && player.boost >= 100) {
-            // Suppress spam, but log once/sec or random
-            if (Math.random() < 0.01) console.log(`[PHYSICS] Input = True but isBoosting = False.Boost = ${player.boost.toFixed(1)} `);
-        }
+    }
+
+    // Regenerate boost only when not boosting
+    if (!boost) {
         player.boost = Math.min(100, player.boost + 0.4 * boostRegenMod); // Increased regen (was 0.3)
     }
 
@@ -1361,6 +1359,9 @@ world.addEventListener('postStep', () => {
             // Ghost Logic: If either is Ghost, ignore collision
             if (p1.isGhost || p2.isGhost) continue;
 
+            // Additional safety checks
+            if (!p1.body || !p2.body) continue;
+
             // Check if bodies are colliding
             const dist = p1.body.position.distanceTo(p2.body.position);
             if (dist < 3.2) { // Overlapping spheres
@@ -1435,6 +1436,15 @@ world.addEventListener('postStep', () => {
                     io.to(id1).emit('damage', { hp: p1.hp, damage: damage1 });
                     io.to(id2).emit('damage', { hp: p2.hp, damage: damage2 });
 
+                    // Prevent cars from flying - apply downward force and limit vertical velocity
+                    const groundForce = new CANNON.Vec3(0, -500, 0); // Strong downward force
+                    p1.body.applyForce(groundForce, p1.body.position);
+                    p2.body.applyForce(groundForce, p2.body.position);
+
+                    // Limit vertical velocity to prevent flying
+                    if (p1.body.velocity.y > 5) p1.body.velocity.y = 5;
+                    if (p2.body.velocity.y < -5) p2.body.velocity.y = -5; // Allow some upward bounce but limit it
+
                     // Check for deaths
                     if (p1.hp <= 0) {
                         switchToDrone(id1);
@@ -1458,6 +1468,9 @@ world.addEventListener('postStep', () => {
 
             // Ghost Logic
             if (player.isGhost || cpu.isGhost) continue;
+
+            // Additional safety checks
+            if (!player.body || !cpu.body) continue;
 
             const dist = player.body.position.distanceTo(cpu.body.position);
             if (dist < 3.2) {
@@ -1511,10 +1524,12 @@ world.addEventListener('postStep', () => {
 
                     io.to(playerId).emit('damage', { hp: player.hp, damage: damageToPlayer });
 
+                    // Check for deaths before accessing bodies
                     if (player.hp <= 0) {
                         switchToDrone(playerId);
                         updateLeaderboard(cpu.name, 'kills', 1, true);
                         checkWinCondition();
+                        continue; // Skip further processing
                     }
                     if (cpu.hp <= 0) {
                         world.removeBody(cpu.body);
@@ -1527,7 +1542,19 @@ world.addEventListener('postStep', () => {
                         setTimeout(() => {
                             respawnCPU(cpuId);
                         }, RESPAWN_COOLDOWN);
+                        continue; // Skip further processing
                     }
+
+                    // Prevent cars from flying - apply downward force and limit vertical velocity
+                    const groundForce = new CANNON.Vec3(0, -500, 0); // Strong downward force
+                    player.body.applyForce(groundForce, player.body.position);
+                    cpu.body.applyForce(groundForce, cpu.body.position);
+
+                    // Limit vertical velocity to prevent flying
+                    if (player.body.velocity.y > 5) player.body.velocity.y = 5;
+                    if (cpu.body.velocity.y > 5) cpu.body.velocity.y = 5;
+                    if (player.body.velocity.y < -5) player.body.velocity.y = -5;
+                    if (cpu.body.velocity.y < -5) cpu.body.velocity.y = -5;
                 }
             }
         }
@@ -1545,6 +1572,9 @@ world.addEventListener('postStep', () => {
             if (!cpu2.body || cpu2.hp <= 0) continue;
 
             if (cpu1.isGhost || cpu2.isGhost) continue;
+
+            // Additional safety checks
+            if (!cpu1.body || !cpu2.body) continue;
 
             const dist = cpu1.body.position.distanceTo(cpu2.body.position);
             if (dist < 3.2) {
@@ -1591,6 +1621,7 @@ world.addEventListener('postStep', () => {
                     cpu1.hp -= Math.floor(damage1);
                     cpu2.hp -= Math.floor(damage2);
 
+                    // Check for deaths before accessing bodies
                     if (cpu1.hp <= 0) {
                         world.removeBody(cpu1.body);
                         cpu1.body = null;
@@ -1602,7 +1633,7 @@ world.addEventListener('postStep', () => {
                         setTimeout(() => {
                             respawnCPU(id1);
                         }, RESPAWN_COOLDOWN);
-                        break; // Stop checking collisions for this dead CPU
+                        continue; // Skip further processing
                     }
                     if (cpu2.hp <= 0) {
                         world.removeBody(cpu2.body);
@@ -1615,7 +1646,19 @@ world.addEventListener('postStep', () => {
                         setTimeout(() => {
                             respawnCPU(id2);
                         }, RESPAWN_COOLDOWN);
+                        continue; // Skip further processing
                     }
+
+                    // Prevent cars from flying - apply downward force and limit vertical velocity
+                    const groundForce = new CANNON.Vec3(0, -500, 0); // Strong downward force
+                    cpu1.body.applyForce(groundForce, cpu1.body.position);
+                    cpu2.body.applyForce(groundForce, cpu2.body.position);
+
+                    // Limit vertical velocity to prevent flying
+                    if (cpu1.body.velocity.y > 5) cpu1.body.velocity.y = 5;
+                    if (cpu2.body.velocity.y > 5) cpu2.body.velocity.y = 5;
+                    if (cpu1.body.velocity.y < -5) cpu1.body.velocity.y = -5;
+                    if (cpu2.body.velocity.y < -5) cpu2.body.velocity.y = -5;
                 }
             }
         }
@@ -2932,6 +2975,51 @@ function gameLoop() {
             state.raceProgress = (cpu.lapsCompleted || 0) * (activeTrack?.path?.length || 1) + (cpu.waypointIndex || 0);
 
             worldStatePool.players[id] = state;
+        }
+
+        // Eliminate players who fall too far behind to avoid camera issues
+        if (gameState === 'RACING') {
+            let maxProgress = 0;
+            // Find the leader's progress
+            for (const [id, state] of Object.entries(worldStatePool.players)) {
+                if (state.hp > 0 && state.raceProgress > maxProgress) {
+                    maxProgress = state.raceProgress;
+                }
+            }
+
+            const threshold = 40; // waypoints behind leader
+            const playersToEliminate = [];
+
+            // Check human players
+            for (const [id, player] of players) {
+                const state = worldStatePool.players[id];
+                if (state && state.hp > 0 && state.raceProgress < maxProgress - threshold) {
+                    playersToEliminate.push({ id, isCPU: false });
+                }
+            }
+
+            // Check CPU players
+            for (const [id, cpu] of cpuPlayers) {
+                const state = worldStatePool.players[id];
+                if (state && state.hp > 0 && state.raceProgress < maxProgress - threshold) {
+                    playersToEliminate.push({ id, isCPU: true });
+                }
+            }
+
+            // Eliminate them
+            for (const { id, isCPU } of playersToEliminate) {
+                if (isCPU) {
+                    const cpu = cpuPlayers.get(id);
+                    if (cpu) {
+                        world.removeBody(cpu.body);
+                        cpuPlayers.delete(id);
+                        console.log(`[ELIMINATE] CPU ${id} eliminated for falling too far behind`);
+                    }
+                } else {
+                    switchToDrone(id);
+                    console.log(`[ELIMINATE] Player ${id} eliminated for falling too far behind`);
+                }
+            }
         }
 
         // Clear and rebuild powerups (small objects, less critical)

@@ -10,7 +10,7 @@ const CANNON = require('cannon-es');
 // =============================================================================
 let powerups = new Map();
 let players = new Map();
-const MAX_POWERUPS = 10;
+const MAX_POWERUPS = 15;
 const POWERUP_LIFETIME = 30000;
 const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon', '67Meme'];
 

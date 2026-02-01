@@ -1,3 +1,9 @@
+// Mock global timers before requiring the module
+global.setTimeout = jest.fn(() => ({}));
+global.setInterval = jest.fn(() => ({}));
+global.clearTimeout = jest.fn();
+global.clearInterval = jest.fn();
+
 const {
     world,
     players,
@@ -10,13 +16,13 @@ const {
     setGameState,
     TICK_RATE
 } = require('../index');
+
 const CANNON = require('cannon-es');
 
 describe('Collision Mechanics', () => {
     beforeEach(() => {
         // Clear all timers
         jest.clearAllTimers();
-        jest.runOnlyPendingTimers();
         
         // Clear all physics bodies
         const bodies = [...world.bodies];
@@ -43,7 +49,6 @@ describe('Collision Mechanics', () => {
     afterEach(() => {
         // Clear all timers after each test
         jest.clearAllTimers();
-        jest.runOnlyPendingTimers();
     });
 
     test('Head-on collision causes damage and bounce', () => {

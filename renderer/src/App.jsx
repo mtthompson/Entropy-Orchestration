@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
 import { Scenery } from './Scenery';
 import { Audience } from './Audience';
-import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail, ParticleExplosion } from './ParticleEffects';
+import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail, ParticleExplosion, SpeedLinesEffect } from './ParticleEffects';
 import { GameUI } from './GameUI';
 // import { useMidiAudio as useAudio } from './useMidiAudio';
 import { useAudio } from './useAudio';
@@ -452,6 +452,7 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
     const meshRef = useRef();
     const targetPos = useRef(new THREE.Vector3(0, 0, 0));
     const beaconRef = useRef();
+    const [boost, setBoost] = useState(100); // Track boost level for speed lines
 
     // Memoize color to prevent recreation every render
     const trailColor = useMemo(() => new THREE.Color(color), [color]);
@@ -517,6 +518,9 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
         effectState.current.hp = hp;
         effectState.current.boost = boost || 0;
         effectState.current.showTireEffects = speed > 5;
+
+        // Update boost state for speed lines effect
+        setBoost(boost || 100);
     });
 
     const flameRef = useRef();
@@ -1668,7 +1672,7 @@ const PreWarmLayer = React.memo(() => {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers, damageSparks, removeDamageSpark }) {
+function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers, damageSparks, removeDamageSpark, playSfx }) {
     const [explosions, setExplosions] = useState([]);
     const [showDebug, setShowDebug] = useState(false);
     const prevPlayersRef = useRef({});
@@ -1751,6 +1755,22 @@ function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, game
             }
         }
 
+        prevPlayersRef.current = { ...currentPlayers };
+    }, [worldState.players]);
+
+    const removeExplosion = (id) => {
+        setExplosions(exps => exps.filter(e => e.id !== id));
+    };
+
+    const handleRemoveDamageSpark = (id) => {
+        setDamageSparks(sparks => sparks.filter(s => s.id !== id));
+    };
+
+    // Detect player damage for collision sparks
+    useEffect(() => {
+        const prevPlayers = prevPlayersRef.current;
+        const currentPlayers = worldState.players || {};
+
         // Check for players that took damage (HP decreased)
         for (const [id, current] of Object.entries(currentPlayers)) {
             if (current.type === 'driver' && current.position && current.hp !== undefined) {
@@ -1770,15 +1790,7 @@ function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, game
         }
 
         prevPlayersRef.current = { ...currentPlayers };
-    }, [worldState.players]);
-
-    const removeExplosion = (id) => {
-        setExplosions(exps => exps.filter(e => e.id !== id));
-    };
-
-    const handleRemoveDamageSpark = (id) => {
-        setDamageSparks(sparks => sparks.filter(s => s.id !== id));
-    };
+    }, [worldState.players, playSfx]);
 
     // Track-specific HDR environment presets
     const envPresetMap = {
@@ -2475,6 +2487,11 @@ export default function App() {
         if (count > 0) playSfx('countdown');
     }, [playSfx]);
 
+    // Damage spark removal handler
+    const handleRemoveDamageSpark = React.useCallback((id) => {
+        setDamageSparks(prev => prev.filter(spark => spark.id !== id));
+    }, []);
+
     // Track player eliminations for reveal banner
     useEffect(() => {
         // Prevent elimination spam on game restart
@@ -2499,6 +2516,16 @@ export default function App() {
                         timestamp: Date.now()
                     }]);
                     playSfx('explosion');
+                } else if (current.hp < prev.hp && current.position) {
+                    // Player took damage - add damage sparks
+                    const damageAmount = prev.hp - current.hp;
+                    setDamageSparks(sparks => [...sparks, {
+                        id: Date.now() + Math.random(),
+                        position: [current.position.x, current.position.y, current.position.z],
+                        damage: damageAmount,
+                        color: current.color || '#ffaa00', // Use player color or default orange
+                        timestamp: Date.now()
+                    }]);
                 }
             }
         }
@@ -2829,6 +2856,7 @@ export default function App() {
                     locatingPlayers={locatingPlayers}
                     damageSparks={damageSparks}
                     removeDamageSpark={handleRemoveDamageSpark}
+                    playSfx={playSfx}
                 />
             </Canvas>
 

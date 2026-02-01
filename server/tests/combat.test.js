@@ -1,3 +1,9 @@
+// Mock global timers before requiring the module
+global.setTimeout = jest.fn(() => ({}));
+global.setInterval = jest.fn(() => ({}));
+global.clearTimeout = jest.fn();
+global.clearInterval = jest.fn();
+
 const {
     world,
     players,
@@ -16,7 +22,6 @@ describe('Combat System', () => {
     beforeEach(() => {
         // Clear all timers
         jest.clearAllTimers();
-        jest.runOnlyPendingTimers();
         
         // Clear all physics bodies
         const bodies = [...world.bodies];
@@ -43,7 +48,6 @@ describe('Combat System', () => {
     afterEach(() => {
         // Clear all timers after each test
         jest.clearAllTimers();
-        jest.runOnlyPendingTimers();
     });
 
     test('Projectile travels and hits target', () => {

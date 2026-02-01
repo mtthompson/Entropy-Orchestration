@@ -325,7 +325,7 @@ describe('Multi-Collision Survivability', () => {
         // At speed 30, collision every ~1 second
         // Powerups spawn every 7 seconds
         // This means player has chances to heal
-        const POWERUP_SPAWN_INTERVAL = 7000;
+        const POWERUP_SPAWN_INTERVAL = 5000;
         const averageTimeBetweenCollisions = 1500; // 1.5 seconds estimate
         
         // ~4 collisions per powerup spawn

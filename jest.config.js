@@ -1,5 +1,8 @@
 module.exports = {
     testEnvironment: 'node',
     verbose: true,
-    timers: 'fake'
+    timers: 'fake',
+    fakeTimers: {
+        enableGlobally: true
+    }
 };

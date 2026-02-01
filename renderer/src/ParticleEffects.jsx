@@ -524,16 +524,16 @@ export function AmbientParticles({ type = 'dust', bounds, count = 80 }) {
 }
 
 // Speed lines effect (when boosting)
-export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) {
+export function SpeedLinesEffect({ active, color = '#ffffff' }) {
     const linesRef = useRef();
     const count = 60;
 
     const particles = useMemo(() => {
         const positions = new Float32Array(count * 3);
         for (let i = 0; i < count; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 60;
-            positions[i * 3 + 1] = Math.random() * 20 + 5;
-            positions[i * 3 + 2] = Math.random() * -80 - 20;
+            positions[i * 3] = (Math.random() - 0.5) * 4; // Spread horizontally
+            positions[i * 3 + 1] = Math.random() * 3 + 1; // Height variation
+            positions[i * 3 + 2] = Math.random() * -8 - 2; // Behind the car
         }
         return positions;
     }, []);
@@ -543,10 +543,12 @@ export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) 
 
         const pos = linesRef.current.geometry.attributes.position;
         for (let i = 0; i < count; i++) {
-            pos.setZ(i, pos.getZ(i) + 100 * delta);
-            if (pos.getZ(i) > 30) {
-                pos.setZ(i, Math.random() * -80 - 40);
-                pos.setX(i, (Math.random() - 0.5) * 60);
+            // Move lines backward relative to car
+            pos.setZ(i, pos.getZ(i) - 15 * delta);
+            if (pos.getZ(i) < -10) {
+                pos.setZ(i, Math.random() * -2 - 2);
+                pos.setX(i, (Math.random() - 0.5) * 4);
+                pos.setY(i, Math.random() * 3 + 1);
             }
         }
         pos.needsUpdate = true;
@@ -565,10 +567,10 @@ export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) 
                 />
             </bufferGeometry>
             <pointsMaterial
-                size={0.4}
+                size={0.3}
                 color={color}
                 transparent
-                opacity={0.7}
+                opacity={0.8}
                 blending={THREE.AdditiveBlending}
                 sizeAttenuation={true}
             />
