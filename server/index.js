@@ -1752,13 +1752,13 @@ function resetGame() {
         player.waypointIndex = 0;
         player.input = { steering: 0, throttle: 0, boost: false };
         player.speed = 0;
-        player.yaw = spawnPoint.rotation || 0;
 
         // Create new body
         const spawnIndex = spawnCounter % activeTrack.spawnPoints.length;
         const spawnPoint = activeTrack.spawnPoints[spawnIndex];
         const spawnX = spawnPoint.x + (Math.random() - 0.5) * 5;
         const spawnZ = spawnPoint.z + (Math.random() - 0.5) * 5;
+        player.yaw = spawnPoint.rotation || 0;
 
         createPlayerBody(player, spawnX, spawnZ, spawnPoint.rotation || 0);
         spawnCounter++;
