@@ -638,35 +638,59 @@ function Powerup({ position, type }) {
         <group position={position}>
             {/* Main pickup mesh */}
             <mesh ref={meshRef}>
-                <octahedronGeometry args={[0.9, 0]} />
-                <meshStandardMaterial
-                    color={color}
-                    emissive={color}
-                    emissiveIntensity={2}
-                    wireframe
-                />
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.octahedronGeometry ? (
+                    <primitive object={window.__preloadedAssets.octahedronGeometry} attach="geometry" />
+                ) : (
+                    <octahedronGeometry args={[0.9, 0]} />
+                )}
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.powerupMaterials && window.__preloadedAssets.powerupMaterials[type] ? (
+                    <primitive object={window.__preloadedAssets.powerupMaterials[type]} attach="material" />
+                ) : (
+                    <meshStandardMaterial
+                        color={color}
+                        emissive={color}
+                        emissiveIntensity={2}
+                        wireframe
+                    />
+                )}
             </mesh>
 
             {/* Outer pulsing glow */}
             <mesh ref={glowRef}>
-                <sphereGeometry args={[1.2, 16, 16]} />
-                <meshBasicMaterial
-                    color={color}
-                    transparent
-                    opacity={0.3}
-                    blending={THREE.AdditiveBlending}
-                />
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.sphereGeometry ? (
+                    <primitive object={window.__preloadedAssets.sphereGeometry} attach="geometry" />
+                ) : (
+                    <sphereGeometry args={[1.2, 16, 16]} />
+                )}
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.powerupGlowMaterials && window.__preloadedAssets.powerupGlowMaterials[type] ? (
+                    <primitive object={window.__preloadedAssets.powerupGlowMaterials[type]} attach="material" />
+                ) : (
+                    <meshBasicMaterial
+                        color={color}
+                        transparent
+                        opacity={0.3}
+                        blending={THREE.AdditiveBlending}
+                    />
+                )}
             </mesh>
 
             {/* Beacon ray shooting upward */}
             <mesh ref={beaconRef} position={[0, 10, 0]}>
-                <cylinderGeometry args={[0.1, 0.5, 20, 8]} />
-                <meshBasicMaterial
-                    color={color}
-                    transparent
-                    opacity={0.2}
-                    blending={THREE.AdditiveBlending}
-                />
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.beaconGeometrySmall ? (
+                    <primitive object={window.__preloadedAssets.beaconGeometrySmall} attach="geometry" />
+                ) : (
+                    <cylinderGeometry args={[0.1, 0.5, 20, 8]} />
+                )}
+                {typeof window !== 'undefined' && window.__preloadedAssets && window.__preloadedAssets.powerupBeaconMaterials && window.__preloadedAssets.powerupBeaconMaterials[type] ? (
+                    <primitive object={window.__preloadedAssets.powerupBeaconMaterials[type]} attach="material" />
+                ) : (
+                    <meshBasicMaterial
+                        color={color}
+                        transparent
+                        opacity={0.2}
+                        blending={THREE.AdditiveBlending}
+                    />
+                )}
             </mesh>
 
             {/* Animated rings */}
@@ -1026,10 +1050,10 @@ const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
     // Animation now handled by TrackBoundaries with a single shared useFrame
 
     return (
-        <group position={[centerX, 2.5, centerZ]} rotation={[0, -angle, 0]}>
-            {/* Main wall panel - fixed Y position to match server */}
+        <group position={[centerX, 0, centerZ]} rotation={[0, -angle, 0]}>
+            {/* Main wall panel - positioned at height/2 so bottom sits at Y=0 */}
             <mesh position={[0, height / 2, 0]}>
-                <boxGeometry args={[length, height, 5.0]} />
+                <boxGeometry args={[length, height, 0.8]} />
                 <meshStandardMaterial
                     color={darkWallColor}
                     emissive={wallColor}
@@ -2082,6 +2106,53 @@ export default function App() {
 
             // Precreate beacon geometry
             cache.beaconGeometry = new THREE.CylinderGeometry(0.4, 0.8, 20, 8);
+            // Preload powerup materials/geometries to avoid shader compile on first spawn
+            const POWERUP_COLORS = {
+                'Repair': '#00ff00',
+                'Boost': '#ffff00',
+                'Shield': '#00ffff',
+                'Ghost': '#ffffff',
+                'Juggernaut': '#ff0066',
+                'Weapon': '#ff6600',
+                '67Meme': '#67ff67'
+            };
+
+            cache.powerupMaterials = {};
+            cache.powerupGlowMaterials = {};
+            cache.powerupBeaconMaterials = {};
+
+            for (const [k, col] of Object.entries(POWERUP_COLORS)) {
+                const mat = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color(col),
+                    emissive: new THREE.Color(col),
+                    emissiveIntensity: 2,
+                    wireframe: true
+                });
+                mat.needsUpdate = true;
+                cache.powerupMaterials[k] = mat;
+
+                const glow = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(col),
+                    transparent: true,
+                    opacity: 0.3,
+                    blending: THREE.AdditiveBlending
+                });
+                cache.powerupGlowMaterials[k] = glow;
+
+                const beacon = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(col),
+                    transparent: true,
+                    opacity: 0.2,
+                    blending: THREE.AdditiveBlending
+                });
+                cache.powerupBeaconMaterials[k] = beacon;
+            }
+
+            // Precreate common geometries used by powerups
+            cache.octahedronGeometry = new THREE.OctahedronGeometry(0.9, 0);
+            cache.sphereGeometry = new THREE.SphereGeometry(1.2, 16, 16);
+            cache.beaconGeometrySmall = new THREE.CylinderGeometry(0.1, 0.5, 20, 8);
+
             // expose cache immediately
             window.__preloadedAssets = cache;
         } catch (e) {
