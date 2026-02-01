@@ -378,20 +378,29 @@ TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 90, {
 // TRACK 4: Cloverleaf
 // =============================================================================
 const CLOVER_PATH = [
-    { x: 60, z: 150 }, { x: 120, z: 120 }, { x: 150, z: 60 }, { x: 120, z: 0 }, { x: 60, z: -30 },
-    { x: 120, z: -60 }, { x: 150, z: -120 }, { x: 120, z: -180 }, { x: 60, z: -210 }, { x: 0, z: -180 }, { x: -60, z: -210 },
-    { x: -120, z: -180 }, { x: -150, z: -120 }, { x: -120, z: -60 }, { x: -60, z: -30 }, { x: -120, z: 0 }, { x: -150, z: 60 },
-    { x: -120, z: 120 }, { x: -60, z: 150 }, { x: 0, z: 180 }
+    { x: 0, z: 180 }, { x: 50, z: 170 },
+    // Right loop
+    { x: 90, z: 140 }, { x: 110, z: 100 }, { x: 100, z: 60 }, { x: 70, z: 40 }, { x: 40, z: 50 },
+    // Top loop
+    { x: 60, z: 20 }, { x: 90, z: 0 }, { x: 90, z: -40 }, { x: 60, z: -60 }, { x: 30, z: -50 },
+    // Bottom-right loop
+    { x: 50, z: -80 }, { x: 80, z: -110 }, { x: 80, z: -150 }, { x: 50, z: -180 }, { x: 10, z: -180 },
+    // Bottom-left loop
+    { x: -30, z: -180 }, { x: -60, z: -150 }, { x: -60, z: -110 }, { x: -30, z: -80 },
+    // Left loop
+    { x: -50, z: -50 }, { x: -80, z: -60 }, { x: -110, z: -40 }, { x: -110, z: 0 }, { x: -80, z: 20 },
+    // Connect back
+    { x: -60, z: 40 }, { x: -90, z: 60 }, { x: -100, z: 100 }, { x: -80, z: 140 }, { x: -40, z: 170 }
 ];
-TRACKS.push(buildRaceTrack(CLOVER_PATH, 95, {
+TRACKS.push(buildRaceTrack(CLOVER_PATH, 50, {
     id: 'track_04',
     name: 'Cloverleaf',
     type: 'race',
-    smoothSegments: 6,
+    smoothSegments: 4,
     spawnPoints: generateAlignedSpawns(CLOVER_PATH, 10, 8),
-    startLine: generateStartLine(CLOVER_PATH, 95),
-    powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
-    floorSize: { width: 420, depth: 520 },
+    startLine: generateStartLine(CLOVER_PATH, 50),
+    powerupBounds: { minX: -150, maxX: 150, minZ: -200, maxZ: 200 },
+    floorSize: { width: 380, depth: 480 },
     sceneryType: 'nature'
 }));
 
