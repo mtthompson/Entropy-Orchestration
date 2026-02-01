@@ -1,6 +1,10 @@
 const {
     world,
     players,
+    cpuPlayers,
+    projectiles,
+    powerups,
+    traps,
     createPlayerBody,
     gameLoop,
     setGameState
@@ -9,14 +13,36 @@ const CANNON = require('cannon-es');
 
 describe('Gameplay Logic', () => {
     beforeEach(() => {
+        // Clear all timers
+        jest.clearAllTimers();
+        jest.runOnlyPendingTimers();
+        
+        // Clear all physics bodies
         const bodies = [...world.bodies];
         bodies.forEach(b => world.removeBody(b));
+        
+        // Clear all global collections
+        players.clear();
+        cpuPlayers.clear();
+        projectiles.clear();
+        powerups.clear();
+        traps.clear();
+        
+        // Reset game state
+        setGameState('LOBBY');
+        
+        // Add ground plane
         const groundShape = new CANNON.Plane();
         const groundBody = new CANNON.Body({ mass: 0 });
         groundBody.addShape(groundShape);
         groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
         world.addBody(groundBody);
-        players.clear();
+    });
+
+    afterEach(() => {
+        // Clear all timers after each test
+        jest.clearAllTimers();
+        jest.runOnlyPendingTimers();
     });
 
     test('Player switches to Drone on death', () => {

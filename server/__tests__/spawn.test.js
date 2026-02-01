@@ -60,10 +60,8 @@ describe('Spawn Point Verification', () => {
     tracks.forEach(track => {
         test(`Track ${track.id} (${track.name}) spawn points should be on floor and within bounds`, () => {
             const result = validateSpawnFloorHeights(track);
+            console.log(`Spawn validation for ${track.name}:`, result.issues);
             expect(result.valid).toBe(true);
-            if (!result.valid) {
-                console.log(`Spawn validation failed for ${track.name}:`, result.issues);
-            }
         });
     });
 });

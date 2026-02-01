@@ -137,7 +137,7 @@ const io = new Server(httpServer, {
 // PHYSICS WORLD
 // =============================================================================
 const world = new CANNON.World({
-    gravity: new CANNON.Vec3(0, -9.82, 0)
+    gravity: new CANNON.Vec3(0, -15, 0)
 });
 world.broadphase = new CANNON.SAPBroadphase(world);
 world.allowSleep = true;
@@ -838,6 +838,7 @@ function createProjectile(ownerId, type, position, direction) {
         body.velocity.set(direction.x * speed, 0, direction.z * speed);
         body.angularVelocity.set(0, 0, 0);
         body.quaternion.set(0, 0, 0, 1);
+        body.type = CANNON.Body.KINEMATIC; // Ensure pooled projectiles are kinematic
         body.wakeUp();
         body.collisionResponse = true; // Enable collisions
         fromPool = true;
@@ -845,6 +846,7 @@ function createProjectile(ownerId, type, position, direction) {
     } else {
         body = new CANNON.Body({
             mass: 1,
+            type: CANNON.Body.KINEMATIC, // Projectiles not affected by gravity
             shape: new CANNON.Sphere(0.3),
             position: new CANNON.Vec3(position.x, position.y, position.z),
             linearDamping: 0,
@@ -860,6 +862,8 @@ function createProjectile(ownerId, type, position, direction) {
         ownerId,
         type,
         damage,
+        direction: { x: direction.x, y: 0, z: direction.z }, // Store direction for kinematic movement
+        speed,
         createdAt: Date.now()
     };
 
@@ -898,8 +902,16 @@ function createProjectile(ownerId, type, position, direction) {
 
 function updateProjectiles() {
     const now = Date.now();
+    const deltaTime = 1 / 60; // Assuming 60fps
 
     for (const [projId, proj] of projectiles) {
+        // Update position for kinematic projectiles
+        if (proj.body.type === CANNON.Body.KINEMATIC) {
+            proj.body.position.x += proj.direction.x * proj.speed * deltaTime;
+            proj.body.position.y += proj.direction.y * proj.speed * deltaTime;
+            proj.body.position.z += proj.direction.z * proj.speed * deltaTime;
+        }
+
         // Check collision with players
         for (const [playerId, player] of players) {
             if (playerId === proj.ownerId) continue; // Can't hit yourself
@@ -3152,6 +3164,7 @@ module.exports = {
     spawnCPUOpponents,
     getActiveTrack: () => activeTrack, // Getter for test
     selectRandomTrack,
+    getRandomRaceTrack,
     setGameState: (state) => { gameState = state; }, // Helper for test
     powerups,
     projectiles,

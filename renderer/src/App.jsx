@@ -463,7 +463,7 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
         const player = worldStateRef.current.players[id];
         if (!player || !player.position || !meshRef.current) return;
 
-        const { position, velocity, q: quaternion, hp } = player;
+        const { position, velocity, q: quaternion, hp, boost } = player;
         targetPos.current.set(position.x, position.y, position.z);
 
         // Physics Interpolation
@@ -483,7 +483,7 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
         // Locate & Damage effects
         if (isLocating) {
             const pulse = Math.sin(state.clock.elapsedTime * 10) * 0.5 + 1.5;
-            meshRef.current.scale.lerp(new THREE.Vector3(1.5, 1.5, 1.5), 0.1);
+            meshRef.current.scale.lerp(new THREE.Vector3(3, 3, 3), 0.1);
             meshRef.current.children.forEach(c => {
                 if (c.material) c.material.emissiveIntensity = pulse;
             });
@@ -491,7 +491,7 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
                 beaconRef.current.material.opacity = Math.sin(state.clock.elapsedTime * 8) * 0.3 + 0.5;
             }
         } else {
-            meshRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+            meshRef.current.scale.lerp(new THREE.Vector3(2, 2, 2), 0.1);
             const intensity = hp < 30 ? Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1 : 0.5;
             meshRef.current.children.forEach((c) => {
                 if (c.material) c.material.emissiveIntensity = intensity;
@@ -515,6 +515,7 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
         // Update effect refs for children
         effectState.current.velocity = velocity || { x: 0, y: 0, z: 0 };
         effectState.current.hp = hp;
+        effectState.current.boost = boost || 0;
         effectState.current.showTireEffects = speed > 5;
     });
 
@@ -522,7 +523,7 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
     const underglowRef = useRef();
 
     return (
-        <Trail width={3 * 1.5} length={10} color={trailColor} attenuation={(t) => t * t}>
+        <Trail width={10} length={50} color={trailColor} attenuation={(t) => t * t}>
             <group ref={meshRef} castShadow receiveShadow>
                 <GeometricModel maskType={maskType} color={color} />
 
@@ -550,6 +551,9 @@ const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
                 <TireSmoke position={[1.2, 0, 1.2]} dataRef={effectState} color={color} />
                 <TireSmoke position={[-1.2, 0, 1.2]} dataRef={effectState} color={color} />
                 <DustTrail position={[0, 0, 1.5]} dataRef={effectState} color="#8b7355" />
+
+                {/* Speed Lines when boosting */}
+                <SpeedLinesEffect active={boost < 50} color={color} />
 
                 {/* Locate Beacon */}
                 {isLocating && (
@@ -1469,6 +1473,15 @@ function CameraController({ players, gameState }) {
             centroid.x /= pack.length;
             centroid.z /= pack.length;
 
+            // Calculate pack spread to adjust camera distance
+            const spread = Math.max(...pack.map(p => Math.sqrt((p.position.x - centroid.x)**2 + (p.position.z - centroid.z)**2)));
+            
+            // Dynamic camera distance: closer when players are spread out, farther when clustered
+            const baseDist = 45;
+            const minDist = 25;
+            const spreadFactor = 0.5; // Adjust camera distance by half the spread
+            const cameraDist = Math.max(minDist, baseDist - spread * spreadFactor);
+
             // Use the leader's direction for camera orientation
             const leader = sorted[0];
             let carForward = new THREE.Vector3(0, 0, -1); // Default forward is -Z in Three.js
@@ -1491,8 +1504,6 @@ function CameraController({ players, gameState }) {
             // Smoothly update camera heading
             smoothVel.current.lerp(heading, 0.08);
 
-            // Increased camera distance to show more players
-            const cameraDist = 45;
             const cameraHeight = 20;
 
             // Position camera behind the pack's centroid
@@ -1657,7 +1668,7 @@ const PreWarmLayer = React.memo(() => {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers }) {
+function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers, damageSparks, removeDamageSpark }) {
     const [explosions, setExplosions] = useState([]);
     const [showDebug, setShowDebug] = useState(false);
     const prevPlayersRef = useRef({});
@@ -1740,11 +1751,33 @@ function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, game
             }
         }
 
+        // Check for players that took damage (HP decreased)
+        for (const [id, current] of Object.entries(currentPlayers)) {
+            if (current.type === 'driver' && current.position && current.hp !== undefined) {
+                const prev = prevPlayers[id];
+                if (prev && prev.hp > current.hp && current.hp > 0) {
+                    // Player took damage - create collision sparks and play sound
+                    const damageAmount = prev.hp - current.hp;
+                    setDamageSparks(sparks => [...sparks, {
+                        id: `spark-${id}-${Date.now()}`,
+                        position: [current.position.x, current.position.y, current.position.z],
+                        color: '#ffaa00',
+                        damage: damageAmount
+                    }]);
+                    playSfx('crash');
+                }
+            }
+        }
+
         prevPlayersRef.current = { ...currentPlayers };
     }, [worldState.players]);
 
     const removeExplosion = (id) => {
         setExplosions(exps => exps.filter(e => e.id !== id));
+    };
+
+    const handleRemoveDamageSpark = (id) => {
+        setDamageSparks(sparks => sparks.filter(s => s.id !== id));
     };
 
     // Track-specific HDR environment presets
@@ -1907,6 +1940,17 @@ function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, game
                     position={exp.position}
                     color={exp.color}
                     onComplete={() => removeExplosion(exp.id)}
+                />
+            ))}
+
+            {/* Damage Collision Sparks */}
+            {damageSparks.map(spark => (
+                <CollisionSparks
+                    key={spark.id}
+                    position={spark.position}
+                    color={spark.color}
+                    active={true}
+                    onComplete={() => removeDamageSpark(spark.id)}
                 />
             ))}
 
@@ -2199,6 +2243,7 @@ export default function App() {
     const [eliminations, setEliminations] = useState([]);
     const [screenShake, setScreenShake] = useState(0); // 0-1 intensity
     const [screenFlash, setScreenFlash] = useState(false); // Damage flash effect
+    const [damageSparks, setDamageSparks] = useState([]); // Damage collision sparks
     const [locatingPlayers, setLocatingPlayers] = useState({}); // Track which players are being located
     const [trackTheme, setTrackTheme] = useState({
         primaryColor: '#ff00ff',
@@ -2257,6 +2302,41 @@ export default function App() {
     useEffect(() => {
         localStorage.setItem('graphicsSettings', JSON.stringify(graphicsSettings));
     }, [graphicsSettings]);
+
+    // Wake Lock to keep display active
+    useEffect(() => {
+        let wakeLock = null;
+
+        const requestWakeLock = async () => {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake lock acquired');
+                }
+            } catch (err) {
+                console.warn('Wake lock request failed:', err);
+            }
+        };
+
+        requestWakeLock();
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && !wakeLock) {
+                requestWakeLock();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (wakeLock) {
+                wakeLock.release().then(() => {
+                    console.log('Wake lock released');
+                });
+            }
+        };
+    }, []);
 
     // Preload visual/audio assets used by locate/explosion to prevent first-use hitches
     useEffect(() => {
@@ -2747,6 +2827,8 @@ export default function App() {
                     graphicsSettings={graphicsSettings}
                     onPerformanceUpdate={setPerformanceStats}
                     locatingPlayers={locatingPlayers}
+                    damageSparks={damageSparks}
+                    removeDamageSpark={handleRemoveDamageSpark}
                 />
             </Canvas>
 

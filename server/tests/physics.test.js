@@ -1,9 +1,14 @@
 const {
     world,
     players,
+    cpuPlayers,
+    projectiles,
+    powerups,
+    traps,
     createPlayerBody,
     updatePlayerPhysics,
     gameLoop,
+    setGameState,
     TICK_RATE
 } = require('../index');
 
@@ -11,17 +16,36 @@ const CANNON = require('cannon-es');
 
 describe('Gameplay Physics', () => {
     beforeEach(() => {
-        // Reset world state
+        // Clear all timers
+        jest.clearAllTimers();
+        jest.runOnlyPendingTimers();
+        
+        // Clear all physics bodies
+        const bodies = [...world.bodies];
+        bodies.forEach(b => world.removeBody(b));
+        
+        // Clear all global collections
         players.clear();
-        // Clear physics bodies
-        for (const body of world.bodies) {
-            // Keep the ground plane (usually the first body or mass 0 static)
-            // But actually we might want to clear everything except static content?
-            // Safer to just remove dynamic bodies:
-            if (body.mass > 0) {
-                world.removeBody(body);
-            }
-        }
+        cpuPlayers.clear();
+        projectiles.clear();
+        powerups.clear();
+        traps.clear();
+        
+        // Reset game state
+        setGameState('LOBBY');
+        
+        // Add ground plane
+        const groundShape = new CANNON.Plane();
+        const groundBody = new CANNON.Body({ mass: 0 });
+        groundBody.addShape(groundShape);
+        groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+        world.addBody(groundBody);
+    });
+
+    afterEach(() => {
+        // Clear all timers after each test
+        jest.clearAllTimers();
+        jest.runOnlyPendingTimers();
     });
 
     test('Car accelerates when throttle is applied', () => {

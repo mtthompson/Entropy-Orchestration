@@ -9,7 +9,7 @@ const FALL_THRESHOLD = -5; // If y < -5, it fell through (matches server logic)
 
 function createPhysicsWorld() {
     const world = new CANNON.World({
-        gravity: new CANNON.Vec3(0, -9.82, 0)
+        gravity: new CANNON.Vec3(0, -15, 0)
     });
     world.broadphase = new CANNON.SAPBroadphase(world);
     // world.solver.iterations = 20; // Match server

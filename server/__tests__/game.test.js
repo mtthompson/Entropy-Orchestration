@@ -8,7 +8,7 @@ const CANNON = require('cannon-es');
 // Mock minimal game state for testing
 function createMockWorld() {
     return new CANNON.World({
-        gravity: new CANNON.Vec3(0, -9.82, 0)
+        gravity: new CANNON.Vec3(0, -15, 0)
     });
 }
 

@@ -13,7 +13,7 @@ const CANNON = require('cannon-es');
 
 function createTestWorld() {
     const world = new CANNON.World({
-        gravity: new CANNON.Vec3(0, -9.82, 0)
+        gravity: new CANNON.Vec3(0, -15, 0)
     });
     world.broadphase = new CANNON.SAPBroadphase(world);
     world.solver.iterations = 20;
