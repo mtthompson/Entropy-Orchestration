@@ -137,7 +137,7 @@ function preloadAllTrackWalls() {
             const wallBody = new CANNON.Body({
                 mass: 0,
                 shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 2.5)),
-                position: new CANNON.Vec3(centerX, wall.height / 2, centerZ),
+                position: new CANNON.Vec3(centerX, 2.5, centerZ),
                 material: wallMaterial,
                 collisionResponse: false // Disabled until track is active
             });
@@ -204,55 +204,34 @@ function createTerrainHeightfield() {
         terrainBody = null;
     }
 
-    const floorSize = activeTrack.floorSize || { width: 300, depth: 300 };
-    const preset = getTerrainPreset(activeTrack.id, activeTrack.type);
+    // Skip heightfield creation - using flat ground plane only
+    console.log('[TERRAIN] Using flat ground plane (no heightfield)');
 
-    // Generate height map with slightly larger area than floor
-    const terrainWidth = floorSize.width * 1.2;
-    const terrainDepth = floorSize.depth * 1.2;
-
-    activeHeightMap = generateHeightMap(
-        terrainWidth,
-        terrainDepth,
-        preset.resolution,
-        {
-            hillScale: preset.hillScale,
-            hillFrequency: preset.hillFrequency,
-            hillFrequency: preset.hillFrequency,
-            trackPath: activeTrack.path,
-            trackWidth: activeTrack.width || 55, // Use actual track width
-            spawnPoints: activeTrack.spawnPoints // Flatten terrain at spawns
-        }
-    );
-
-    // Create Cannon.js Heightfield
-    const heightfieldShape = new CANNON.Heightfield(activeHeightMap.matrix, {
-        elementSize: activeHeightMap.elementSize
-    });
-
-    terrainBody = new CANNON.Body({
-        mass: 0, // Static
-        material: groundMaterial
-    });
-
-    // Position heightfield - cannon-es heightfield origin is at corner
-    // Need to offset so center of heightfield is at world origin
-    const offsetX = -activeHeightMap.width / 2;
-    const offsetZ = -activeHeightMap.depth / 2;
-
-    // Heightfield is added in XY plane, rotated to XZ
-    terrainBody.addShape(heightfieldShape, new CANNON.Vec3(offsetX, offsetZ, 0));
-    terrainBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-
-    world.addBody(terrainBody);
-    console.log(`[TERRAIN] Created heightfield ${activeHeightMap.gridWidth}x${activeHeightMap.gridDepth}, scale=${preset.hillScale}`);
+    // Update wall positions to match terrain height
+    updateWallPositions();
 }
 
-// Get spawn height at position (for placing cars on terrain)
+// Update wall positions to flat ground level
+function updateWallPositions() {
+    // Place all walls at fixed height - no terrain matching
+    for (const wall of trackWalls) {
+        wall.position.y = 2.5; // Fixed height at wall.height / 2 (height=5)
+        // Keep rotation flat - only Y axis rotation for direction
+        const wallData = activeTrack.boundaries.find(w =>
+            Math.abs((w.x1 + w.x2) / 2 - wall.position.x) < 0.1 &&
+            Math.abs((w.z1 + w.z2) / 2 - wall.position.z) < 0.1
+        );
+        if (wallData) {
+            const angle = Math.atan2(wallData.z2 - wallData.z1, wallData.x2 - wallData.x1);
+            wall.quaternion.setFromEuler(0, -angle, 0); // No slope
+        }
+    }
+    console.log(`[WALLS] Set ${trackWalls.length} walls to flat ground level (Y=2.5)`);
+}
+
+// Get spawn height at position (flat ground)
 function getSpawnHeight(x, z) {
-    if (!activeHeightMap) return 4; // Default safe height
-    // Reduced from +10 to +1.2 to spawn cars on the ground
-    return getTerrainHeight(activeHeightMap, x, z) + 1.2;
+    return 1.2; // Fixed height above flat ground
 }
 
 // Initialize terrain for default track
@@ -937,7 +916,7 @@ function updatePlayerPhysics(player, input) {
     const speed = player.speed;
 
     // 1. ARCADE STEERING - cached yaw for stable, strong turning
-    const baseTurnRate = 20.0; // radians per second (~500% stronger)
+    const baseTurnRate = 10.0; // radians per second (half strength)
     const speedDampen = 1 / (1 + speed * 0.004); // minimal damping at speed
     const lowSpeedBoost = Math.min(1, speed / 3); // reduce steering when nearly stopped
     const steerRate = baseTurnRate * speedDampen * (0.35 + 0.65 * lowSpeedBoost);
@@ -948,7 +927,7 @@ function updatePlayerPhysics(player, input) {
         player.yaw = Math.atan2(initialForward.x, -initialForward.z);
     }
 
-    const maxYawStep = 0.6; // radians per tick
+    const maxYawStep = 0.3; // radians per tick (half step)
     let yawDelta = -steering * steerRate * timestep;
     if (yawDelta > maxYawStep) yawDelta = maxYawStep;
     if (yawDelta < -maxYawStep) yawDelta = -maxYawStep;
@@ -962,7 +941,7 @@ function updatePlayerPhysics(player, input) {
     forward.normalize();
 
     // 3. Arcade Drive: target-speed approach and direct velocity alignment
-    const baseMaxSpeed = 140 * maxSpeedMod;
+    const baseMaxSpeed = 70 * maxSpeedMod;
     let targetSpeed = throttle * baseMaxSpeed;
 
     let accelRate = 95;
@@ -1926,8 +1905,8 @@ function createPlayerBody(player, x, z, rotation = 0) {
         mass: 50,
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(x, spawnY, z),
-        linearDamping: 0.1, // Increased from 0.05 for better stability
-        angularDamping: 0.6, // Slightly increased from 0.5
+        linearDamping: 0.0, // No damping for arcade driving
+        angularDamping: 0.0, // No damping for arcade driving
         allowSleep: false,
         material: carMaterial,
         ccdSpeedThreshold: 1,

@@ -27,7 +27,7 @@ const SERVER_URL = isDev ? 'http://localhost:3000' : window.location.origin;
 const socketPath = isDev ? '/socket.io' : '/api/socket.io';
 const socket = io(SERVER_URL, { query: { role: 'admin' }, path: socketPath });
 
-const HILL_AMPLIFY = 3.0;
+const HILL_AMPLIFY = 0.0; // Disabled - flat terrain only
 
 function getTerrainHeight(heightMap, x, z) {
     if (!heightMap || !heightMap.matrix) return 0;
@@ -1000,43 +1000,21 @@ const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
 
-    // Use pre-computed values if available, otherwise compute (for backwards compatibility)
-    const { length, centerX, centerZ, angle, height, slopeAngle, yPos } = useMemo(() => {
-        // Calculate terrain height at endpoints
-        const y1 = getTerrainHeight(heightMap, wall.x1, wall.z1) * HILL_AMPLIFY;
-        const y2 = getTerrainHeight(heightMap, wall.x2, wall.z2) * HILL_AMPLIFY;
-        const avgY = (y1 + y2) / 2;
-
-        let len, ang;
-
-        if (wall.length !== undefined) {
-            // Pre-computed values from cache
-            len = wall.length;
-            ang = wall.angle;
-        } else {
-            len = Math.sqrt(
-                Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
-            );
-            ang = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
-        }
-
-        // Calculate slope (pitch) to match terrain
-        // Rotate around Z axis because wall is aligned along X
-        const slope = Math.atan2(y2 - y1, len);
-
-        // Use 3D length to prevent gaps when pitched
-        const len3D = Math.sqrt(len * len + (y2 - y1) * (y2 - y1));
+    // Use pre-computed values - flat positioning to match server physics
+    const { length, centerX, centerZ, angle, height } = useMemo(() => {
+        const len = Math.sqrt(
+            Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.z2 - wall.z1, 2)
+        );
+        const ang = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
 
         return {
-            length: len3D,
+            length: len,
             centerX: (wall.x1 + wall.x2) / 2,
             centerZ: (wall.z1 + wall.z2) / 2,
             angle: ang,
-            height: wall.height || 5,
-            slopeAngle: slope,
-            yPos: avgY
+            height: wall.height || 5
         };
-    }, [wall, heightMap]);
+    }, [wall]);
 
     // Memoize materials to prevent recreation
     const darkWallColor = useMemo(() =>
@@ -1048,10 +1026,10 @@ const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
     // Animation now handled by TrackBoundaries with a single shared useFrame
 
     return (
-        <group position={[centerX, yPos, centerZ]} rotation={[0, -angle, slopeAngle]}>
-            {/* Main wall panel - static emissive intensity */}
+        <group position={[centerX, 2.5, centerZ]} rotation={[0, -angle, 0]}>
+            {/* Main wall panel - fixed Y position to match server */}
             <mesh position={[0, height / 2, 0]}>
-                <boxGeometry args={[length, height, 0.08]} />
+                <boxGeometry args={[length, height, 5.0]} />
                 <meshStandardMaterial
                     color={darkWallColor}
                     emissive={wallColor}

@@ -13,8 +13,8 @@ function createBody() {
     mass: 50,
     shape: new CANNON.Sphere(1),
     position: new CANNON.Vec3(0, 0, 0),
-    linearDamping: 0.1,
-    angularDamping: 0.6,
+    linearDamping: 0.0,
+    angularDamping: 0.0,
     allowSleep: false
   });
   body.angularFactor.set(0, 1, 0);
@@ -56,7 +56,7 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
     const speed = velocity.length();
 
     // Arcade steering (match server logic)
-    const baseTurnRate = params.baseTurnRate || 20.0;
+    const baseTurnRate = params.baseTurnRate || 10.0;
     const speedDampen = 1 / (1 + speed * 0.004);
     const lowSpeedBoost = Math.min(1, speed / 3);
     const steerRate = baseTurnRate * speedDampen * (0.4 + 0.6 * lowSpeedBoost);
@@ -64,7 +64,7 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
     const currentForward = new CANNON.Vec3(0, 0, -1);
     body.quaternion.vmult(currentForward, currentForward);
     const currentYaw = Math.atan2(currentForward.x, -currentForward.z);
-    const maxYawStep = params.maxYawStep || 0.6;
+    const maxYawStep = params.maxYawStep || 0.3;
     let yawDelta = -input.steering * steerRate * timestep;
     if (yawDelta > maxYawStep) yawDelta = maxYawStep;
     if (yawDelta < -maxYawStep) yawDelta = -maxYawStep;
@@ -78,7 +78,7 @@ function simulateConfig(name, params, durationSec = 5, inputSchedule = null) {
     forward.normalize();
 
     // Arcade Drive: target-speed approach and direct velocity alignment
-    const baseMaxSpeed = params.maxSpeed || 140;
+    const baseMaxSpeed = params.maxSpeed || 70;
     let targetSpeed = input.throttle * baseMaxSpeed;
 
     let accelRate = params.accelRate || 95;
@@ -165,15 +165,15 @@ async function run() {
   console.log('Starting extended tuning simulations (10–15s runs)...');
 
   const tuned = {
-    maxYawStep: 0.6,
-    maxSpeed: 140,
+    maxYawStep: 0.3,
+    maxSpeed: 70,
     accelRate: 85,
     brakeRate: 120,
     coastRate: 45,
     lateralGrip: 7.5,
     boostSpeedMult: 1.35,
     boostAccelMult: 1.25,
-    baseTurnRate: 20.0
+    baseTurnRate: 10.0
   };
 
   const scenarios = [
