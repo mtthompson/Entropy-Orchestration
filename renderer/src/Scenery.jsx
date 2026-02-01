@@ -81,7 +81,7 @@ function IndustrialScenery({ envIntensity, theme, trackData }) {
             const isArena = trackData.type === 'arena';
             if (isArena) {
                 radius = (trackData.radius || 100) * 1.5 + 20;
-            } else {
+            } else if (trackData.floorSize) {
                 const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
                 radius = floorRadius + 30;
             }
@@ -120,7 +120,7 @@ function IndustrialScenery({ envIntensity, theme, trackData }) {
 
 function SmokeStacks({ trackData }) {
     const positions = useMemo(() => {
-        if (!trackData) return [[-100, -130], [100, -130]];
+        if (!trackData || !trackData.floorSize) return [[-100, -130], [100, -130]];
         const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
         const stackZ = -floorRadius - 20;
         return [[-floorRadius - 20, stackZ], [floorRadius + 20, stackZ]];
@@ -454,7 +454,7 @@ function ArenaLights({ color1 = '#ff00ff', color2 = '#00ffff', castShadow = fals
     const lights = useMemo(() => {
         const arr = [];
         let radius = 100; // Default for arenas
-        if (trackData && trackData.type === 'race') {
+        if (trackData && trackData.type === 'race' && trackData.floorSize) {
             // For race tracks, place outside floor
             const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
             radius = floorRadius + 20;
@@ -499,8 +499,8 @@ function LaserBeams({ color = '#00ff00', count = 4, trackData }) {
     });
 
     const beamPositions = useMemo(() => {
-        if (!trackData || trackData.type === 'arena') {
-            return Array(count).fill([0, 80, 0]); // Center for arenas
+        if (!trackData || trackData.type === 'arena' || !trackData.floorSize) {
+            return Array(count).fill([0, 80, 0]); // Center for arenas or default
         } else {
             // For race tracks, place outside
             const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
@@ -634,8 +634,12 @@ function NeonPalms({ count = 50, envIntensity, color = '#00ffff', trackData }) {
                 radius = arenaRadius * 1.5 + Math.random() * 50;
             } else {
                 // Place outside the floor bounds
-                const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
-                radius = floorRadius + 50 + Math.random() * 50; // Outside floor + margin
+                if (trackData && trackData.floorSize) {
+                    const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
+                    radius = floorRadius + 50 + Math.random() * 50; // Outside floor + margin
+                } else {
+                    radius = 100 + Math.random() * 50; // Default radius when trackData is not available
+                }
             }
 
             temp.push({

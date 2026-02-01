@@ -324,7 +324,12 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
 
             // Apply rotation from quaternion if available, otherwise fallback to velocity
             if (quaternion) {
-                meshRef.current.quaternion.set(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
+                // Physics uses negative Z as forward, but Three.js models face positive Z
+                // Apply 180-degree Y rotation to align visual car with physics direction
+                const physicsQuat = new THREE.Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
+                const correctionQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+                physicsQuat.multiply(correctionQuat);
+                meshRef.current.quaternion.copy(physicsQuat);
             } else if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
                 meshRef.current.rotation.y = Math.atan2(velocity.x, velocity.z);
             }
@@ -2134,6 +2139,7 @@ export default function App() {
                     expanded.players[id] = {
                         position: player.p ? { x: player.p[0], y: player.p[1], z: player.p[2] } : null,
                         velocity: player.v ? { x: player.v[0], y: player.v[1], z: player.v[2] } : null,
+                        q: player.q, // Include quaternion
                         hp: player.hp,
                         type: player.type,
                         maskType: player.maskType,
@@ -2168,6 +2174,7 @@ export default function App() {
                         merged.players[id] = {
                             position: delta.p ? { x: delta.p[0], y: delta.p[1], z: delta.p[2] } : null,
                             velocity: delta.v ? { x: delta.v[0], y: delta.v[1], z: delta.v[2] } : null,
+                            q: delta.q || cached.q, // Include quaternion from delta or cache
                             hp: delta.hp !== undefined ? delta.hp : cached.hp,
                             type: delta.type !== undefined ? delta.type : cached.type,
                             maskType: delta.maskType !== undefined ? delta.maskType : cached.maskType,
