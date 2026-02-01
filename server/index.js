@@ -799,6 +799,10 @@ function updateCPUPhysicsFallback() {
                 cpu.body.velocity.scale(CPU_MAX_SPEED / cpuSpeed, cpu.body.velocity);
             }
 
+            // Prevent flying - clamp vertical velocity to ground cars
+            if (cpu.body.velocity.y > 1) cpu.body.velocity.y = 1;  // Minimal upward velocity
+            if (cpu.body.velocity.y < -15) cpu.body.velocity.y = -15;  // Allow falling but limit excessive downward speed
+
             // Enforce boundaries for CPU too - reset waypoints if teleported
             if (enforceBoundaries(cpu.body)) {
                 cpu.waypointIndex = 0;
@@ -1237,6 +1241,10 @@ function updatePlayerPhysics(player, input) {
         player.body.velocity.scale(maxSpeedValue / currentSpeed, player.body.velocity);
     }
 
+    // Prevent flying - clamp vertical velocity to ground cars
+    if (player.body.velocity.y > 1) player.body.velocity.y = 1;  // Minimal upward velocity
+    if (player.body.velocity.y < -15) player.body.velocity.y = -15;  // Allow falling but limit excessive downward speed
+
     if (enforceBoundaries(player.body)) {
         player.speed = 0;
         if (player.isCPU) {
@@ -1437,13 +1445,13 @@ world.addEventListener('postStep', () => {
                     io.to(id2).emit('damage', { hp: p2.hp, damage: damage2 });
 
                     // Prevent cars from flying - apply downward force and limit vertical velocity
-                    const groundForce = new CANNON.Vec3(0, -500, 0); // Strong downward force
+                    const groundForce = new CANNON.Vec3(0, -800, 0); // Stronger downward force
                     p1.body.applyForce(groundForce, p1.body.position);
                     p2.body.applyForce(groundForce, p2.body.position);
 
-                    // Limit vertical velocity to prevent flying
-                    if (p1.body.velocity.y > 5) p1.body.velocity.y = 5;
-                    if (p2.body.velocity.y < -5) p2.body.velocity.y = -5; // Allow some upward bounce but limit it
+                    // Limit vertical velocity to prevent flying - stricter limits
+                    if (p1.body.velocity.y > 0) p1.body.velocity.y = 0;  // No upward velocity allowed
+                    if (p2.body.velocity.y > 0) p2.body.velocity.y = 0;  // No upward velocity allowed
 
                     // Check for deaths
                     if (p1.hp <= 0) {
@@ -1733,7 +1741,7 @@ function checkPowerupCollisions() {
             if (!entity.isCPU && entity.type !== 'driver') continue;
 
             const dist = entity.body.position.distanceTo(powerup.body.position);
-            if (dist < 2.5) {
+            if (dist < 3.0) {
                 const isCPU = entity.isCPU;
 
                 // Apply effect
@@ -3026,7 +3034,7 @@ function gameLoop() {
         worldStatePool.powerups = {};
         for (const [id, powerup] of powerups) {
             worldStatePool.powerups[id] = {
-                position: powerup.position,
+                position: { x: powerup.body.position.x, y: powerup.body.position.y, z: powerup.body.position.z },
                 type: powerup.type
             };
         }

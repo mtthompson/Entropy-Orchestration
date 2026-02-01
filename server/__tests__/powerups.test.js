@@ -122,8 +122,8 @@ describe('Power-up Spawning', () => {
 describe('Power-up Collection', () => {
     beforeEach(resetMockState);
 
-    test('collision detection radius is 2.5 units', () => {
-        const collisionRadius = 2.5;
+    test('collision detection radius is 3.0 units', () => {
+        const collisionRadius = 3.0;
         
         const playerPos = { x: 0, y: 1, z: 0 };
         const powerupPos = { x: 2, y: 1, z: 0 };
