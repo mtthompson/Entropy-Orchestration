@@ -9,74 +9,99 @@ import { particleWorkerAPI } from './hooks/useParticleWorker';
 // With optional Web Worker offloading for heavy computations
 // =============================================================================
 
-// Check if worker is available (singleton check)
-const useWorker = particleWorkerAPI.isAvailable();
+import { useParticleWorker } from './hooks/useParticleWorker';
+
+// =============================================================================
+// PARTICLE EFFECTS SYSTEM
+// Tire smoke, collision sparks, powerup bursts, ambient particles
+// With optional Web Worker offloading for heavy computations
+// =============================================================================
 
 // Tire smoke particles - shown during drifting/boosting
-export function TireSmoke({ position, active, color = '#888888', intensity = 1 }) {
+export function TireSmoke({ position, active: initialActive, dataRef, color = '#888888', intensity = 1 }) {
     const particlesRef = useRef();
     const count = 30;
-    
-    const particles = useMemo(() => {
-        const positions = new Float32Array(count * 3);
-        const velocities = [];
-        const lifetimes = [];
-        
-        for (let i = 0; i < count; i++) {
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = 0;
-            velocities.push({ x: 0, y: 0, z: 0 });
-            lifetimes.push(0);
-        }
-        return { positions, velocities, lifetimes, count };
-    }, []);
-    
-    useFrame((state, delta) => {
+    const { updateSmoke, isAvailable } = useParticleWorker();
+
+    // Store state in refs to avoid re-creating arrays
+    const stateRef = useRef({
+        positions: new Float32Array(count * 3),
+        velocities: new Array(count).fill(null).map(() => ({ x: 0, y: 0, z: 0 })),
+        lifetimes: new Float32Array(count).fill(0)
+    });
+
+    useFrame(async (state, delta) => {
         if (!particlesRef.current) return;
-        
-        const pos = particlesRef.current.geometry.attributes.position;
-        
-        for (let i = 0; i < particles.count; i++) {
-            particles.lifetimes[i] -= delta;
-            
-            if (particles.lifetimes[i] <= 0 && active) {
-                // Respawn particle at position
-                pos.setXYZ(i, 
-                    position[0] + (Math.random() - 0.5) * 1.5, 
-                    position[1] + 0.2, 
-                    position[2] + (Math.random() - 0.5) * 1.5
-                );
-                particles.velocities[i] = {
-                    x: (Math.random() - 0.5) * 2 * intensity,
-                    y: Math.random() * 2 + 1,
-                    z: (Math.random() - 0.5) * 2 * intensity
-                };
-                particles.lifetimes[i] = Math.random() * 0.4 + 0.2;
-            } else if (particles.lifetimes[i] > 0) {
-                // Update position
-                const v = particles.velocities[i];
-                pos.setXYZ(i,
-                    pos.getX(i) + v.x * delta,
-                    pos.getY(i) + v.y * delta,
-                    pos.getZ(i) + v.z * delta
-                );
-                v.y -= 3 * delta; // Light gravity
+
+        const active = dataRef ? dataRef.current.showTireEffects : initialActive;
+        const s = stateRef.current;
+
+        // Use worker if available
+        if (isAvailable) {
+            const result = await updateSmoke(
+                s.positions,
+                s.velocities,
+                Array.from(s.lifetimes), // Start using arrays for transfer consistency
+                delta,
+                { intensity },
+                position,
+                active
+            );
+
+            if (result) {
+                // Update refs directly from result
+                s.velocities = result.velocities;
+                s.lifetimes = new Float32Array(result.lifetimes);
+
+                // Update geometry from returned positions
+                const posAttr = particlesRef.current.geometry.attributes.position;
+                if (result.positions) {
+                    posAttr.array.set(result.positions);
+                    posAttr.needsUpdate = true;
+                }
             }
+        } else {
+            // Fallback CPU implementation
+            const pos = particlesRef.current.geometry.attributes.position;
+            for (let i = 0; i < count; i++) {
+                s.lifetimes[i] -= delta;
+
+                if (s.lifetimes[i] <= 0 && active) {
+                    pos.setXYZ(i,
+                        position[0] + (Math.random() - 0.5) * 1.5,
+                        position[1] + 0.2,
+                        position[2] + (Math.random() - 0.5) * 1.5
+                    );
+                    s.velocities[i] = {
+                        x: (Math.random() - 0.5) * 2 * intensity,
+                        y: Math.random() * 2 + 1,
+                        z: (Math.random() - 0.5) * 2 * intensity
+                    };
+                    s.lifetimes[i] = Math.random() * 0.4 + 0.2;
+                } else if (s.lifetimes[i] > 0) {
+                    const v = s.velocities[i];
+                    pos.setXYZ(i,
+                        pos.getX(i) + v.x * delta,
+                        pos.getY(i) + v.y * delta,
+                        pos.getZ(i) + v.z * delta
+                    );
+                    v.y -= 3 * delta;
+                }
+            }
+            pos.needsUpdate = true;
         }
-        pos.needsUpdate = true;
-        
-        // Fade when not active
+
+        // Fade
         particlesRef.current.material.opacity = active ? 0.5 : Math.max(0, particlesRef.current.material.opacity - delta * 2);
     });
-    
+
     return (
         <points ref={particlesRef}>
             <bufferGeometry>
                 <bufferAttribute
                     attach="attributes-position"
-                    count={particles.count}
-                    array={particles.positions}
+                    count={count}
+                    array={stateRef.current.positions}
                     itemSize={3}
                 />
             </bufferGeometry>
@@ -98,61 +123,114 @@ export function CollisionSparks({ position, active, color = '#ffaa00', onComplet
     const [visible, setVisible] = useState(true);
     const startTime = useRef(Date.now());
     const count = 25;
-    
-    const particles = useMemo(() => {
-        const positions = new Float32Array(count * 3);
-        const velocities = [];
-        
-        for (let i = 0; i < count; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const elevation = Math.random() * Math.PI * 0.5;
-            const speed = Math.random() * 20 + 10;
-            velocities.push({
-                x: Math.cos(angle) * Math.cos(elevation) * speed,
-                y: Math.sin(elevation) * speed + 5,
-                z: Math.sin(angle) * Math.cos(elevation) * speed
-            });
-            positions[i * 3] = position[0];
-            positions[i * 3 + 1] = position[1];
-            positions[i * 3 + 2] = position[2];
-        }
-        return { positions, velocities, count };
-    }, [position]);
-    
-    useFrame((state, delta) => {
-        if (!particlesRef.current || !visible) return;
-        
+    const { updateExplosion, initExplosion, isAvailable } = useParticleWorker();
+
+    // State ref
+    const stateRef = useRef({
+        initialized: false,
+        positions: new Float32Array(count * 3),
+        velocities: [],
+        lifetimes: []
+    });
+
+    // Initialize logic
+    useEffect(() => {
+        if (stateRef.current.initialized) return;
+
+        const init = async () => {
+            if (isAvailable) {
+                const result = await initExplosion(count, position, { speed: 20 });
+                if (result) {
+                    stateRef.current.positions.set(result.positions);
+                    stateRef.current.velocities = result.velocities;
+                    stateRef.current.lifetimes = result.lifetimes;
+                    stateRef.current.initialized = true;
+
+                    if (particlesRef.current) {
+                        particlesRef.current.geometry.attributes.position.array.set(result.positions);
+                        particlesRef.current.geometry.attributes.position.needsUpdate = true;
+                    }
+                }
+            } else {
+                // Fallback Init
+                stateRef.current.velocities = [];
+                stateRef.current.lifetimes = []; // not used in original but needed for consistency
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const elevation = Math.random() * Math.PI * 0.5;
+                    const speed = Math.random() * 20 + 10;
+                    stateRef.current.velocities.push({
+                        x: Math.cos(angle) * Math.cos(elevation) * speed,
+                        y: Math.sin(elevation) * speed + 5,
+                        z: Math.sin(angle) * Math.cos(elevation) * speed
+                    });
+                    stateRef.current.positions[i * 3] = position[0];
+                    stateRef.current.positions[i * 3 + 1] = position[1];
+                    stateRef.current.positions[i * 3 + 2] = position[2];
+                }
+                stateRef.current.initialized = true;
+            }
+        };
+        init();
+    }, [position, isAvailable]);
+
+    useFrame(async (state, delta) => {
+        if (!particlesRef.current || !visible || !stateRef.current.initialized) return;
+
         const age = (Date.now() - startTime.current) / 1000;
         if (age > 0.4) {
             setVisible(false);
             onComplete?.();
             return;
         }
-        
-        const pos = particlesRef.current.geometry.attributes.position;
-        
-        for (let i = 0; i < particles.count; i++) {
-            const v = particles.velocities[i];
-            pos.setXYZ(i,
-                pos.getX(i) + v.x * delta,
-                pos.getY(i) + v.y * delta,
-                pos.getZ(i) + v.z * delta
+
+        const s = stateRef.current;
+
+        if (isAvailable) {
+            const result = await updateExplosion(
+                s.positions,
+                s.velocities,
+                s.lifetimes,
+                delta,
+                { gravity: 40 }
             );
-            v.y -= 40 * delta; // Strong gravity
+
+            if (result) {
+                s.velocities = result.velocities;
+                s.lifetimes = result.lifetimes;
+                if (result.positions) {
+                    const posAttr = particlesRef.current.geometry.attributes.position;
+                    posAttr.array.set(result.positions);
+                    posAttr.needsUpdate = true;
+                }
+            }
+        } else {
+            // CPU Update
+            const pos = particlesRef.current.geometry.attributes.position;
+            for (let i = 0; i < count; i++) {
+                const v = s.velocities[i];
+                pos.setXYZ(i,
+                    pos.getX(i) + v.x * delta,
+                    pos.getY(i) + v.y * delta,
+                    pos.getZ(i) + v.z * delta
+                );
+                v.y -= 40 * delta;
+            }
+            pos.needsUpdate = true;
         }
-        pos.needsUpdate = true;
+
         particlesRef.current.material.opacity = 1 - age * 2.5;
     });
-    
+
     if (!visible || !active) return null;
-    
+
     return (
         <points ref={particlesRef}>
             <bufferGeometry>
                 <bufferAttribute
                     attach="attributes-position"
-                    count={particles.count}
-                    array={particles.positions}
+                    count={count}
+                    array={stateRef.current.positions}
                     itemSize={3}
                 />
             </bufferGeometry>
@@ -168,12 +246,153 @@ export function CollisionSparks({ position, active, color = '#ffaa00', onComplet
     );
 }
 
+// Full Explosion Effect (Worker-based)
+export function ParticleExplosion({ position, color = '#ff5500', onComplete }) {
+    const particlesRef = useRef();
+    const [visible, setVisible] = useState(true);
+    const startTime = useRef(Date.now());
+    const count = 60; // Denser than sparks
+    const { updateExplosion, initExplosion, isAvailable } = useParticleWorker();
+
+    const stateRef = useRef({
+        initialized: false,
+        positions: new Float32Array(count * 3),
+        velocities: [],
+        lifetimes: []
+    });
+
+    // Initialize
+    useEffect(() => {
+        if (stateRef.current.initialized) return;
+
+        const init = async () => {
+            if (isAvailable) {
+                // Config for a "boom"
+                const result = await initExplosion(count, position, { speed: 35, spread: 2, lifetime: 0.8 });
+                if (result) {
+                    stateRef.current.positions.set(result.positions);
+                    stateRef.current.velocities = result.velocities;
+                    stateRef.current.lifetimes = result.lifetimes;
+                    stateRef.current.initialized = true;
+
+                    if (particlesRef.current) {
+                        particlesRef.current.geometry.attributes.position.array.set(result.positions);
+                        particlesRef.current.geometry.attributes.position.needsUpdate = true;
+                    }
+                }
+            } else {
+                // Simple Fallback initialization
+                stateRef.current.velocities = [];
+                stateRef.current.lifetimes = [];
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI;
+                    const speed = Math.random() * 30 + 10;
+
+                    stateRef.current.velocities.push({
+                        x: Math.sin(phi) * Math.cos(angle) * speed,
+                        y: Math.cos(phi) * speed + 10,
+                        z: Math.sin(phi) * Math.sin(angle) * speed
+                    });
+                    stateRef.current.lifetimes.push(Math.random() * 0.8);
+
+                    const idx = i * 3;
+                    stateRef.current.positions[idx] = position[0];
+                    stateRef.current.positions[idx + 1] = position[1];
+                    stateRef.current.positions[idx + 2] = position[2];
+                }
+                stateRef.current.initialized = true;
+            }
+        };
+        init();
+    }, [position, isAvailable]);
+
+    useFrame(async (state, delta) => {
+        if (!particlesRef.current || !visible || !stateRef.current.initialized) return;
+
+        const age = (Date.now() - startTime.current) / 1000;
+        if (age > 0.8) {
+            setVisible(false);
+            onComplete?.();
+            return;
+        }
+
+        const s = stateRef.current;
+
+        if (isAvailable) {
+            const result = await updateExplosion(
+                s.positions,
+                s.velocities,
+                s.lifetimes,
+                delta,
+                { gravity: 15, drag: 0.95 }
+            );
+
+            if (result) {
+                s.velocities = result.velocities;
+                s.lifetimes = result.lifetimes;
+                if (result.positions) {
+                    const posAttr = particlesRef.current.geometry.attributes.position;
+                    posAttr.array.set(result.positions);
+                    posAttr.needsUpdate = true;
+                }
+            }
+        } else {
+            // CPU Update
+            const pos = particlesRef.current.geometry.attributes.position;
+            for (let i = 0; i < count; i++) {
+                const v = s.velocities[i];
+                // Drag
+                v.x *= 0.95;
+                v.z *= 0.95;
+                v.y -= 15 * delta; // Gravity
+
+                pos.setXYZ(i,
+                    pos.getX(i) + v.x * delta,
+                    pos.getY(i) + v.y * delta,
+                    pos.getZ(i) + v.z * delta
+                );
+            }
+            pos.needsUpdate = true;
+        }
+
+        // Scale down over time
+        const scale = 1 - (age / 0.8);
+        particlesRef.current.scale.setScalar(scale > 0 ? scale : 0.001);
+        particlesRef.current.material.opacity = scale;
+    });
+
+    if (!visible) return null;
+
+    return (
+        <points ref={particlesRef}>
+            <bufferGeometry>
+                <bufferAttribute
+                    attach="attributes-position"
+                    count={count}
+                    array={stateRef.current.positions}
+                    itemSize={3}
+                />
+            </bufferGeometry>
+            <pointsMaterial
+                size={0.6}
+                color={color}
+                transparent
+                opacity={1}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+                sizeAttenuation={true}
+            />
+        </points>
+    );
+}
+
 // Powerup pickup burst effect
 export function PowerupBurst({ position, color = '#00ff00', onComplete }) {
     const ringsRef = useRef([]);
     const [visible, setVisible] = useState(true);
     const startTime = useRef(Date.now());
-    
+
     useFrame(() => {
         const age = (Date.now() - startTime.current) / 1000;
         if (age > 0.5) {
@@ -181,7 +400,7 @@ export function PowerupBurst({ position, color = '#00ff00', onComplete }) {
             onComplete?.();
             return;
         }
-        
+
         ringsRef.current.forEach((ring, i) => {
             if (ring) {
                 const scale = 1 + age * (8 + i * 3);
@@ -190,23 +409,23 @@ export function PowerupBurst({ position, color = '#00ff00', onComplete }) {
             }
         });
     });
-    
+
     if (!visible) return null;
-    
+
     return (
         <group position={position}>
             {[0, 1, 2].map((i) => (
-                <mesh 
-                    key={i} 
+                <mesh
+                    key={i}
                     ref={(el) => ringsRef.current[i] = el}
                     rotation={[Math.PI / 2, 0, 0]}
                     position={[0, i * 0.5, 0]}
                 >
                     <ringGeometry args={[0.8, 1, 16]} />
-                    <meshBasicMaterial 
-                        color={color} 
-                        transparent 
-                        opacity={0.6} 
+                    <meshBasicMaterial
+                        color={color}
+                        transparent
+                        opacity={0.6}
                         side={THREE.DoubleSide}
                         blending={THREE.AdditiveBlending}
                     />
@@ -220,11 +439,11 @@ export function PowerupBurst({ position, color = '#00ff00', onComplete }) {
 export function AmbientParticles({ type = 'dust', bounds, count = 80 }) {
     const particlesRef = useRef();
     const { width = 200, depth = 200 } = bounds || {};
-    
+
     const particles = useMemo(() => {
         const positions = new Float32Array(count * 3);
         const speeds = [];
-        
+
         for (let i = 0; i < count; i++) {
             positions[i * 3] = (Math.random() - 0.5) * width;
             positions[i * 3 + 1] = Math.random() * 25 + 3;
@@ -233,7 +452,7 @@ export function AmbientParticles({ type = 'dust', bounds, count = 80 }) {
         }
         return { positions, speeds };
     }, [count, width, depth]);
-    
+
     const { color, size, glow } = useMemo(() => {
         switch (type) {
             case 'fireflies': return { color: '#88ff88', size: 0.4, glow: true };
@@ -248,31 +467,31 @@ export function AmbientParticles({ type = 'dust', bounds, count = 80 }) {
             default: return { color: '#ffffff', size: 0.2, glow: false };
         }
     }, [type]);
-    
+
     useFrame((state) => {
         if (!particlesRef.current) return;
         const t = state.clock.elapsedTime;
-        
+
         const pos = particlesRef.current.geometry.attributes.position;
         for (let i = 0; i < count; i++) {
             const speed = particles.speeds[i];
-            
+
             // Gentle floating motion
             pos.setY(i, pos.getY(i) + Math.sin(t * speed + i) * 0.02);
             pos.setX(i, pos.getX(i) + Math.cos(t * 0.3 + i * 0.1) * 0.01);
-            
+
             // Wrap around bounds
             if (pos.getY(i) > 30) pos.setY(i, 3);
             if (pos.getY(i) < 2) pos.setY(i, 28);
         }
         pos.needsUpdate = true;
-        
+
         // Pulsing for glowing particles
         if (glow) {
             particlesRef.current.material.opacity = 0.5 + Math.sin(t * 3) * 0.2;
         }
     });
-    
+
     return (
         <points ref={particlesRef}>
             <bufferGeometry>
@@ -299,7 +518,7 @@ export function AmbientParticles({ type = 'dust', bounds, count = 80 }) {
 export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) {
     const linesRef = useRef();
     const count = 60;
-    
+
     const particles = useMemo(() => {
         const positions = new Float32Array(count * 3);
         for (let i = 0; i < count; i++) {
@@ -309,10 +528,10 @@ export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) 
         }
         return positions;
     }, []);
-    
+
     useFrame((state, delta) => {
         if (!linesRef.current || !active) return;
-        
+
         const pos = linesRef.current.geometry.attributes.position;
         for (let i = 0; i < count; i++) {
             pos.setZ(i, pos.getZ(i) + 100 * delta);
@@ -323,9 +542,9 @@ export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) 
         }
         pos.needsUpdate = true;
     });
-    
+
     if (!active) return null;
-    
+
     return (
         <points ref={linesRef}>
             <bufferGeometry>
@@ -349,15 +568,15 @@ export function SpeedLinesEffect({ active, cameraPosition, color = '#ffffff' }) 
 }
 
 // Car trail dust kicked up behind vehicles
-export function DustTrail({ position, velocity, active, color = '#8b7355' }) {
+export function DustTrail({ position, velocity: initialVelocity, active: initialActive, dataRef, color = '#8b7355' }) {
     const particlesRef = useRef();
     const count = 20;
-    
+
     const particles = useMemo(() => {
         const positions = new Float32Array(count * 3);
         const ages = new Float32Array(count);
         const velocities = [];
-        
+
         for (let i = 0; i < count; i++) {
             positions[i * 3] = 0;
             positions[i * 3 + 1] = 0;
@@ -367,15 +586,18 @@ export function DustTrail({ position, velocity, active, color = '#8b7355' }) {
         }
         return { positions, ages, velocities };
     }, []);
-    
+
     const spawnIndex = useRef(0);
-    
+
     useFrame((state, delta) => {
         if (!particlesRef.current) return;
-        
+
+        const active = dataRef ? dataRef.current.showTireEffects : initialActive;
+        const velocity = dataRef ? dataRef.current.velocity : (initialVelocity || { x: 0, y: 0, z: 0 });
+
         const pos = particlesRef.current.geometry.attributes.position;
-        const speed = velocity ? Math.sqrt(velocity.x ** 2 + velocity.z ** 2) : 0;
-        
+        const speed = Math.sqrt(velocity.x ** 2 + velocity.z ** 2);
+
         // Spawn new particles when moving
         if (active && speed > 5) {
             const idx = spawnIndex.current % count;
@@ -388,7 +610,7 @@ export function DustTrail({ position, velocity, active, color = '#8b7355' }) {
             };
             spawnIndex.current++;
         }
-        
+
         // Update all particles
         for (let i = 0; i < count; i++) {
             if (particles.ages[i] > 0) {
@@ -404,7 +626,7 @@ export function DustTrail({ position, velocity, active, color = '#8b7355' }) {
         }
         pos.needsUpdate = true;
     });
-    
+
     return (
         <points ref={particlesRef}>
             <bufferGeometry>
@@ -432,5 +654,7 @@ export default {
     PowerupBurst,
     AmbientParticles,
     SpeedLinesEffect,
-    DustTrail
+    SpeedLinesEffect,
+    DustTrail,
+    ParticleExplosion
 };

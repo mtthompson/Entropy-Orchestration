@@ -5,12 +5,24 @@ import { useRef, useCallback, useEffect } from 'react';
 class VirtualMidiSynth {
     constructor() {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Limiter (DynamicsCompressorNode) to prevent clipping
+        this.limiter = this.ctx.createDynamicsCompressor();
+        this.limiter.threshold.setValueAtTime(-0.5, this.ctx.currentTime);
+        this.limiter.knee.setValueAtTime(30, this.ctx.currentTime);
+        this.limiter.ratio.setValueAtTime(12, this.ctx.currentTime);
+        this.limiter.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.limiter.release.setValueAtTime(0.1, this.ctx.currentTime);
+        this.limiter.connect(this.ctx.destination);
+
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.4;
-        this.masterGain.connect(this.ctx.destination);
+        this.masterGain.gain.value = 0.5; // Increased master slightly since we have a limiter
+        this.masterGain.connect(this.limiter);
+
         this.activeNotes = new Map();
 
         this.engineNode = null;
+        this.noiseBuffer = this.createNoiseBuffer(); // Pre-generate noise buffer
     }
 
     resume() {
@@ -42,7 +54,7 @@ class VirtualMidiSynth {
             const gain = this.ctx.createGain();
             src.connect(filter);
             filter.connect(gain);
-            gain.connect(this.ctx.destination);
+            gain.connect(this.limiter); // Route engine through limiter
             src.start();
             this.engineNode = { src, filter, gain };
         }
@@ -97,19 +109,10 @@ class VirtualMidiSynth {
         }
     }
 
-    playSynth(channel, freq, intensity, time, id) {
+    playSynth(channel, freq, intensity, time, id, duration = 0.2) {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         const filter = this.ctx.createBiquadFilter();
-
-        // 0: Bass (Saw/Square)
-        // 1: Lead 1 (Saw)
-        // 2: Pad (Triangle + Slow Attack)
-        // 3: Arp (Square)
-        // 4: Pluck (Triangle + Fast Decay)
-        // 5: Bells (Sine + Long Release)
-        // 6: Gritty Bass (Saw + Distortion ish)
-        // 7: Orchestral (Saw + Low Filter)
 
         let type = 'triangle';
         let attack = 0.01;
@@ -136,18 +139,27 @@ class VirtualMidiSynth {
         }
 
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(intensity * 0.4, time + attack);
+        gain.gain.linearRampToValueAtTime(intensity * 0.25, time + attack); // Lowered for headroom
+
+        // Precise scheduling of the release and stop
+        const sustainLevel = intensity * 0.25;
+        const releaseStart = time + duration;
+        gain.gain.setValueAtTime(sustainLevel, releaseStart);
+        gain.gain.exponentialRampToValueAtTime(0.001, releaseStart + release);
 
         osc.connect(filter);
         filter.connect(gain);
         gain.connect(this.masterGain);
 
         osc.start(time);
+        osc.stop(releaseStart + release);
 
-        this.activeNotes.set(id, {
-            stop: (t) => { try { osc.stop(t); } catch (e) { } },
-            gainNode: gain
-        });
+        if (id) {
+            this.activeNotes.set(id, {
+                stop: (t) => { try { osc.stop(t); } catch (e) { } },
+                gainNode: gain
+            });
+        }
     }
 
     playDrum(note, intensity, time) {
@@ -166,12 +178,13 @@ class VirtualMidiSynth {
         }
         // Snare (38, 40)
         else if (note === 38 || note === 40) {
-            const noise = this.createNoiseBuffer();
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
             const filter = this.ctx.createBiquadFilter();
             filter.type = 'highpass';
             filter.frequency.value = 1000;
             const gain = this.ctx.createGain();
-            gain.gain.setValueAtTime(intensity * 0.8, time);
+            gain.gain.setValueAtTime(intensity * 0.4, time); // Lowered snare
             gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
             noise.connect(filter);
             filter.connect(gain);
@@ -180,12 +193,13 @@ class VirtualMidiSynth {
         }
         // HiHat (42, 44, 46)
         else if (note === 42 || note === 44 || note === 46) {
-            const noise = this.createNoiseBuffer();
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = this.noiseBuffer;
             const filter = this.ctx.createBiquadFilter();
             filter.type = 'highpass';
             filter.frequency.value = 5000;
             const gain = this.ctx.createGain();
-            gain.gain.setValueAtTime(intensity * 0.4, time);
+            gain.gain.setValueAtTime(intensity * 0.2, time); // Lowered hat
             gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
             noise.connect(filter);
             filter.connect(gain);
@@ -195,15 +209,13 @@ class VirtualMidiSynth {
     }
 
     createNoiseBuffer() {
-        const bufferSize = this.ctx.sampleRate * 0.5;
+        const bufferSize = this.ctx.sampleRate * 1.0;
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) {
             data[i] = Math.random() * 2 - 1;
         }
-        const noise = this.ctx.createBufferSource();
-        noise.buffer = buffer;
-        return noise;
+        return buffer;
     }
 
     playSFX(type) {
@@ -212,7 +224,7 @@ class VirtualMidiSynth {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.limiter); // Route SFX through limiter
 
         const vol = 0.3;
 
@@ -319,7 +331,7 @@ export function useMidiAudio(connected) {
     // Same TRACK_STYLES but ensure they have melodies mapping
     const TRACK_STYLES = {
         'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassStyle: 'steady', progression: [0], drumStyle: 'basic' },
-        'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassStyle: 'aggressive', progression: [3], drumStyle: 'driving' },
+        'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassStyle: 'aggressive', progression: [3], drumStyle: 'aggressive' },
         'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassStyle: 'syncopated', progression: [2, 5], drumStyle: 'driving' },
         'track_04': { name: 'Dreamwave', bpm: 100, key: 'F', bassStyle: 'slow', progression: [4], drumStyle: 'minimal' },
         'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassStyle: 'aggressive', progression: [3], drumStyle: 'driving' },
@@ -328,8 +340,8 @@ export function useMidiAudio(connected) {
         'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassStyle: 'steady', progression: [1, 4], drumStyle: 'basic' },
         'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassStyle: 'relentless', progression: [3], drumStyle: 'driving' },
         'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassStyle: 'funky', progression: [5, 2], drumStyle: 'driving' },
-        'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassStyle: 'slow', progression: [0, 4], drumStyle: 'minimal' },
-        'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassStyle: 'aggressive', progression: [3], drumStyle: 'driving' }
+        'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassStyle: 'slow', progression: [0, 4], drumStyle: 'half-time' },
+        'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassStyle: 'aggressive', progression: [3], drumStyle: 'aggressive' }
     };
 
     const NOTE_TO_MIDI = {
@@ -374,17 +386,60 @@ export function useMidiAudio(connected) {
         ['Bb', 'Gm', 'Dm', 'Bb'],    // 6
     ];
 
-    // --- COPIED COMPLETE MELODIES ---
-    // (A subset due to length, but representing the structure)
+    // --- TRACK-SPECIFIC MELODIES ---
     const COMPLETE_MELODIES = {
-        'track_01': {
+        'track_01': { // Classic Synthwave
             verse: [
                 { bar: 0, step: 0, note: 'A4', duration: 2 }, { bar: 0, step: 2, note: 'C5', duration: 2 }, { bar: 0, step: 4, note: 'D5', duration: 4 },
-                { bar: 1, step: 0, note: 'A4', duration: 2 }, { bar: 1, step: 2, note: 'G4', duration: 2 }, { bar: 1, step: 4, note: 'A4', duration: 8 }
+                { bar: 1, step: 0, note: 'A4', duration: 2 }, { bar: 1, step: 2, note: 'G4', duration: 2 }, { bar: 1, step: 4, note: 'A4', duration: 8 },
+                { bar: 2, step: 0, note: 'C5', duration: 2 }, { bar: 2, step: 2, note: 'D5', duration: 2 }, { bar: 2, step: 4, note: 'E5', duration: 4 },
+                { bar: 3, step: 0, note: 'G5', duration: 2 }, { bar: 3, step: 2, note: 'E5', duration: 2 }, { bar: 3, step: 4, note: 'D5', duration: 8 }
             ],
             chorus: [
                 { bar: 0, step: 0, note: 'E5', duration: 4 }, { bar: 0, step: 4, note: 'D5', duration: 2 }, { bar: 0, step: 6, note: 'E5', duration: 2 }, { bar: 0, step: 8, note: 'G5', duration: 8 },
-                { bar: 1, step: 0, note: 'F5', duration: 4 }, { bar: 1, step: 4, note: 'E5', duration: 2 }, { bar: 1, step: 6, note: 'D5', duration: 2 }, { bar: 1, step: 8, note: 'E5', duration: 8 }
+                { bar: 1, step: 0, note: 'F5', duration: 4 }, { bar: 1, step: 4, note: 'E5', duration: 2 }, { bar: 1, step: 6, note: 'D5', duration: 2 }, { bar: 1, step: 8, note: 'E5', duration: 8 },
+                { bar: 2, step: 0, note: 'A5', duration: 4 }, { bar: 2, step: 4, note: 'G5', duration: 4 }, { bar: 2, step: 8, note: 'A5', duration: 8 },
+                { bar: 3, step: 0, note: 'C6', duration: 4 }, { bar: 3, step: 4, note: 'B5', duration: 4 }, { bar: 3, step: 8, note: 'A5', duration: 8 }
+            ]
+        },
+        'track_02': { // Darksynth
+            verse: [
+                { bar: 0, step: 0, note: 'E3', duration: 1 }, { bar: 0, step: 1, note: 'E3', duration: 1 }, { bar: 0, step: 2, note: 'F3', duration: 2 },
+                { bar: 1, step: 0, note: 'E3', duration: 1 }, { bar: 1, step: 1, note: 'E3', duration: 1 }, { bar: 1, step: 2, note: 'G3', duration: 2 },
+                { bar: 2, step: 0, note: 'E3', duration: 1 }, { bar: 2, step: 1, note: 'E3', duration: 1 }, { bar: 2, step: 2, note: 'Bb3', duration: 2 },
+                { bar: 3, step: 0, note: 'E3', duration: 1 }, { bar: 3, step: 1, note: 'E3', duration: 1 }, { bar: 3, step: 2, note: 'A3', duration: 2 }
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'E4', duration: 8 }, { bar: 1, step: 0, note: 'G4', duration: 4 }, { bar: 1, step: 4, note: 'F4', duration: 4 },
+                { bar: 2, step: 0, note: 'B4', duration: 8 }, { bar: 3, step: 0, note: 'A4', duration: 8 }
+            ]
+        },
+        'track_03': { // Outrun
+            verse: [
+                { bar: 0, step: 0, note: 'A4', duration: 4 }, { bar: 0, step: 8, note: 'C5', duration: 4 },
+                { bar: 1, step: 0, note: 'B4', duration: 4 }, { bar: 1, step: 8, note: 'G4', duration: 4 },
+                { bar: 2, step: 0, note: 'A4', duration: 4 }, { bar: 2, step: 8, note: 'E5', duration: 4 },
+                { bar: 3, step: 0, note: 'D5', duration: 8 }
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'C5', duration: 2 }, { bar: 0, step: 2, note: 'E5', duration: 2 }, { bar: 0, step: 4, note: 'A5', duration: 4 },
+                { bar: 1, step: 0, note: 'G5', duration: 4 }, { bar: 1, step: 4, note: 'E5', duration: 4 },
+                { bar: 2, step: 0, note: 'F5', duration: 2 }, { bar: 2, step: 2, note: 'A5', duration: 2 }, { bar: 2, step: 4, note: 'D6', duration: 4 },
+                { bar: 3, step: 0, note: 'C6', duration: 8 }
+            ]
+        },
+        'track_06': { // Cyberpunk
+            verse: [
+                { bar: 0, step: 0, note: 'C4', duration: 1 }, { bar: 0, step: 2, note: 'C4', duration: 1 }, { bar: 0, step: 4, note: 'Eb4', duration: 2 },
+                { bar: 1, step: 0, note: 'C4', duration: 1 }, { bar: 1, step: 2, note: 'C4', duration: 1 }, { bar: 1, step: 4, note: 'F4', duration: 2 },
+                { bar: 2, step: 0, note: 'C4', duration: 1 }, { bar: 2, step: 2, note: 'C4', duration: 1 }, { bar: 2, step: 4, note: 'Gb4', duration: 2 },
+                { bar: 3, step: 0, note: 'F4', duration: 2 }, { bar: 3, step: 4, note: 'Eb4', duration: 2 }
+            ],
+            chorus: [
+                { bar: 0, step: 0, note: 'C5', duration: 4 }, { bar: 0, step: 8, note: 'Bb4', duration: 4 },
+                { bar: 1, step: 0, note: 'C5', duration: 4 }, { bar: 1, step: 8, note: 'Gb5', duration: 4 },
+                { bar: 2, step: 0, note: 'F5', duration: 4 }, { bar: 2, step: 8, note: 'Eb5', duration: 4 },
+                { bar: 3, step: 0, note: 'C5', duration: 8 }
             ]
         }
     };
@@ -480,19 +535,31 @@ export function useMidiAudio(connected) {
 
         // 1. Drums (Channel 9)
         if (drumPattern !== 'minimal' && drumPattern !== 'none') {
+            const drumStyle = style.drumStyle || 'basic';
             for (let i = 0; i < 16; i++) {
                 const time = startTime + i * secondsPer16th;
 
                 // Kick
-                if (i % 4 === 0) scheduleMidiEvent(9, 36, 100, time, 0.1);
-                else if (drumPattern === 'driving' && i % 2 === 0 && Math.random() > 0.6) scheduleMidiEvent(9, 36, 80, time, 0.1);
+                if (i % 4 === 0) {
+                    scheduleMidiEvent(9, 36, 100, time, 0.1);
+                } else if (drumStyle === 'driving' && i % 4 === 2) {
+                    scheduleMidiEvent(9, 36, 80, time, 0.1);
+                } else if (drumStyle === 'aggressive' && (i % 8 === 3 || i % 8 === 6)) {
+                    if (Math.random() > 0.5) scheduleMidiEvent(9, 36, 70, time, 0.1);
+                }
 
                 // Snare
-                if (i === 4 || i === 12) scheduleMidiEvent(9, 38, 90, time, 0.1);
+                if (drumStyle === 'half-time') {
+                    if (i === 8) scheduleMidiEvent(9, 38, 90, time, 0.1);
+                } else {
+                    if (i === 4 || i === 12) scheduleMidiEvent(9, 38, 90, time, 0.1);
+                }
 
                 // Hats
-                if (i % 2 === 0) scheduleMidiEvent(9, 42, 60, time, 0.05);
-                if (drumPattern === 'driving' && i % 2 !== 0) scheduleMidiEvent(9, 42, 40, time, 0.05);
+                let hatVel = (i % 2 === 0) ? 60 : 40;
+                if (drumStyle === 'basic' && i % 2 === 0) scheduleMidiEvent(9, 42, hatVel, time, 0.05);
+                if (drumStyle === 'driving') scheduleMidiEvent(9, 42, hatVel, time, 0.05);
+                if (drumStyle === 'minimal' && i % 4 === 2) scheduleMidiEvent(9, 42, 50, time, 0.05);
             }
         }
 
@@ -559,16 +626,14 @@ export function useMidiAudio(connected) {
         const synth = midiSynthRef.current;
         if (!synth) return;
 
-        const ctx = synth.ctx;
-        const now = ctx.currentTime;
-        const delay = Math.max(0, time - now);
+        const freq = synth.midiToFreq(note);
+        const intensity = velocity / 127;
 
-        setTimeout(() => {
-            synth.noteOn(channel, note, velocity);
-            setTimeout(() => {
-                synth.noteOff(channel, note);
-            }, duration * 1000);
-        }, delay * 1000);
+        if (channel === 9) {
+            synth.playDrum(note, intensity, time);
+        } else {
+            synth.playSynth(channel, freq, intensity, time, null, duration);
+        }
     };
 
     const playSfx = useCallback((type) => { midiSynthRef.current?.playSFX(type); }, []);

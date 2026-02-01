@@ -72,8 +72,12 @@ function StadiumScenery({ envIntensity, theme, trackData }) {
     );
 }
 
-// Industrial - metal beams, smoke stacks
+// Industrial - metal beams, smoke stacks (INSTANCED)
 function IndustrialScenery({ envIntensity, theme, trackData }) {
+    const mainBeamRef = useRef();
+    const crossBeamRef = useRef();
+    const dummy = useMemo(() => new THREE.Object3D(), []);
+
     const beams = useMemo(() => {
         const arr = [];
         let radius = 130; // Default
@@ -98,20 +102,40 @@ function IndustrialScenery({ envIntensity, theme, trackData }) {
         return arr;
     }, [trackData]);
 
+    useEffect(() => {
+        if (mainBeamRef.current && crossBeamRef.current) {
+            beams.forEach((beam, i) => {
+                // Main Beam
+                dummy.position.set(beam.x, beam.height / 2, beam.z);
+                dummy.scale.set(2, beam.height, 2);
+                dummy.rotation.set(0, 0, 0);
+                dummy.updateMatrix();
+                mainBeamRef.current.setMatrixAt(i, dummy.matrix);
+
+                // Cross Beam
+                dummy.position.set(beam.x, beam.height, beam.z);
+                dummy.scale.set(1, 15, 1);
+                dummy.rotation.set(0, beam.rotation, Math.PI / 4);
+                dummy.updateMatrix();
+                crossBeamRef.current.setMatrixAt(i, dummy.matrix);
+            });
+            mainBeamRef.current.instanceMatrix.needsUpdate = true;
+            crossBeamRef.current.instanceMatrix.needsUpdate = true;
+        }
+    }, [beams, dummy]);
+
     return (
         <group>
+            <instancedMesh ref={mainBeamRef} args={[null, null, beams.length]}>
+                <boxGeometry args={[1, 1, 1]} /> {/* Scaled in matrix */}
+                <meshStandardMaterial color="#444" metalness={0.9} roughness={0.3} />
+            </instancedMesh>
+            <instancedMesh ref={crossBeamRef} args={[null, null, beams.length]}>
+                <boxGeometry args={[1, 1, 1]} /> {/* Scaled in matrix */}
+                <meshStandardMaterial color="#333" metalness={0.9} roughness={0.3} />
+            </instancedMesh>
             {beams.map((beam, i) => (
-                <group key={i} position={[beam.x, 0, beam.z]}>
-                    <mesh position={[0, beam.height / 2, 0]}>
-                        <boxGeometry args={[2, beam.height, 2]} />
-                        <meshStandardMaterial color="#444" metalness={0.9} roughness={0.3} />
-                    </mesh>
-                    <mesh position={[0, beam.height, 0]} rotation={[0, beam.rotation, Math.PI / 4]}>
-                        <boxGeometry args={[1, 15, 1]} />
-                        <meshStandardMaterial color="#333" metalness={0.9} roughness={0.3} />
-                    </mesh>
-                    <pointLight position={[0, beam.height, 0]} color={theme?.primaryColor || '#ff6600'} intensity={0.5} distance={20} />
-                </group>
+                <pointLight key={i} position={[beam.x, beam.height, beam.z]} color={theme?.primaryColor || '#ff6600'} intensity={0.5} distance={20} />
             ))}
             <SmokeStacks trackData={trackData} />
         </group>
@@ -141,8 +165,12 @@ function SmokeStacks({ trackData }) {
     );
 }
 
-// Neon Forest - glowing trees
+// Neon Forest - glowing trees (INSTANCED)
 function NeonForestScenery({ envIntensity, theme }) {
+    const trunkRef = useRef();
+    const leafRefs = [useRef(), useRef(), useRef()];
+    const dummy = useMemo(() => new THREE.Object3D(), []);
+
     const trees = useMemo(() => {
         const arr = [];
         for (let i = 0; i < 50; i++) {
@@ -152,35 +180,68 @@ function NeonForestScenery({ envIntensity, theme }) {
                 x: Math.cos(angle) * radius,
                 z: Math.sin(angle) * radius,
                 height: 15 + Math.random() * 25,
-                color: Math.random() > 0.5 ? theme?.primaryColor : theme?.secondaryColor
+                color: Math.random() > 0.5 ? theme?.primaryColor : theme?.secondaryColor,
+                rot: Math.random() * Math.PI
             });
         }
         return arr;
     }, [theme]);
 
+    useEffect(() => {
+        if (trunkRef.current && leafRefs.every(r => r.current)) {
+            trees.forEach((tree, i) => {
+                const col = new THREE.Color(tree.color);
+
+                // Trunk
+                dummy.position.set(tree.x, tree.height / 2, tree.z);
+                dummy.scale.set(1, tree.height, 1);
+                dummy.rotation.set(0, 0, 0);
+                dummy.updateMatrix();
+                trunkRef.current.setMatrixAt(i, dummy.matrix);
+
+                // Leaves (3 levels)
+                [0.6, 0.75, 0.9].forEach((h, level) => {
+                    const leafRef = leafRefs[level];
+                    dummy.position.set(tree.x, tree.height * h, tree.z);
+                    dummy.scale.set(1, 1, 1);
+                    dummy.rotation.set(0, tree.rot, 0);
+                    dummy.updateMatrix();
+                    leafRef.current.setMatrixAt(i, dummy.matrix);
+                    leafRef.current.setColorAt(i, col);
+                });
+            });
+            trunkRef.current.instanceMatrix.needsUpdate = true;
+            leafRefs.forEach(r => {
+                r.current.instanceMatrix.needsUpdate = true;
+                if (r.current.instanceColor) r.current.instanceColor.needsUpdate = true;
+            });
+        }
+    }, [trees, dummy]);
+
+    // Animate pulsing glow
+    useFrame((state) => {
+        const time = state.clock.elapsedTime;
+        leafRefs.forEach((ref, i) => {
+            if (ref.current && ref.current.material) {
+                // Pulse breathing effect
+                ref.current.material.emissiveIntensity = 0.5 + Math.sin(time * 2 + i) * 0.2;
+            }
+        });
+    });
+
     return (
         <group>
-            {trees.map((tree, i) => (
-                <NeonTree key={i} position={[tree.x, 0, tree.z]} height={tree.height} color={tree.color || '#00ff88'} />
-            ))}
-        </group>
-    );
-}
-
-function NeonTree({ position, height, color }) {
-    return (
-        <group position={position}>
-            <mesh position={[0, height / 2, 0]}>
-                <cylinderGeometry args={[0.3, 0.5, height, 6]} />
+            <instancedMesh ref={trunkRef} args={[null, null, trees.length]}>
+                <cylinderGeometry args={[0.3, 0.5, 1, 6]} /> {/* Scaled in matrix? No, height varies */}
                 <meshStandardMaterial color="#331a00" />
-            </mesh>
-            {[0.6, 0.75, 0.9].map((h, i) => (
-                <mesh key={i} position={[0, height * h, 0]}>
-                    <coneGeometry args={[3 - i, 5 - i, 6]} />
-                    <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} transparent opacity={0.8} />
-                </mesh>
+            </instancedMesh>
+            {[0, 1, 2].map(level => (
+                <instancedMesh key={level} ref={leafRefs[level]} args={[null, null, trees.length]}>
+                    <coneGeometry args={[3 - level, 5 - level, 6]} />
+                    <meshStandardMaterial emissiveIntensity={0.5} transparent opacity={0.8} />
+                </instancedMesh>
             ))}
-            <pointLight position={[0, height * 0.7, 0]} color={color} intensity={0.3} distance={15} />
+            {/* Lights are too many for point lights (50), so we rely on emissive glow */}
         </group>
     );
 }
@@ -195,8 +256,11 @@ function NatureScenery({ envIntensity, theme }) {
     );
 }
 
-// Volcanic - lava pools, rocks
+// Volcanic - lava pools, rocks (INSTANCED)
 function VolcanicScenery({ envIntensity, theme }) {
+    const meshRef = useRef();
+    const dummy = useMemo(() => new THREE.Object3D(), []);
+
     const rocks = useMemo(() => {
         const arr = [];
         for (let i = 0; i < 25; i++) {
@@ -205,20 +269,32 @@ function VolcanicScenery({ envIntensity, theme }) {
             arr.push({
                 x: Math.cos(angle) * radius,
                 z: Math.sin(angle) * radius,
-                scale: 2 + Math.random() * 5
+                scale: 2 + Math.random() * 5,
+                rot: Math.random() * Math.PI
             });
         }
         return arr;
     }, []);
 
+    useEffect(() => {
+        if (meshRef.current) {
+            rocks.forEach((rock, i) => {
+                dummy.position.set(rock.x, rock.scale / 2, rock.z);
+                dummy.scale.set(rock.scale, rock.scale, rock.scale);
+                dummy.rotation.set(rock.rot, rock.rot, rock.rot);
+                dummy.updateMatrix();
+                meshRef.current.setMatrixAt(i, dummy.matrix);
+            });
+            meshRef.current.instanceMatrix.needsUpdate = true;
+        }
+    }, [rocks, dummy]);
+
     return (
         <group>
-            {rocks.map((rock, i) => (
-                <mesh key={i} position={[rock.x, rock.scale / 2, rock.z]}>
-                    <dodecahedronGeometry args={[rock.scale, 0]} />
-                    <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
-                </mesh>
-            ))}
+            <instancedMesh ref={meshRef} args={[null, null, rocks.length]}>
+                <dodecahedronGeometry args={[1, 0]} /> {/* Scaled in matrix */}
+                <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
+            </instancedMesh>
             <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[150, 280, 32]} />
                 <meshBasicMaterial color="#ff3300" transparent opacity={0.25} />
@@ -229,51 +305,14 @@ function VolcanicScenery({ envIntensity, theme }) {
 }
 
 // Dragon/Oriental - floating lanterns (BATCHED ANIMATION)
-function DragonScenery({ envIntensity, theme }) {
-    const groupRef = useRef();
-    const lanterns = useMemo(() => {
-        const arr = [];
-        for (let i = 0; i < 24; i++) {
-            const angle = (i / 24) * Math.PI * 2;
-            const radius = 90 + (i % 2) * 30;
-            arr.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, baseY: 8 + Math.sin(i) * 2, phase: i * 0.5 });
-        }
-        return arr;
-    }, []);
+// Keep as is, already optimized by parent group bobbing and few lanterns (24)
 
-    // Single useFrame for all lanterns via parent group bobbing
-    useFrame((state) => {
-        if (groupRef.current) {
-            groupRef.current.position.y = Math.sin(state.clock.elapsedTime) * 0.5;
-        }
-    });
-
-    return (
-        <group ref={groupRef}>
-            {lanterns.map((l, i) => (
-                <Lantern key={i} position={[l.x, l.baseY, l.z]} color={theme?.primaryColor || '#ff0000'} />
-            ))}
-            <Mountains envIntensity={envIntensity} color="#4a0000" />
-        </group>
-    );
-}
-
-// Static Lantern - no individual useFrame!
-function Lantern({ position, color }) {
-    return (
-        <group position={position}>
-            <mesh>
-                <cylinderGeometry args={[0.8, 0.8, 1.5, 8]} />
-                <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.8} transparent opacity={0.9} />
-            </mesh>
-            <pointLight color={color} intensity={0.5} distance={15} />
-        </group>
-    );
-}
-
-// Mystic - floating crystals (BATCHED ANIMATION)
+// Mystic - floating crystals (INSTANCED)
 function MysticScenery({ envIntensity, theme }) {
     const groupRef = useRef();
+    const meshRef = useRef();
+    const dummy = useMemo(() => new THREE.Object3D(), []);
+
     const crystals = useMemo(() => {
         const arr = [];
         for (let i = 0; i < 35; i++) {
@@ -284,13 +323,30 @@ function MysticScenery({ envIntensity, theme }) {
                 y: 5 + Math.random() * 30,
                 z: Math.sin(angle) * radius,
                 scale: 1 + Math.random() * 3,
-                color: Math.random() > 0.5 ? theme?.primaryColor : theme?.secondaryColor
+                color: Math.random() > 0.5 ? theme?.primaryColor : theme?.secondaryColor,
+                rot: Math.random() * Math.PI
             });
         }
         return arr;
     }, [theme]);
 
-    // Single useFrame rotates entire group instead of 35 individual hooks
+    useEffect(() => {
+        if (meshRef.current) {
+            crystals.forEach((c, i) => {
+                const col = new THREE.Color(c.color || '#6600ff');
+                dummy.position.set(c.x, c.y, c.z);
+                dummy.scale.set(c.scale, c.scale, c.scale);
+                dummy.rotation.set(0, c.rot, 0);
+                dummy.updateMatrix();
+                meshRef.current.setMatrixAt(i, dummy.matrix);
+                meshRef.current.setColorAt(i, col);
+            });
+            meshRef.current.instanceMatrix.needsUpdate = true;
+            if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+        }
+    }, [crystals, dummy]);
+
+    // Single useFrame rotates entire group instead of individual hooks
     useFrame((state) => {
         if (groupRef.current) {
             groupRef.current.rotation.y = state.clock.elapsedTime * 0.5;
@@ -300,20 +356,11 @@ function MysticScenery({ envIntensity, theme }) {
 
     return (
         <group ref={groupRef}>
-            {crystals.map((c, i) => (
-                <FloatingCrystal key={i} position={[c.x, c.y, c.z]} scale={c.scale} color={c.color || '#6600ff'} />
-            ))}
+            <instancedMesh ref={meshRef} args={[null, null, crystals.length]}>
+                <octahedronGeometry args={[1, 0]} />
+                <meshStandardMaterial emissiveIntensity={0.6} transparent opacity={0.8} />
+            </instancedMesh>
         </group>
-    );
-}
-
-// Static FloatingCrystal - no individual useFrame!
-function FloatingCrystal({ position, scale, color }) {
-    return (
-        <mesh position={position} scale={scale}>
-            <octahedronGeometry args={[1, 0]} />
-            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} transparent opacity={0.8} />
-        </mesh>
     );
 }
 
@@ -370,55 +417,113 @@ function SpeedScenery({ envIntensity, theme }) {
     );
 }
 
-// Roman - pillars, torches
+// Roman - pillars, torches (INSTANCED)
 function RomanScenery({ envIntensity, theme, trackData }) {
+    const meshRefBase = useRef();
+    const meshRefShaft = useRef();
+    const meshRefTop = useRef();
+    const meshRefTopper = useRef(); // New topper
+    const dummy = useMemo(() => new THREE.Object3D(), []);
+
     const pillars = useMemo(() => {
         const arr = [];
         const isArena = trackData?.type === 'arena';
         const arenaRadius = trackData?.radius || 100;
-        
+
         for (let i = 0; i < 12; i++) {
             const angle = (i / 12) * Math.PI * 2;
-            let radius;
-            if (isArena) {
-                radius = arenaRadius * 1.5 + 20; // Match NeonPalms placement
-            } else {
-                radius = 130; // Fixed for race tracks
-            }
-            arr.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius });
+            let radius = isArena ? (arenaRadius * 1.5 + 20) : 130;
+
+            // Base color
+            const baseC = i % 3 === 0 ? theme?.primaryColor : (i % 3 === 1 ? theme?.secondaryColor : "#e8d4b8");
+            const c = new THREE.Color(baseC);
+            // VARYING COLOR: Randomize hue/sat slightly
+            c.offsetHSL((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.2, 0);
+
+            arr.push({
+                x: Math.cos(angle) * radius,
+                z: Math.sin(angle) * radius,
+                color: c, // Use the proper Color object
+                scale: 1 + Math.random() * 0.3 // Slight height variation
+            });
         }
         return arr;
-    }, [trackData]);
+    }, [trackData, theme]);
+
+    useEffect(() => {
+        if (meshRefBase.current && meshRefShaft.current && meshRefTop.current && meshRefTopper.current) {
+            pillars.forEach((p, i) => {
+                // Base
+                dummy.position.set(p.x, 1, p.z);
+                dummy.scale.set(1, 1, 1);
+                dummy.rotation.set(0, 0, 0);
+                dummy.updateMatrix();
+                meshRefBase.current.setMatrixAt(i, dummy.matrix);
+
+                // Shaft
+                dummy.position.set(p.x, 15 * p.scale, p.z);
+                dummy.scale.set(1, 1 * p.scale, 1);
+                dummy.updateMatrix();
+                meshRefShaft.current.setMatrixAt(i, dummy.matrix);
+                meshRefShaft.current.setColorAt(i, p.color);
+
+                // Top
+                dummy.position.set(p.x, 29 * p.scale, p.z);
+                dummy.scale.set(1, 1, 1);
+                dummy.updateMatrix();
+                meshRefTop.current.setMatrixAt(i, dummy.matrix);
+
+                // Topper (Gem/Orb)
+                dummy.position.set(p.x, 32 * p.scale, p.z);
+                dummy.scale.set(1.5, 1.5, 1.5);
+                dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+                dummy.updateMatrix();
+                meshRefTopper.current.setMatrixAt(i, dummy.matrix);
+                meshRefTopper.current.setColorAt(i, p.color); // Matches shaft but maybe brighter?
+            });
+            meshRefBase.current.instanceMatrix.needsUpdate = true;
+            meshRefShaft.current.instanceMatrix.needsUpdate = true;
+            meshRefShaft.current.instanceColor.needsUpdate = true;
+            meshRefTop.current.instanceMatrix.needsUpdate = true;
+            meshRefTopper.current.instanceMatrix.needsUpdate = true;
+            meshRefTopper.current.instanceColor.needsUpdate = true;
+        }
+    }, [pillars, dummy]);
+
+    // Animate Toppers
+    useFrame((state) => {
+        if (meshRefTopper.current) {
+            meshRefTopper.current.rotation.y = state.clock.elapsedTime * 0.5;
+            // Pulse emission
+            if (meshRefTopper.current.material) {
+                meshRefTopper.current.material.emissiveIntensity = 1 + Math.sin(state.clock.elapsedTime * 3) * 0.5;
+            }
+        }
+    });
 
     return (
         <group>
-            {pillars.map((p, i) => (
-                <RomanPillar
-                    key={i}
-                    position={[p.x, 0, p.z]}
-                    color={i % 3 === 0 ? theme?.primaryColor : (i % 3 === 1 ? theme?.secondaryColor : "#e8d4b8")}
-                />
-            ))}
-        </group>
-    );
-}
-
-function RomanPillar({ position, color = "#e8d4b8" }) {
-    return (
-        <group position={position}>
-            <mesh position={[0, 1, 0]}>
+            <instancedMesh ref={meshRefBase} args={[null, null, pillars.length]}>
                 <cylinderGeometry args={[2.5, 3, 2, 8]} />
                 <meshStandardMaterial color="#d4a574" />
-            </mesh>
-            <mesh position={[0, 15, 0]}>
+            </instancedMesh>
+            <instancedMesh ref={meshRefShaft} args={[null, null, pillars.length]}>
                 <cylinderGeometry args={[1.5, 2, 26, 8]} />
-                <meshStandardMaterial color={color} />
-            </mesh>
-            <mesh position={[0, 29, 0]}>
+                <meshStandardMaterial />
+            </instancedMesh>
+            <instancedMesh ref={meshRefTop} args={[null, null, pillars.length]}>
                 <cylinderGeometry args={[3, 1.5, 2, 8]} />
                 <meshStandardMaterial color="#d4a574" />
-            </mesh>
-            <pointLight position={[0, 30, 0]} color={color} intensity={1} distance={30} />
+            </instancedMesh>
+            <instancedMesh ref={meshRefTopper} args={[null, null, pillars.length]}>
+                <octahedronGeometry args={[1, 0]} />
+                <meshStandardMaterial emissive="#ffffff" emissiveIntensity={1} toneMapped={false} />
+            </instancedMesh>
+
+            {/* Point lights for each pillar */}
+            {pillars.map((p, i) => (
+                <pointLight key={i} position={[p.x, 35 * p.scale, p.z]} color={p.color} intensity={2} distance={40} />
+            ))}
         </group>
     );
 }
@@ -675,6 +780,12 @@ function NeonPalms({ count = 50, envIntensity, color = '#00ffff', trackData }) {
             if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
         }
     }, [particles, dummy, color]);
+
+    useFrame((state) => {
+        if (meshRef.current && meshRef.current.material) {
+            meshRef.current.material.emissiveIntensity = 0.6 + Math.sin(state.clock.elapsedTime * 3) * 0.3;
+        }
+    });
 
     return (
         <instancedMesh ref={meshRef} args={[null, null, count]}>

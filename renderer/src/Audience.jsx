@@ -151,11 +151,11 @@ export function Audience({ trackData }) {
         let clusters = [];
 
         if (polygon && polygon.length > 2) {
-            clusters = generateAudiencePositions(polygon, 60, 18);
+            clusters = generateAudiencePositions(polygon, 12, 18);
         } else {
             // Fallback circular clusters
             const radius = Math.max(floorWidth, floorDepth) * 0.52;
-            const count = 8;
+            const count = 48; // Increased from 8
             for (let i = 0; i < count; i++) {
                 const angle = (i / count) * Math.PI * 2;
                 clusters.push({
@@ -169,33 +169,32 @@ export function Audience({ trackData }) {
         // For each cluster, generate a patch of spectators
         const allSpectators = [];
 
-        clusters.forEach(cluster => {
+        clusters.forEach((cluster, clusterIndex) => {
             const cx = cluster.position[0];
             const cy = cluster.position[1];
             const cz = cluster.position[2];
             const rotY = cluster.rotation[1];
 
-            // Create a small 5x3 patch at this location
-            // We want the patch to be aligned with rotY
-            // Local offsets: x (width), z (depth)
-            const rows = 3;
-            const cols = 6;
+            // Smaller, more frequent clusters for better dispersion
+            const rows = 1 + Math.floor(Math.random() * 2); // 1-2 rows
+            const cols = 2 + Math.floor(Math.random() * 3); // 2-4 cols
 
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
-                    // Local coords centered
-                    const lx = (c - cols / 2) * 1.5 + (Math.random() * 0.5);
-                    const lz = (r - rows / 2) * 1.5 + (Math.random() * 0.5);
+                    // Local coords with more spread (2.5 units apart)
+                    const lx = (c - cols / 2) * 2.5 + (Math.random() * 1.0);
+                    const lz = (r - rows / 2) * 2.5 + (Math.random() * 1.0);
 
                     // Rotate local coords by rotY
-                    // x' = x cos θ + z sin θ
-                    // z' = -x sin θ + z cos θ
                     const wx = lx * Math.cos(rotY) + lz * Math.sin(rotY);
                     const wz = -lx * Math.sin(rotY) + lz * Math.cos(rotY);
 
+                    // Tiered height: Back rows (higher r) sit higher up
+                    const tierHeight = r * 1.5;
+
                     allSpectators.push({
-                        position: [cx + wx, cy + 2.5, cz + wz], // y=2.5 (raised for taller height)
-                        rotationY: rotY
+                        position: [cx + wx, cy + 2.5 + tierHeight, cz + wz],
+                        rotationY: rotY + (Math.random() - 0.5) * 0.3 // Slight rotation jitter
                     });
                 }
             }

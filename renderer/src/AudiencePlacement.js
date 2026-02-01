@@ -34,7 +34,7 @@ function isPointInPolygon(point, polygon) {
  * @param {number} offset - Distance from the wall to place the grandstand center.
  * @returns {Array<{position: [x,y,z], rotation: [x,y,z]}>}
  */
-function generateAudiencePositions(polygon, spacing = 60, offset = 15) {
+function generateAudiencePositions(polygon, spacing = 20, offset = 15) {
     if (!polygon || polygon.length < 3) return [];
 
     const positions = [];

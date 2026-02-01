@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
 import { Scenery } from './Scenery';
 import { Audience } from './Audience';
-import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail } from './ParticleEffects';
+import { TireSmoke, CollisionSparks, AmbientParticles, DustTrail, ParticleExplosion } from './ParticleEffects';
 import { GameUI } from './GameUI';
 // import { useMidiAudio as useAudio } from './useMidiAudio';
 import { useAudio } from './useAudio';
@@ -403,80 +403,78 @@ const GeometricModel = React.memo(({ maskType, color }) => {
 // =============================================================================
 // CAR COMPONENT WITH TRAIL
 // =============================================================================
-function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isLocating }) {
+function Car({ id, worldStateRef, color, maskType, isLocating }) {
     const meshRef = useRef();
-    const targetPos = useRef(new THREE.Vector3(...position));
+    const targetPos = useRef(new THREE.Vector3(0, 0, 0));
     const beaconRef = useRef();
 
     // Memoize color to prevent recreation every render
     const trailColor = useMemo(() => new THREE.Color(color), [color]);
 
-    useEffect(() => {
-        targetPos.current.set(position[0], position[1], position[2]);
-    }, [position]);
+    // Track state for effects that need to be reactive
+    const effectState = useRef({ hp: 100, velocity: { x: 0, y: 0, z: 0 } });
 
     useFrame((state, delta) => {
-        if (meshRef.current) {
-            // Smooth Interpolation (Lerp/Slerp)
-            // This prevents "choppiness" by smoothly moving towards server updates
-            meshRef.current.position.lerp(targetPos.current, 0.3);
+        const player = worldStateRef.current.players[id];
+        if (!player || !player.position || !meshRef.current) return;
 
-            if (quaternion) {
-                // Physics uses negative Z as forward, but Three.js models face positive Z
-                const physicsQuat = new THREE.Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
-                const correctionQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-                physicsQuat.multiply(correctionQuat);
+        const { position, velocity, q: quaternion, hp } = player;
+        targetPos.current.set(position.x, position.y, position.z);
 
-                // Slerp for smooth rotation
-                meshRef.current.quaternion.slerp(physicsQuat, 0.15);
-            } else if (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1) {
-                const targetRotY = Math.atan2(velocity.x, velocity.z);
-                const currentRot = meshRef.current.rotation.y;
-                // Simple lerp for rotation y
-                meshRef.current.rotation.y += (targetRotY - currentRot) * 0.1;
+        // Physics Interpolation
+        meshRef.current.position.lerp(targetPos.current, 0.3);
+
+        if (quaternion) {
+            const physicsQuat = new THREE.Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
+            const correctionQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+            physicsQuat.multiply(correctionQuat);
+            meshRef.current.quaternion.slerp(physicsQuat, 0.15);
+        } else if (velocity && (Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1)) {
+            const targetRotY = Math.atan2(velocity.x, velocity.z);
+            const currentRot = meshRef.current.rotation.y;
+            meshRef.current.rotation.y += (targetRotY - currentRot) * 0.1;
+        }
+
+        // Locate & Damage effects
+        if (isLocating) {
+            const pulse = Math.sin(state.clock.elapsedTime * 10) * 0.5 + 1.5;
+            meshRef.current.scale.lerp(new THREE.Vector3(1.5, 1.5, 1.5), 0.1);
+            meshRef.current.children.forEach(c => {
+                if (c.material) c.material.emissiveIntensity = pulse;
+            });
+            if (beaconRef.current) {
+                beaconRef.current.material.opacity = Math.sin(state.clock.elapsedTime * 8) * 0.3 + 0.5;
             }
+        } else {
+            meshRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+            const intensity = hp < 30 ? Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1 : 0.5;
+            meshRef.current.children.forEach((c) => {
+                if (c.material) c.material.emissiveIntensity = intensity;
+            });
+        }
 
-            // Locate effect: scale up and pulse emissive
-            if (isLocating) {
-                const pulse = Math.sin(state.clock.elapsedTime * 10) * 0.5 + 1.5;
-                meshRef.current.scale.lerp(new THREE.Vector3(1.5, 1.5, 1.5), 0.1);
-                meshRef.current.children.forEach(c => {
-                    if (c.material) c.material.emissiveIntensity = pulse;
-                });
-                // Animate beacon
-                if (beaconRef.current) {
-                    beaconRef.current.material.opacity = Math.sin(state.clock.elapsedTime * 8) * 0.3 + 0.5;
-                }
-            } else {
-                meshRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
-                const intensity = hp < 30 ? Math.sin(state.clock.elapsedTime * 20) * 0.5 + 1 : 0.5;
-                meshRef.current.children.forEach((c) => {
-                    if (c.material) c.material.emissiveIntensity = intensity;
-                });
-            }
-
-            // Speed effects
-            if (velocity) {
-                const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                const ef = Math.min(1, speed / 20);
-                if (flameRef.current) {
-                    flameRef.current.visible = ef > 0.1;
-                    if (ef > 0.1) {
-                        flameRef.current.scale.set(0.4 + ef * 0.3, 0.3 + ef * 0.2, 0.5 + ef * 1.5);
-                        flameRef.current.material.opacity = 0.6 + ef * 0.3;
-                    }
-                }
-                if (underglowRef.current) {
-                    underglowRef.current.intensity = 0.8 + ef * 0.5;
-                }
+        // Speed effects
+        const speed = velocity ? Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) : 0;
+        const ef = Math.min(1, speed / 20);
+        if (flameRef.current) {
+            flameRef.current.visible = ef > 0.1;
+            if (ef > 0.1) {
+                flameRef.current.scale.set(0.4 + ef * 0.3, 0.3 + ef * 0.2, 0.5 + ef * 1.5);
+                flameRef.current.material.opacity = 0.6 + ef * 0.3;
             }
         }
+        if (underglowRef.current) {
+            underglowRef.current.intensity = 0.8 + ef * 0.5;
+        }
+
+        // Update effect refs for children
+        effectState.current.velocity = velocity || { x: 0, y: 0, z: 0 };
+        effectState.current.hp = hp;
+        effectState.current.showTireEffects = speed > 5;
     });
 
     const flameRef = useRef();
     const underglowRef = useRef();
-    const speed = velocity ? Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z) : 0;
-    const showTireEffects = speed > 5;
 
     return (
         <Trail width={3 * 1.5} length={10} color={trailColor} attenuation={(t) => t * t}>
@@ -503,13 +501,10 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
                     distance={6}
                 />
 
-                {/* Tire Smoke */}
-                {showTireEffects && (
-                    <>
-                        <TireSmoke position={[1.2, 0, 1.2]} active={true} color={color} />
-                        <TireSmoke position={[-1.2, 0, 1.2]} active={true} color={color} />
-                    </>
-                )}
+                {/* Tire Smoke - always rendered, visibility controlled by ref */}
+                <TireSmoke position={[1.2, 0, 1.2]} dataRef={effectState} color={color} />
+                <TireSmoke position={[-1.2, 0, 1.2]} dataRef={effectState} color={color} />
+                <DustTrail position={[0, 0, 1.5]} dataRef={effectState} color="#8b7355" />
 
                 {/* Locate Beacon */}
                 {isLocating && (
@@ -534,51 +529,9 @@ function Car({ position, velocity, quaternion, color, hp, isDying, maskType, isL
 
 
 // =============================================================================
-// EXPLOSION PARTICLES
+// EXPLOSION PARTICLES (Moved to ParticleEffects.jsx)
 // =============================================================================
-// =============================================================================
-// EXPLOSION PARTICLES (SPRITE BASED)
-// =============================================================================
-function Explosion({ position, color, onComplete }) {
-    const texture = useMemo(() => {
-        try {
-            const pre = (window && window.__preloadedAssets && window.__preloadedAssets.explosionTexture);
-            if (pre) return pre;
-        } catch (e) { }
-        return new THREE.TextureLoader().load('/explosion.png');
-    }, []);
-    const lifeRef = useRef(1);
-    const spriteRef = useRef();
-    const completedRef = useRef(false);
-
-    useFrame((state, delta) => {
-        if (completedRef.current) return;
-
-        lifeRef.current -= delta * 2;
-
-        if (lifeRef.current <= 0) {
-            completedRef.current = true;
-            onComplete?.();
-            return;
-        }
-
-        // Update sprite directly without state
-        if (spriteRef.current) {
-            const life = lifeRef.current;
-            const scale = 5 + (1 - life) * 5;
-            spriteRef.current.scale.set(scale, scale, 1);
-            spriteRef.current.material.opacity = life;
-        }
-    });
-
-    return (
-        <group position={position}>
-            <sprite ref={spriteRef} scale={[5, 5, 1]}>
-                <spriteMaterial map={texture} color={color} transparent opacity={1} blending={THREE.AdditiveBlending} />
-            </sprite>
-        </group>
-    );
-}
+// Old component removed, using ParticleExplosion instead
 
 // =============================================================================
 // POWERUP VISUAL
@@ -724,7 +677,7 @@ function Trap({ position }) {
 // =============================================================================
 // PROJECTILE VISUAL
 // =============================================================================
-function Projectile({ position, direction, type }) {
+function Projectile({ id, worldStateRef, type }) {
     const meshRef = useRef();
     const startTime = useRef(Date.now());
     const [visible, setVisible] = useState(true);
@@ -735,19 +688,18 @@ function Projectile({ position, direction, type }) {
     useFrame((state, delta) => {
         if (!meshRef.current || !visible) return;
 
-        // Move projectile forward
-        const speed = type === 'missile' ? 60 : 100;
-        meshRef.current.position.x += direction.x * speed * delta;
-        meshRef.current.position.z += direction.z * speed * delta;
+        // Position update from ref (60Hz)
+        const proj = worldStateRef.current.projectiles?.[id];
+        if (proj && proj.position) {
+            meshRef.current.position.set(proj.position.x, proj.position.y, proj.position.z);
+        }
 
         // Animate glow
         const t = state.clock.elapsedTime;
         meshRef.current.material.emissiveIntensity = 2 + Math.sin(t * 20) * 0.5;
 
-        // Auto-hide after 2 seconds
-        if (Date.now() - startTime.current > 2000) {
-            setVisible(false);
-        }
+        // Rotate for effect
+        meshRef.current.rotation.z += delta * 5;
     });
 
     if (!visible) return null;
@@ -1563,7 +1515,7 @@ function DebugBoundaries({ active }) {
 // =============================================================================
 // MAIN SCENE
 // =============================================================================
-function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers }) {
+function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, gameState, isDemo, graphicsSettings, onPerformanceUpdate, locatingPlayers }) {
     const [explosions, setExplosions] = useState([]);
     const [showDebug, setShowDebug] = useState(false);
     const prevPlayersRef = useRef({});
@@ -1785,11 +1737,9 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                 return (
                     <Car
                         key={id}
-                        position={[player.position.x, player.position.y, player.position.z]}
-                        velocity={player.velocity}
-                        quaternion={player.q}
+                        id={id}
+                        worldStateRef={worldStateRef}
                         color={player.color}
-                        hp={player.hp}
                         maskType={player.maskType}
                         isLocating={locatingPlayers?.[id] || false}
                     />
@@ -1813,9 +1763,19 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                 />
             ))}
 
+            {/* Projectiles */}
+            {Object.entries(worldState.projectiles || {}).map(([id, proj]) => (
+                <Projectile
+                    key={id}
+                    id={id}
+                    worldStateRef={worldStateRef}
+                    type={proj.type}
+                />
+            ))}
+
             {/* Explosions */}
             {explosions.map(exp => (
-                <Explosion
+                <ParticleExplosion
                     key={exp.id}
                     position={exp.position}
                     color={exp.color}
@@ -1824,7 +1784,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
             ))}
 
             {/* Post Processing */}
-            <EffectComposer multisampling={8}>
+            <EffectComposer multisampling={4} disableNormalPass={false}>
                 {/* SSAO - Screen Space Ambient Occlusion */}
                 {graphicsSettings?.enableSSAO && (
                     <N8AO
@@ -1846,14 +1806,14 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
                     />
                 )}
 
-                {/* Bloom */}
+                {/* Bloom - Tuned for Neon Look */}
                 {graphicsSettings?.enableBloom && (
                     <Bloom
-                        intensity={graphicsSettings.bloomIntensity || 0.8}
-                        luminanceThreshold={0.3}
-                        luminanceSmoothing={0.8}
+                        intensity={graphicsSettings.bloomIntensity || 1.2} // Increased for "eye candy"
+                        luminanceThreshold={0.4} // Lowered slightly to catch more neon
+                        luminanceSmoothing={0.7}
                         mipmapBlur={true}
-                        radius={0.8}
+                        radius={0.7}
                     />
                 )}
 
@@ -1884,7 +1844,7 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
 // =============================================================================
 // QR OVERLAY
 // =============================================================================
-function QROverlay() {
+const QROverlay = React.memo(function QROverlay() {
     return (
         <div style={{
             position: 'fixed',
@@ -1928,7 +1888,7 @@ function QROverlay() {
             `}</style>
         </div>
     );
-}
+});
 
 // =============================================================================
 // PLAYER LIST OVERLAY
@@ -1942,7 +1902,7 @@ const MASK_ICONS = {
     Skull: '💀'
 };
 
-function PlayerList({ players, gameState }) {
+const PlayerList = React.memo(function PlayerList({ players, gameState }) {
     const activePlayers = Object.entries(players || {}).filter(([, p]) => p.type === 'driver');
     const isRacing = gameState === 'RACING' || gameState === 'COUNTDOWN';
 
@@ -1976,7 +1936,7 @@ function PlayerList({ players, gameState }) {
             }}>
                 {isRacing ? (
                     <>
-                        <span style={{ fontSize: 16 }}>�</span>
+                        <span style={{ fontSize: 16 }}></span>
                         <span>RACERS</span>
                         <span style={{ marginLeft: 'auto', opacity: 0.8 }}>{activePlayers.length}</span>
                     </>
@@ -2080,16 +2040,23 @@ function PlayerList({ players, gameState }) {
             `}</style>
         </div>
     );
-}
+});
 
 // =============================================================================
 // MAIN APP
 // =============================================================================
 export default function App() {
+    const worldStateRef = useRef({
+        players: {},
+        powerups: {},
+        traps: {},
+        projectiles: {}
+    });
     const [worldState, setWorldState] = useState({
         players: {},
         powerups: {},
-        traps: {}
+        traps: {},
+        projectiles: {}
     });
     const [gameState, setGameState] = useState({
         state: 'LOBBY',
@@ -2349,16 +2316,18 @@ export default function App() {
 
         socket.on('worldState', (state) => {
             // Delta compression handling
+            let merged = null;
             if (state.isFull) {
                 // Full state - expand compressed arrays to objects and cache
-                const expanded = {
+                merged = {
                     players: {},
                     powerups: state.powerups,
-                    traps: state.traps
+                    traps: state.traps,
+                    projectiles: state.projectiles
                 };
 
                 for (const [id, player] of Object.entries(state.players)) {
-                    expanded.players[id] = {
+                    merged.players[id] = {
                         position: player.p ? { x: player.p[0], y: player.p[1], z: player.p[2] } : null,
                         velocity: player.v ? { x: player.v[0], y: player.v[1], z: player.v[2] } : null,
                         q: player.q, // Include quaternion
@@ -2377,48 +2346,51 @@ export default function App() {
                         isCPU: player.isCPU
                     };
                 }
-
-                // Store for delta merging
-                window.__playerCache = expanded.players;
-                setWorldState(expanded);
             } else {
                 // Delta state - merge with cached full state
-                setWorldState(prev => {
-                    const cache = window.__playerCache || prev.players || {};
-                    const merged = {
-                        players: {},
-                        powerups: state.powerups,
-                        traps: state.traps
+                const cache = worldStateRef.current.players || {};
+                merged = {
+                    players: {},
+                    powerups: state.powerups,
+                    traps: state.traps,
+                    projectiles: state.projectiles
+                };
+
+                for (const [id, delta] of Object.entries(state.players)) {
+                    const cached = cache[id] || {};
+                    merged.players[id] = {
+                        position: delta.p ? { x: delta.p[0], y: delta.p[1], z: delta.p[2] } : null,
+                        velocity: delta.v ? { x: delta.v[0], y: delta.v[1], z: delta.v[2] } : null,
+                        q: delta.q || cached.q, // Include quaternion from delta or cache
+                        hp: delta.hp !== undefined ? delta.hp : cached.hp,
+                        type: delta.type !== undefined ? delta.type : cached.type,
+                        maskType: delta.maskType !== undefined ? delta.maskType : cached.maskType,
+                        color: delta.color !== undefined ? delta.color : cached.color,
+                        name: delta.name !== undefined ? delta.name : cached.name,
+                        boost: delta.boost !== undefined ? delta.boost : cached.boost,
+                        isShielded: delta.isShielded !== undefined ? delta.isShielded : cached.isShielded,
+                        isGhost: delta.isGhost !== undefined ? delta.isGhost : cached.isGhost,
+                        isJuggernaut: delta.isJuggernaut !== undefined ? delta.isJuggernaut : cached.isJuggernaut,
+                        lapsCompleted: delta.lapsCompleted,
+                        waypointIndex: delta.waypointIndex,
+                        raceProgress: delta.raceProgress,
+                        isCPU: delta.isCPU !== undefined ? delta.isCPU : cached.isCPU
                     };
+                }
+            }
 
-                    for (const [id, delta] of Object.entries(state.players)) {
-                        const cached = cache[id] || {};
-                        merged.players[id] = {
-                            position: delta.p ? { x: delta.p[0], y: delta.p[1], z: delta.p[2] } : null,
-                            velocity: delta.v ? { x: delta.v[0], y: delta.v[1], z: delta.v[2] } : null,
-                            q: delta.q || cached.q, // Include quaternion from delta or cache
-                            hp: delta.hp !== undefined ? delta.hp : cached.hp,
-                            type: delta.type !== undefined ? delta.type : cached.type,
-                            maskType: delta.maskType !== undefined ? delta.maskType : cached.maskType,
-                            color: delta.color !== undefined ? delta.color : cached.color,
-                            name: delta.name !== undefined ? delta.name : cached.name,
-                            boost: delta.boost !== undefined ? delta.boost : cached.boost,
-                            isShielded: delta.isShielded !== undefined ? delta.isShielded : cached.isShielded,
-                            isGhost: delta.isGhost !== undefined ? delta.isGhost : cached.isGhost,
-                            isJuggernaut: delta.isJuggernaut !== undefined ? delta.isJuggernaut : cached.isJuggernaut,
-                            lapsCompleted: delta.lapsCompleted,
-                            waypointIndex: delta.waypointIndex,
-                            raceProgress: delta.raceProgress,
-                            isCPU: delta.isCPU !== undefined ? delta.isCPU : cached.isCPU
-                        };
-                    }
-
-                    // Update cache with merged data
-                    window.__playerCache = merged.players;
-                    return merged;
-                });
+            if (merged) {
+                worldStateRef.current = merged;
+                window.__playerCache = merged.players;
             }
         });
+
+        // Sync worldStateRef to worldState state at a lower frequency (15Hz) for UI and list rendering
+        const uiSyncInterval = setInterval(() => {
+            setWorldState(worldStateRef.current);
+        }, 66); // ~15Hz
+
+        return () => clearInterval(uiSyncInterval);
 
         socket.on('gameState', (state) => {
             setGameState(state);
@@ -2595,8 +2567,13 @@ export default function App() {
                     socket.emit('addCPU');
                     showToast('Adding CPU opponent', 'success');
                     break;
-                case '-': // - - Remove CPU
                 case '_': // _ (same key as -)
+                    socket.emit('removeCPU');
+                    showToast('Removing CPU opponent', 'info');
+                    break;
+                case 'f': // Fire Weapon
+                    socket.emit('fire');
+                    break;
                     if (cpuCount > 0) {
                         socket.emit('removeCPU');
                         showToast('Removing CPU opponent', 'success');
@@ -2641,6 +2618,7 @@ export default function App() {
             >
                 <Scene
                     worldState={worldState}
+                    worldStateRef={worldStateRef}
                     trackData={trackData}
                     theme={trackTheme}
                     setEngineRpm={setEngineRpm}
@@ -2663,6 +2641,43 @@ export default function App() {
             <DemoModeIndicator active={demoMode} />
             <LeaderboardDisplay entries={leaderboard} visible={gameState.state === 'LOBBY' || demoMode} />
             <EliminationBanner eliminations={eliminations} />
+
+            {/* HUD */}
+            {gameState.state === 'RACING' && worldState.players[socket.id] && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: 20,
+                    right: 20,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    gap: 10,
+                    padding: 20,
+                    pointerEvents: 'none'
+                }}>
+                    {/* Active Powerups */}
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        {worldState.players[socket.id].isShielded && (
+                            <span style={{ fontSize: 32 }} title="Shield">🛡️</span>
+                        )}
+                        {worldState.players[socket.id].isGhost && (
+                            <span style={{ fontSize: 32 }} title="Ghost">👻</span>
+                        )}
+                        {worldState.players[socket.id].isJuggernaut && (
+                            <span style={{ fontSize: 32 }} title="Juggernaut">💪</span>
+                        )}
+                    </div>
+                    {/* Ammo */}
+                    <div style={{
+                        color: typeof worldState.players[socket.id].ammo === 'number' && worldState.players[socket.id].ammo > 0 ? '#ff00ff' : '#555',
+                        fontSize: 24,
+                        fontWeight: 'bold',
+                        textShadow: '0 0 10px #ff00ff'
+                    }}>
+                        AMMO: {worldState.players[socket.id].ammo || 0}
+                    </div>
+                </div>
+            )}
 
             {/* Admin UI */}
             <ToastNotification toasts={toasts} setToasts={setToasts} />
