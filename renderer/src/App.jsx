@@ -2052,7 +2052,7 @@ const QROverlay = React.memo(function QROverlay() {
             }}>
                 📱 SCAN TO PLAY
             </div>
-            <QRCode value="https://jam.gimongous.net/render" size={140} />
+            <QRCode value="https://jam.gimongous.net" size={140} />
             <div style={{
                 textAlign: 'center',
                 marginTop: 10,
