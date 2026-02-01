@@ -807,7 +807,7 @@ function LeaderboardDisplay({ entries, visible }) {
             minWidth: 220,
             border: '2px solid #ff00ff',
             boxShadow: '0 0 30px rgba(255, 0, 255, 0.4)',
-            zIndex: 900
+            zIndex: 3000
         }}>
             <div style={{
                 fontSize: 14,

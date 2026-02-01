@@ -852,14 +852,16 @@ export default function App() {
     };
 
     // Reset to lobby state
-    const resetToLobby = useCallback((message = null) => {
+    const resetToLobby = useCallback((message = null, keepDismissed = false) => {
         setGameState('lobby');
         setPlayerId(null);
         setPlayerState(null);
         setWinner(null);
         setServerTimer(0);
         missingTicksRef.current = 0;
-        dismissedResultsRef.current = false; // Reset dismissal flag
+        if (!keepDismissed) {
+            dismissedResultsRef.current = false; // Reset dismissal flag
+        }
         if (message) {
             setDemoMessage(message);
             setTimeout(() => setDemoMessage(null), 3000);
@@ -869,7 +871,7 @@ export default function App() {
     // Manual dismissal of results screen
     const handleDismissResults = () => {
         dismissedResultsRef.current = true;
-        resetToLobby();
+        resetToLobby(null, true);
     };
 
     useEffect(() => {
