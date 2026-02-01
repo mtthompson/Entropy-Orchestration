@@ -484,7 +484,7 @@ function applyCpuWorkerResults(results) {
 
         // CRITICAL: Clamp CPU velocity to prevent passing through walls
         const cpuSpeed = cpu.body.velocity.length();
-        let CPU_MAX_SPEED = 140; // Increased from 90
+        let CPU_MAX_SPEED = 65; // Same as player max speed
         if (cpu.maskType === 'Skull') CPU_MAX_SPEED *= 1.1; // Skull mask bonus
 
         if (cpuSpeed > CPU_MAX_SPEED) {
@@ -930,68 +930,55 @@ function updatePlayerPhysics(player, input) {
     // Get current speed
     const speed = player.body.velocity.length();
 
-    // 1. STEERING - Responsive arcade-style turning
-    // Quick turn response at all speeds, slightly reduced at very high speed
-    const minSpeedToTurn = 1.0; // Lower threshold
-    const baseTurnSpeed = 3.8; // Reduced from 5.5 for more controlled steering
-    const speedFactor = Math.min(1, speed / 10); // Full turn responsiveness at speed 10+
-    const highSpeedDampen = Math.max(0.5, 1 - speed / 100); // Gentler reduction at high speed
+    // 1. STEERING - Only allow turning when moving
+    // Steering sensitivity decreases at high speed (prevents spinouts)
+    const minSpeedToTurn = 2;
+    const turnSpeed = 6.0;
+    const speedFactor = Math.min(1, speed / 15); // Full turn at speed 15+
+    const highSpeedDampen = Math.max(0.3, 1 - speed / 50); // Reduce turn at very high speed
 
-    let desiredSteer = 0;
     if (speed > minSpeedToTurn) {
-        desiredSteer = -steering * baseTurnSpeed * speedFactor * highSpeedDampen;
+        player.body.angularVelocity.y = -steering * turnSpeed * speedFactor * highSpeedDampen;
     } else {
-        // Allow some turning even when nearly stopped (helps with maneuvering)
-        desiredSteer = -steering * baseTurnSpeed * 0.4;
+        player.body.angularVelocity.y *= 0.9; // Dampen rotation when stationary
     }
-
-    // Apply low-pass filter (smoothing) to prevent instant 180s and rapid spinning
-    // This is the key fix for the "spinning in circles" issue
-    const steerSmoothing = 0.85; // 85% old value, 15% new
-    player.body.angularVelocity.y = (player.body.angularVelocity.y * steerSmoothing) + (desiredSteer * (1 - steerSmoothing));
 
     // 2. Calculate Forward Direction based on current rotation
     const quaternion = player.body.quaternion;
     const forward = new CANNON.Vec3(0, 0, -1); // NEGATIVE Z is forward
     quaternion.vmult(forward, forward);
 
-    // 3. Apply Throttle Force (Significantly increased for faster acceleration)
-    const driveForce = 3500; // Increased from 2000 - much punchier acceleration
+    // 3. Apply Throttle Force (Aligned with heading)
+    const driveForce = 800;
     const force = forward.clone();
     force.scale(throttle * driveForce, force);
 
-    // Boost multiplier - more impactful
+    // Boost multiplier
     if (boost && player.boost > 0) {
-        force.scale(2.2, force); // Increased from 1.8 - boost feels powerful
-        player.boost = Math.max(0, player.boost - 1.2); // Slightly longer boost duration
+        force.scale(1.8, force);
+        player.boost = Math.max(0, player.boost - 1.5);
     } else {
-        player.boost = Math.min(100, player.boost + 0.4 * boostRegenMod); // Faster regen
+        player.boost = Math.min(100, player.boost + 0.3 * boostRegenMod);
     }
 
     player.body.applyForce(force, player.body.position);
 
-    // 4. Lateral Friction (Balanced drift/grip)
+    // 4. Lateral Friction (Anti-drift grip)
     const velocity = player.body.velocity;
-    
-    // Calculate right vector properly: cross product of forward and up
-    // Reuse the forward vector already calculated above
-    const up = new CANNON.Vec3(0, 1, 0);
-    const right = new CANNON.Vec3();
-    forward.cross(up, right);  // right = forward × up
-    right.normalize();
+    const right = new CANNON.Vec3(1, 0, 0);
+    quaternion.vmult(right, right);
 
     const lateralVelocity = velocity.dot(right);
 
-    // Dynamic grip: more grip at low speed, allows controlled drift at high speed
-    const speedRatio = Math.min(speed / 50, 1);
-    const grip = 0.95 - speedRatio * 0.15; // 0.95 at low speed, 0.80 at high speed
+    // Apply STRONG opposing force to cancel sideways slide
+    // Higher grip = more like a car, lower = more like ice
+    const grip = 0.92; // Increased grip
     const correctionForce = right.clone();
-    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 10, correctionForce);
-
+    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 8, correctionForce);
     player.body.applyForce(correctionForce, player.body.position);
 
-    // 5. Speed cap increased for faster gameplay (modified by mask)
-    const maxSpeed = 150 * maxSpeedMod; // Increased from 95
+    // 5. Speed cap to prevent runaway (modified by mask)
+    const maxSpeed = 65 * maxSpeedMod;
     if (speed > maxSpeed) {
         player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
     }
