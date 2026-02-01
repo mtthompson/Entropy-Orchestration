@@ -48,12 +48,6 @@ const projectiles = new Map();   // id -> { body, ownerId, type, damage }
 const powerups = new Map();      // id -> { body, type }
 const traps = new Map();         // id -> { body }
 
-const projectilePool = [];
-const powerupPool = [];
-const trapPool = [];
-const MAX_POOL_SIZE = 20;
-const MAX_PROJECTILE_POOL_SIZE = 50;
-
 const CAR_COLORS = [
     '#FF00FF', '#00FFFF', '#FF6B00', '#00FF00',
     '#FF0066', '#6600FF', '#FFFF00', '#00FF99'
@@ -786,6 +780,9 @@ function removeCPUOpponents() {
 // =============================================================================
 // PROJECTILE SYSTEM
 // =============================================================================
+// =============================================================================
+// PROJECTILE SYSTEM
+// =============================================================================
 function createProjectile(ownerId, type, position, direction) {
     const projId = `proj_${projectileIdCounter++}`;
 
@@ -793,6 +790,8 @@ function createProjectile(ownerId, type, position, direction) {
     const damage = type === 'missile' ? 40 : 20;
 
     let body;
+    let fromPool = false;
+
     if (projectilePool.length > 0) {
         body = projectilePool.pop();
         body.position.set(position.x, position.y, position.z);
@@ -800,6 +799,9 @@ function createProjectile(ownerId, type, position, direction) {
         body.angularVelocity.set(0, 0, 0);
         body.quaternion.set(0, 0, 0, 1);
         body.wakeUp();
+        body.collisionResponse = true; // Enable collisions
+        fromPool = true;
+        // Already in world
     } else {
         body = new CANNON.Body({
             mass: 1,
@@ -809,9 +811,8 @@ function createProjectile(ownerId, type, position, direction) {
             angularDamping: 0
         });
         body.velocity.set(direction.x * speed, 0, direction.z * speed);
+        world.addBody(body); // Add new body to world
     }
-
-    world.addBody(body);
 
     const projectile = {
         id: projId,
@@ -828,11 +829,25 @@ function createProjectile(ownerId, type, position, direction) {
     setTimeout(() => {
         if (projectiles.has(projId)) {
             const proj = projectiles.get(projId);
-            world.removeBody(proj.body);
+
+            // "Remove" to void
+            proj.body.position.set(0, -500, 0);
+            proj.body.collisionResponse = false;
+
             projectiles.delete(projId);
 
             // Return to pool
             if (projectilePool.length < MAX_PROJECTILE_POOL_SIZE) {
+                projectilePool.push(proj.body);
+            } else {
+                // If pool full (e.g. from fallback creation), actually remove it?
+                // For now, just keep in void or remove if really overflow.
+                // But passive pooling assumes fixed pool size usually.
+                // If we created extra, we should probably remove them to avoid leak?
+                // Let's stick to simple "push back" but maybe check if we want to grow pool?
+                // If pool is full, it means we have plenty. If we created a new one, maybe we should delete it.
+                // But mixing pooled and non-pooled is tricky.
+                // Simplest: Just push it back. If pool grows beyond initial size, it's fine, it handles load.
                 projectilePool.push(proj.body);
             }
         }
@@ -856,14 +871,13 @@ function updateProjectiles() {
                 player.hp -= proj.damage;
                 io.to(playerId).emit('damage', { amount: proj.damage, source: 'projectile' });
 
-                // Remove projectile
-                world.removeBody(proj.body);
+                // Remove projectile ("to void")
+                proj.body.position.set(0, -500, 0);
+                proj.body.collisionResponse = false;
+
                 projectiles.delete(projId);
 
-                // Return to pool
-                if (projectilePool.length < MAX_PROJECTILE_POOL_SIZE) {
-                    projectilePool.push(proj.body);
-                }
+                projectilePool.push(proj.body);
 
                 // Check if player died
                 if (player.hp <= 0) {
@@ -880,13 +894,14 @@ function updateProjectiles() {
             const dist = proj.body.position.distanceTo(cpu.body.position);
             if (dist < 2) {
                 cpu.hp -= proj.damage;
-                world.removeBody(proj.body);
+
+                // Remove projectile ("to void")
+                proj.body.position.set(0, -500, 0);
+                proj.body.collisionResponse = false;
+
                 projectiles.delete(projId);
 
-                // Return to pool
-                if (projectilePool.length < MAX_PROJECTILE_POOL_SIZE) {
-                    projectilePool.push(proj.body);
-                }
+                projectilePool.push(proj.body);
 
                 if (cpu.hp <= 0) {
                     world.removeBody(cpu.body);
@@ -1542,55 +1557,6 @@ world.addEventListener('postStep', () => {
 
 
 
-const projectilePool = [];
-const powerupPool = [];
-const trapPool = [];
-const MAX_POOL_SIZE = 20;
-const MAX_PROJECTILE_POOL_SIZE = 50;
-
-function initObjectPools() {
-    console.log(`[POOL] Initializing object pools (Size: ${MAX_POOL_SIZE}, Projectiles: ${MAX_PROJECTILE_POOL_SIZE})`);
-    for (let i = 0; i < MAX_POOL_SIZE; i++) {
-        // Powerup pool
-        const pBody = new CANNON.Body({
-            mass: 0,
-            shape: new CANNON.Sphere(1.5),
-            isTrigger: true,
-            position: new CANNON.Vec3(0, -500, 0), // Start in void
-            collisionResponse: false
-        });
-        world.addBody(pBody); // Pre-add to world
-        powerupPool.push(pBody);
-
-        // Trap pool
-        const tBody = new CANNON.Body({
-            mass: 0,
-            shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 1)),
-            position: new CANNON.Vec3(0, -500, 0), // Start in void
-            collisionResponse: false
-        });
-        world.addBody(tBody); // Pre-add to world
-        trapPool.push(tBody);
-    }
-
-    // Projectile pool
-    for (let i = 0; i < MAX_PROJECTILE_POOL_SIZE; i++) {
-        const body = new CANNON.Body({
-            mass: 1,
-            shape: new CANNON.Sphere(0.3),
-            linearDamping: 0,
-            angularDamping: 0,
-            position: new CANNON.Vec3(0, -500, 0),
-            collisionResponse: false
-        });
-        world.addBody(body); // Pre-add to world
-        projectilePool.push(body);
-    }
-}
-
-initObjectPools();
-
-
 function spawnPowerup() {
     // Prevent accumulation - cap at MAX_POWERUPS
     if (powerups.size >= MAX_POWERUPS) {
@@ -2021,15 +1987,27 @@ function resetGame() {
 
     // Clear powerups and traps
     for (const [id, p] of powerups) {
-        world.removeBody(p.body);
+        // "Remove" to void
+        p.body.position.set(0, -500, 0);
+        p.body.collisionResponse = false;
         powerupPool.push(p.body);
     }
     powerups.clear();
     for (const [id, t] of traps) {
-        world.removeBody(t.body);
+        // "Remove" to void
+        t.body.position.set(0, -500, 0);
+        t.body.collisionResponse = false;
         trapPool.push(t.body);
     }
     traps.clear();
+
+    // Clear projectiles
+    for (const [id, proj] of projectiles) {
+        proj.body.position.set(0, -500, 0);
+        proj.body.collisionResponse = false;
+        projectilePool.push(proj.body);
+    }
+    projectiles.clear();
 }
 
 function endRace(winner) {
