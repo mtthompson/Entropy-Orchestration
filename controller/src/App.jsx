@@ -835,11 +835,12 @@ export default function App() {
                 if (state.players[playerId]) {
                     // Player found - update state and reset missing counter
                     const player = state.players[playerId];
-                    setPlayerState(prev => ({
-                        ...prev,
-                        hp: player.hp,
-                        boost: player.boost
-                    }));
+                    setPlayerState(prev => {
+                        const newState = { ...prev };
+                        if (player.hp !== undefined) newState.hp = player.hp;
+                        if (player.boost !== undefined) newState.boost = player.boost;
+                        return newState;
+                    });
                     missingTicksRef.current = 0;
                 } else {
                     // Player not in worldState - increment missing counter

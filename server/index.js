@@ -972,8 +972,13 @@ function updatePlayerPhysics(player, input) {
 
     // 4. Lateral Friction (Balanced drift/grip)
     const velocity = player.body.velocity;
-    const right = new CANNON.Vec3(1, 0, 0);
-    quaternion.vmult(right, right);
+    
+    // Calculate right vector properly: cross product of forward and up
+    // Reuse the forward vector already calculated above
+    const up = new CANNON.Vec3(0, 1, 0);
+    const right = new CANNON.Vec3();
+    forward.cross(up, right);  // right = forward × up
+    right.normalize();
 
     const lateralVelocity = velocity.dot(right);
 
