@@ -2137,7 +2137,7 @@ export default function App() {
             // Explosion sprite texture
             const loader = new THREE.TextureLoader();
             loader.load('/explosion.png', (tex) => {
-                try { tex.encoding = THREE.sRGBEncoding; } catch (e) { }
+                try { tex.colorSpace = THREE.SRGBColorSpace; } catch (e) { }
                 tex.needsUpdate = true;
                 cache.explosionTexture = tex;
                 // also set a sprite material for quick reuse
@@ -2390,9 +2390,9 @@ export default function App() {
             setWorldState(worldStateRef.current);
         }, 66); // ~15Hz
 
-        return () => clearInterval(uiSyncInterval);
 
         socket.on('gameState', (state) => {
+            console.log('[DEBUG] Received gameState:', state);
             setGameState(state);
 
             // Clear eliminations on reset to avoid spam
@@ -2405,7 +2405,7 @@ export default function App() {
         });
 
         socket.on('trackData', (data) => {
-            console.log('Received track data:', data.name);
+            console.log('[DEBUG] Received trackData:', data.name);
             setTrackData(data);
         });
 
@@ -2539,6 +2539,7 @@ export default function App() {
             socket.off('cpuCount');
             socket.off('allTracks');
             socket.off('playerLocating');
+            clearInterval(uiSyncInterval);
         };
     }, [playSfx, setMusicStyle]);
 

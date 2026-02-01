@@ -49,6 +49,9 @@ export function TireSmoke({ position, active: initialActive, dataRef, color = '#
             );
 
             if (result) {
+                // Check if still mounted after await
+                if (!particlesRef.current) return;
+
                 // Update refs directly from result
                 s.velocities = result.velocities;
                 s.lifetimes = new Float32Array(result.lifetimes);
@@ -196,6 +199,9 @@ export function CollisionSparks({ position, active, color = '#ffaa00', onComplet
             );
 
             if (result) {
+                // Check if still mounted after await
+                if (!particlesRef.current) return;
+
                 s.velocities = result.velocities;
                 s.lifetimes = result.lifetimes;
                 if (result.positions) {
@@ -329,6 +335,9 @@ export function ParticleExplosion({ position, color = '#ff5500', onComplete }) {
             );
 
             if (result) {
+                // Check if still mounted after await
+                if (!particlesRef.current) return;
+
                 s.velocities = result.velocities;
                 s.lifetimes = result.lifetimes;
                 if (result.positions) {

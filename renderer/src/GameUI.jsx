@@ -107,6 +107,14 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                             <span style={styles.controlLabel}>FIRE WEAPON</span>
                         </div>
                     </div>
+
+                    {/* Lobby Countdown Timer */}
+                    {gameTimer > 0 && (
+                        <div style={styles.lobbyTimerContainer}>
+                            <div style={styles.lobbyTimerLabel}>STARTING IN</div>
+                            <div style={styles.lobbyTimerValue}>{gameTimer}s</div>
+                        </div>
+                    )}
                 </div>
 
                 {/* CSS Animations */}
@@ -122,6 +130,13 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                     @keyframes floatArrow {
                         0%, 100% { transform: translateX(0); }
                         50% { transform: translateX(10px); }
+                    }
+                    @keyframes timerFlicker {
+                        0%, 100% { opacity: 1; transform: scale(1); }
+                        95% { opacity: 1; transform: scale(1); }
+                        96% { opacity: 0.8; transform: scale(0.98); }
+                        97% { opacity: 1; transform: scale(1.02); }
+                        98% { opacity: 0.9; transform: scale(1); }
                     }
                 `}</style>
             </div>
@@ -394,6 +409,34 @@ const styles = {
         color: '#ffffff',
         fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
         letterSpacing: '1px'
+    },
+
+    // Lobby Timer Styles
+    lobbyTimerContainer: {
+        marginTop: '30px',
+        padding: '15px',
+        borderRadius: '12px',
+        background: 'rgba(255, 255, 255, 0.05)',
+        border: '1px solid rgba(0, 255, 255, 0.3)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        animation: 'timerFlicker 2s infinite'
+    },
+    lobbyTimerLabel: {
+        fontSize: '0.9rem',
+        color: '#00ffff',
+        fontWeight: 700,
+        letterSpacing: '2px',
+        marginBottom: '5px',
+        opacity: 0.8
+    },
+    lobbyTimerValue: {
+        fontSize: '2.5rem',
+        color: '#ffffff',
+        fontWeight: 800,
+        fontFamily: '"Segoe UI", "Roboto", "Helvetica", sans-serif',
+        textShadow: '0 0 10px #00ffff, 0 0 20px #00ffff'
     },
 
     // Legacy styles (kept for other states)

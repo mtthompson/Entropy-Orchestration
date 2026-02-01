@@ -91,6 +91,47 @@ function getWobble(id, timeStr) {
 }
 
 /**
+ * Get target for CPU in arena mode (chase nearest enemy or patrol center)
+ */
+function getArenaTarget(cpuPos, cpuId, allEntities) {
+    let nearestTarget = null;
+    let nearestDistSq = Infinity;
+
+    // Split entities into human and CPU
+    const humans = allEntities.filter(e => !e.isCPU);
+    const cpus = allEntities.filter(e => e.isCPU);
+
+    // Prioritize humans
+    for (const entity of humans) {
+        if (entity.id === cpuId || entity.hp <= 0) continue;
+        const distSq = distanceSquared(cpuPos, entity.position);
+        if (distSq < nearestDistSq) {
+            nearestDistSq = distSq;
+            nearestTarget = entity.position;
+        }
+    }
+
+    // Then CPUs
+    if (!nearestTarget) {
+        for (const entity of cpus) {
+            if (entity.id === cpuId || entity.hp <= 0) continue;
+            const distSq = distanceSquared(cpuPos, entity.position);
+            if (distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearestTarget = entity.position;
+            }
+        }
+    }
+
+    if (!nearestTarget) {
+        const offset = (cpuId.charCodeAt(4) || 0) % 20 - 10;
+        nearestTarget = { x: offset, z: offset };
+    }
+
+    return nearestTarget;
+}
+
+/**
  * Calculate steering output for a CPU
  */
 function calculateSteering(cpuData, target, isRacing) {

@@ -1781,9 +1781,6 @@ function startCountdown() {
 
     console.log('[GAME] Starting countdown...');
 
-    // Select random track for this round
-    selectRandomTrack();
-
     // Validate track was loaded
     if (!activeTrack || !activeTrack.spawnPoints || activeTrack.spawnPoints.length === 0) {
         console.error('[ERROR] Track not properly initialized, resetting to default');
@@ -1948,6 +1945,10 @@ function endRace(winner) {
                     demoModeActive = false; // Reset flag so startDemoMode works
                     removeCPUOpponents();
                     gameState = 'LOBBY';
+
+                    // Select new random track for next demo
+                    selectRandomTrack();
+
                     broadcastGameState();
                     // Start new demo after short delay
                     setTimeout(startDemoMode, 3000);
@@ -1957,11 +1958,19 @@ function endRace(winner) {
                     demoModeActive = false;
                     removeCPUOpponents();
                     gameState = 'LOBBY';
+
+                    // Select new random track for lobby
+                    selectRandomTrack();
+
                     broadcastGameState();
                     io.emit('demoMode', { active: false });
                 }
             } else {
                 gameState = 'LOBBY';
+
+                // Select new random track for next round
+                selectRandomTrack();
+
                 broadcastGameState();
             }
         }
@@ -2304,6 +2313,10 @@ io.on('connection', (socket) => {
 
                 if (humanCount === 1 && gameTimer === 0) {
                     console.log("[GAME] First player joined - starting lobby timer (30s)...");
+
+                    // Select random track at the START of the lobby
+                    selectRandomTrack();
+
                     gameTimer = 30; // 30 seconds to join
                     broadcastGameState();
 
