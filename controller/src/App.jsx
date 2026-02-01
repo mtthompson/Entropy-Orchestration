@@ -637,10 +637,12 @@ function DrivingScreen({ playerState }) {
                             background: weaponType === 'missile'
                                 ? 'linear-gradient(135deg, #ff6600 0%, #ff3300 100%)'
                                 : 'linear-gradient(135deg, #00aaff 0%, #0066ff 100%)',
-                            border: `3px solid ${weaponType === 'missile' ? '#ff6600' : '#00aaff'}`
+                            border: `3px solid ${weaponType === 'missile' ? '#ff6600' : '#00aaff'}`,
+                            touchAction: 'none'
                         }}
-                        onTouchStart={(e) => { e.preventDefault(); handleFire(); }}
+                        onPointerDown={(e) => { e.preventDefault(); handleFire(); }}
                         onClick={handleFire}
+                        onContextMenu={(e) => e.preventDefault()}
                     >
                         {weaponType === 'missile' ? '🚀' : '⚡'} FIRE (F)
                     </div>
@@ -654,25 +656,27 @@ function DrivingScreen({ playerState }) {
                         background: isBoosting
                             ? 'linear-gradient(135deg, #ff00ff 0%, #ff66ff 100%)'
                             : 'rgba(255, 0, 255, 0.2)',
-                        border: '3px solid #ff00ff'
+                        border: '3px solid #ff00ff',
+                        touchAction: 'none'
                     }}
-                    onTouchStart={handleBoostStart}
-                    onTouchEnd={handleBoostEnd}
-                    onMouseDown={handleBoostStart}
-                    onMouseUp={handleBoostEnd}
-                    onMouseLeave={handleBoostEnd}
+                    onPointerDown={handleBoostStart}
+                    onPointerUp={handleBoostEnd}
+                    onPointerLeave={handleBoostEnd}
+                    onContextMenu={(e) => e.preventDefault()}
                 >
                     ⚡ BOOST
                 </div>
 
                 {/* Throttle Zone (bottom) */}
                 <div
-                    style={styles.throttleZone(isThrottling)}
-                    onTouchStart={handleThrottleStart}
-                    onTouchEnd={handleThrottleEnd}
-                    onMouseDown={handleThrottleStart}
-                    onMouseUp={handleThrottleEnd}
-                    onMouseLeave={handleThrottleEnd}
+                    style={{
+                        ...styles.throttleZone(isThrottling),
+                        touchAction: 'none'
+                    }}
+                    onPointerDown={handleThrottleStart}
+                    onPointerUp={handleThrottleEnd}
+                    onPointerLeave={handleThrottleEnd}
+                    onContextMenu={(e) => e.preventDefault()}
                 >
                     🏎️ THROTTLE
                 </div>

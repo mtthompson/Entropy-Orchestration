@@ -97,9 +97,10 @@ function getArenaTarget(position, cpuId, allEntities, trackBounds) {
     let nearestTarget = null;
     let nearestDistSq = Infinity;
 
-    // Split entities into human and CPU
-    const humans = allEntities.filter(e => !e.isCPU);
+    // Split entities into human, CPU, and powerups
+    const humans = allEntities.filter(e => !e.isCPU && !e.isPowerup);
     const cpus = allEntities.filter(e => e.isCPU);
+    const powerups = allEntities.filter(e => e.isPowerup);
 
     // Prioritize humans
     for (const entity of humans) {
@@ -111,7 +112,7 @@ function getArenaTarget(position, cpuId, allEntities, trackBounds) {
         }
     }
 
-    // Then CPUs
+    // 2. Then CPUs
     if (!nearestTarget) {
         for (const entity of cpus) {
             if (entity.id === cpuId || entity.hp <= 0) continue;
@@ -123,23 +124,39 @@ function getArenaTarget(position, cpuId, allEntities, trackBounds) {
         }
     }
 
-    // Fallback: Patrol center with some randomness
+    // 3. Then Powerups
+    // 3. Then Powerups
     if (!nearestTarget) {
-        const offset = (cpuId.charCodeAt(4) || 0) % 20 - 10;
-        nearestTarget = { x: offset, z: offset };
+        for (const entity of powerups) {
+            const distSq = distanceSquared(position, entity.position);
+            if (distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearestTarget = entity.position;
+            }
+        }
     }
 
-    // Safety Clamp: Ensure target is within reasonable arena bounds
-    // Use smallest dimension of bounds or default to 80
-    const maxRadius = trackBounds ? Math.min(Math.abs(trackBounds.maxX), Math.abs(trackBounds.maxZ)) : 80;
 
-    if (Math.abs(nearestTarget.x) > maxRadius || Math.abs(nearestTarget.z) > maxRadius) {
-        // Clamp to circle
-        const dist = Math.sqrt(nearestTarget.x * nearestTarget.x + nearestTarget.z * nearestTarget.z);
-        if (dist > maxRadius) {
-            const scale = maxRadius / dist;
-            nearestTarget = { x: nearestTarget.x * scale, z: nearestTarget.z * scale };
-        }
+    // 3. Fallback: Patrol center (0,0) if no valid targets
+    if (!nearestTarget) {
+        nearestTarget = { x: 0, z: 0 };
+    }
+
+    // 4. Safety Clamp: Ensure target is STRICTLY within playable bounds
+    // Use trackBounds passed from server, or default to safe 50x50 box
+    const minX = trackBounds ? trackBounds.minX + 5 : -50;
+    const maxX = trackBounds ? trackBounds.maxX - 5 : 50;
+    const minZ = trackBounds ? trackBounds.minZ + 5 : -50;
+    const maxZ = trackBounds ? trackBounds.maxZ - 5 : 50;
+
+    // Hard clamp to rectangular bounds
+    const oldX = nearestTarget.x;
+    const oldZ = nearestTarget.z;
+    nearestTarget.x = Math.max(minX, Math.min(maxX, nearestTarget.x));
+    nearestTarget.z = Math.max(minZ, Math.min(maxZ, nearestTarget.z));
+
+    if (Math.random() < 0.01) {
+        console.log(`[CPU_TARGET] ID: ${cpuId} Target: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) -> Clamped: (${nearestTarget.x.toFixed(1)}, ${nearestTarget.z.toFixed(1)}) Bounds: [${minX}, ${maxX}, ${minZ}, ${maxZ}]`);
     }
 
     return nearestTarget;
@@ -155,13 +172,6 @@ function calculateSteering(cpuData, target, isRacing) {
     const dz = target.z - position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
 
-    if (dist < 0.1) {
-        return { steering: 0, throttle: 0, combatBoost: 1.0 };
-    }
-
-    // Target angle
-    const targetAngle = Math.atan2(dx, -dz);
-
     // Current heading from quaternion
     const q = quaternion;
     const currentAngle = Math.atan2(
@@ -169,12 +179,35 @@ function calculateSteering(cpuData, target, isRacing) {
         1 - 2 * (q.y * q.y + q.x * q.x)
     );
 
+    if (dist < 0.1) {
+        return {
+            input: { steering: 0, throttle: 0, boost: false },
+            angleDiff: 0,
+            currentAngle
+        };
+    }
+
+    // Target angle
+    // Align with physics coordinates: North=0, West=+90, East=-90
+    // atan2(-dx, -dz) creates this mapping
+    const targetAngle = Math.atan2(-dx, -dz);
+
     // Angle difference
     let angleDiff = normalizeAngle(targetAngle - currentAngle);
 
-    // Steering proportional to angle - increased for better cornering
-    const steeringSens = isRacing ? 2.5 : 4.0;
-    let steering = angleDiff * steeringSens;
+    // Steering proportional to angle - NEGATIVE feedback to close the gap
+    // Reduced sensitivity to prevent oscillation
+    const steeringSens = isRacing ? 2.5 : 1.5;
+    // Invert sign because Positive Steering -> Turns Right (Decreases Yaw in physics)
+    // Wait, Physics: +Steer -> -Yaw (Left?).
+    // R (-90). Current (-90). Diff 0.
+    // L (+90). Current (+90). Diff 0.
+    // L (+90). Current (0). Diff +90.
+    // Steer = -90. Neg Steer -> +Yaw (Right?).
+    // If L is +90, I want to turn Left (+Yaw).
+    // So Steer should be NEGATIVE?
+    // Let's stick with steering = -angleDiff which worked for initial alignment.
+    let steering = -angleDiff * steeringSens;
 
     // Add imperfection/wobble
     if (isRacing) {
@@ -184,7 +217,21 @@ function calculateSteering(cpuData, target, isRacing) {
 
     // Throttle: reduce when turning sharply
     const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-    const throttle = 0.6 + 0.4 * turnFactor; // 0.6 to 1.0 based on turn sharpness
+    let throttle = 0.6 + 0.4 * turnFactor; // 0.6 to 1.0 based on turn sharpness
+
+    // Reverse Logic: If target is significantly behind (> 145 degrees), reverse!
+    const isReversing = Math.abs(angleDiff) > (Math.PI * 0.8);
+    if (isReversing) {
+        throttle = -1.0; // Full reverse (allowed since we reverted physics change? No wait, we reverted so -1 IS clamped to 0)
+        // Wait, if we reversed physics, -1 throttle = 0 speed?
+        // Yes, reverted physics clamps throttle [0,1].
+        // So reverse logic effectively BRAKES (Speed -> 0).
+        // This stops them from driving into walls, allowing turn.
+    }
+
+    if (Math.random() < 0.05) {
+        // console.log(`[CPU_STEER] ID: ${id} Diff: ${angleDiff.toFixed(2)} Steer: ${steering.toFixed(2)} Thr: ${throttle.toFixed(2)} Rev: ${isReversing}`);
+    }
 
     return {
         input: {

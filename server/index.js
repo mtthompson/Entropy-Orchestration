@@ -561,6 +561,16 @@ function submitCpuCalculationsAsync() {
             isCPU: true
         });
     }
+    // Add Powerups
+    for (const [id, powerup] of powerups) {
+        // Skip if body missing or in void (pooled)
+        if (!powerup.body || powerup.body.position.y < -100) continue;
+        allEntities.push({
+            id,
+            position: { x: powerup.body.position.x, z: powerup.body.position.z },
+            isPowerup: true
+        });
+    }
 
     // Submit async calculation (result stored in pendingCpuResults)
     pendingCpuResults = cpuWorkerPool.submit('calculateCpuBatch', {
@@ -1146,11 +1156,39 @@ function updatePlayerPhysics(player, input) {
     let brakeRate = 160; // Increased from 140
     let coastRate = 70; // Increased from 60
 
-    if (boost && player.boost > 0) {
+    // Boost Logic with Hysteresis (Prevent infinite micro-boosting)
+    const BOOST_START_THRESHOLD = 10; // Must have 10% boost to START boosting
+    let isBoosting = false;
+
+    if (boost) {
+        // If we were already consuming boost, keep going until it hits 0
+        if (player.isConsumingBoost && player.boost > 0) {
+            isBoosting = true;
+        }
+        // If we weren't boosting, we need to meet the threshold
+        else if (player.boost >= BOOST_START_THRESHOLD) {
+            isBoosting = true;
+        } else {
+            // Debug why not boosting if input is true
+            // console.log(`[DEBUG] Not boosting: ${player.boost} < ${BOOST_START_THRESHOLD}`);
+        }
+    }
+
+    // Persist state for next tick
+    player.isConsumingBoost = isBoosting;
+
+    if (isBoosting) {
         targetSpeed *= 1.5; // Increased from 1.35
         accelRate *= 1.35; // Increased from 1.25
-        player.boost = Math.max(0, player.boost - 1.0); // Increased consumption (was 0.8)
+        const oldBoost = player.boost;
+        player.boost = Math.max(0, player.boost - 1.0);
+        // if (Math.random() < 0.05) console.log(`[DEBUG_PHYSICS] ${ player.name } Decreasing: ${ oldBoost.toFixed(1) } -> ${ player.boost.toFixed(1) } `);
     } else {
+        // Debug why not boosting if input is true
+        if (boost && player.boost >= 100) {
+            // Suppress spam, but log once/sec or random
+            if (Math.random() < 0.01) console.log(`[PHYSICS] Input = True but isBoosting = False.Boost = ${player.boost.toFixed(1)} Threshold = ${BOOST_START_THRESHOLD} `);
+        }
         player.boost = Math.min(100, player.boost + 0.4 * boostRegenMod); // Increased regen (was 0.3)
     }
 
@@ -1569,7 +1607,7 @@ world.addEventListener('postStep', () => {
 function spawnPowerup() {
     // Prevent accumulation - cap at MAX_POWERUPS
     if (powerups.size >= MAX_POWERUPS) {
-        console.log(`[POWERUP] Max powerups (${MAX_POWERUPS}) reached, skipping spawn`);
+        console.log(`[POWERUP] Max powerups(${MAX_POWERUPS}) reached, skipping spawn`);
         return;
     }
 
@@ -1596,7 +1634,7 @@ function spawnPowerup() {
 
     powerups.set(id, { body, type, position: { x, y, z }, spawnTime: Date.now() });
 
-    console.log(`[POWERUP] Spawned ${type} at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) [${powerups.size}/${MAX_POWERUPS}]`);
+    console.log(`[POWERUP] Spawned ${type} at(${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})[${powerups.size}/${MAX_POWERUPS}]`);
 
     // Auto-expire after POWERUP_LIFETIME with some jitter to stagger cleanup
     const jitter = (Math.random() - 0.5) * 20000; // +/- 10 seconds
@@ -1609,13 +1647,13 @@ function spawnPowerup() {
 
             powerupPool.push(p.body); // Return to pool
             powerups.delete(id);
-            console.log(`[POWERUP] Expired ${type} [${powerups.size}/${MAX_POWERUPS}]`);
+            console.log(`[POWERUP] Expired ${type} [${powerups.size} / ${MAX_POWERUPS}]`);
         }
     }, POWERUP_LIFETIME + jitter);
 }
 
 function spawnInitialPowerups(count = 5) {
-    console.log(`[POWERUP] Spawning ${count} initial powerups to pre-warm client...`);
+    console.log(`[POWERUP] Spawning ${count} initial powerups to pre - warm client...`);
     for (let i = 0; i < count; i++) {
         spawnPowerup();
     }
@@ -1654,12 +1692,12 @@ function checkPowerupCollisions() {
                 } else if (powerup.type === 'Weapon') {
                     entity.ammo = (entity.ammo || 0) + 5;
                     entity.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
-                    console.log(`[POWERUP] ${entity.name} picked up Weapon (${entity.weaponType}, ${entity.ammo} ammo)`);
+                    console.log(`[POWERUP] ${entity.name} picked up Weapon(${entity.weaponType}, ${entity.ammo} ammo)`);
                     if (!isCPU) io.to(id).emit('powerup', { type: 'Weapon', ammo: entity.ammo, weaponType: entity.weaponType });
                 } else {
                     // All other powerups go to Held Item slot
                     entity.heldItem = powerup.type;
-                    console.log(`[POWERUP] ${entity.name} picked up and HELD ${powerup.type}`);
+                    console.log(`[POWERUP] ${entity.name} picked up and HELD ${powerup.type} `);
                     if (!isCPU) io.to(id).emit('powerup', { type: powerup.type, isHeld: true });
                 }
 
@@ -1688,7 +1726,7 @@ if (require.main === module) {
 function spawnTrap(x, z, ownerId) {
     // Prevent trap spam
     if (traps.size >= MAX_TRAPS) {
-        console.log(`[TRAP] Max traps (${MAX_TRAPS}) reached, skipping spawn`);
+        console.log(`[TRAP] Max traps(${MAX_TRAPS}) reached, skipping spawn`);
         return;
     }
 
@@ -1706,7 +1744,7 @@ function spawnTrap(x, z, ownerId) {
 
     traps.set(id, { body, ownerId, position: { x, y: 0.5, z } });
 
-    console.log(`[TRAP] Drone ${ownerId} placed trap at (${x.toFixed(1)}, ${z.toFixed(1)}) [${traps.size}/${MAX_TRAPS}]`);
+    console.log(`[TRAP] Drone ${ownerId} placed trap at(${x.toFixed(1)}, ${z.toFixed(1)})[${traps.size}/${MAX_TRAPS}]`);
 
     // Remove trap after 10 seconds
     setTimeout(() => {
@@ -1813,7 +1851,7 @@ function startDemoMode() {
         return;
     }
     if (gameState === 'RACING' || gameState === 'COUNTDOWN' || gameState === 'WINNER') {
-        console.log(`[DEMO] Cannot start demo - gameState is ${gameState}`);
+        console.log(`[DEMO] Cannot start demo - gameState is ${gameState} `);
         return;
     }
 
@@ -1831,7 +1869,7 @@ function startDemoMode() {
     // Select random RACE track (with path for CPU pathfinding)
     const { getRandomRaceTrack } = require('./tracks');
     activeTrack = getRandomRaceTrack();
-    console.log(`[DEMO] Selected race track: ${activeTrack.name}`);
+    console.log(`[DEMO] Selected race track: ${activeTrack.name} `);
 
     // Update physics walls and broadcast to clients
     activateTrackWalls(activeTrack.id);
@@ -1845,7 +1883,7 @@ function startDemoMode() {
     io.emit('demoMode', { active: true });
     broadcastGameState();
 
-    console.log(`[DEMO] Spawned ${cpuCount} CPU opponents for demo on track: ${activeTrack.name}`);
+    console.log(`[DEMO] Spawned ${cpuCount} CPU opponents for demo on track: ${activeTrack.name} `);
 }
 
 function stopDemoMode() {
@@ -2024,7 +2062,7 @@ function endRace(winner) {
     gameState = 'WINNER';
     winnerName = winner ? winner.name : 'Nobody';
     gameTimer = 10; // 10s until lobby
-    console.log(`[GAME] Winner: ${winnerName}`);
+    console.log(`[GAME] Winner: ${winnerName} `);
 
     // Update leaderboard for winner
     if (winner) {
@@ -2216,7 +2254,7 @@ function removePlayerBody(player) {
 // =============================================================================
 io.on('connection', (socket) => {
     const role = socket.handshake.query.role || 'controller';
-    console.log(`[CONNECT] ${socket.id} as ${role}`);
+    console.log(`[CONNECT] ${socket.id} as ${role} `);
 
     // Send track data to all clients on connection (visuals, physics orientation, terrain)
     broadcastTrackData(socket);
@@ -2266,7 +2304,7 @@ io.on('connection', (socket) => {
             if (cpuPlayers.size < 10) {
                 spawnCPUOpponents(1);
                 io.to('renderers').emit('cpuCount', cpuPlayers.size);
-                console.log(`[ADMIN] Added CPU - now ${cpuPlayers.size}`);
+                console.log(`[ADMIN] Added CPU - now ${cpuPlayers.size} `);
             }
         });
 
@@ -2278,7 +2316,7 @@ io.on('connection', (socket) => {
                 if (cpu.body) world.removeBody(cpu.body);
                 cpuPlayers.delete(firstId);
                 io.to('renderers').emit('cpuCount', cpuPlayers.size);
-                console.log(`[ADMIN] Removed CPU - now ${cpuPlayers.size}`);
+                console.log(`[ADMIN] Removed CPU - now ${cpuPlayers.size} `);
             }
         });
 
@@ -2286,7 +2324,7 @@ io.on('connection', (socket) => {
             const { getTrackById } = require('./tracks');
             const newTrack = getTrackById(trackId);
             if (newTrack) {
-                console.log(`[ADMIN] Changing track to: ${newTrack.name}`);
+                console.log(`[ADMIN] Changing track to: ${newTrack.name} `);
 
                 // Remove all CPUs
                 removeCPUOpponents();
@@ -2403,7 +2441,7 @@ io.on('connection', (socket) => {
                     // Late joiner: spawn behind the pack as a target
                     const rearPos = getPackRearPosition();
                     createPlayerBody(newPlayer, rearPos.x, rearPos.z, rearPos.rotation);
-                    console.log(`[LATE JOIN] ${name} spawned behind pack at (${rearPos.x.toFixed(1)}, ${rearPos.z.toFixed(1)})`);
+                    console.log(`[LATE JOIN] ${name} spawned behind pack at(${rearPos.x.toFixed(1)}, ${rearPos.z.toFixed(1)})`);
 
                     // Announce fresh meat to other players
                     io.emit('lateJoiner', { name: name || 'Player' });
@@ -2474,7 +2512,7 @@ io.on('connection', (socket) => {
                 }
             }
 
-            console.log(`[JOIN] ${name} as ${type}`);
+            console.log(`[JOIN] ${name} as ${type} `);
             broadcastGameState();
 
             // Auto-start if 2 players in lobby and not started? 
@@ -2503,6 +2541,9 @@ io.on('connection', (socket) => {
             const clampedBoost = !!boost;
 
             // Store input for game loop processing (no duplicate force application)
+            if (clampedBoost && !player.input?.boost) {
+                console.log(`[INPUT] Boost START for ${player.name}(Boost: ${Math.floor(player.boost)})`);
+            }
             player.input = { steering: clampedSteering, throttle: clampedThrottle, boost: clampedBoost };
         });
 
@@ -2521,7 +2562,7 @@ io.on('connection', (socket) => {
             const item = player.heldItem;
             player.heldItem = null;
 
-            console.log(`[ITEM] ${player.name} used ${item}`);
+            console.log(`[ITEM] ${player.name} used ${item} `);
 
             if (item === 'Repair') {
                 player.hp = Math.min(100, player.hp + 50);
@@ -2586,7 +2627,7 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         removePlayer(socket.id);
-        console.log(`[DISCONNECT] ${socket.id}`);
+        console.log(`[DISCONNECT] ${socket.id} `);
         checkWinCondition(); // Check if this caused a win
         broadcastGameState();
     });
@@ -2721,7 +2762,7 @@ function gameLoop() {
             state.maskType = player.maskType;
             state.color = player.color;
             state.name = player.name;
-            state.boost = Math.floor(player.boost);
+            state.boost = Math.round(player.boost * 10) / 10; // 1 decimal place
             state.ammo = player.ammo || 0;
             state.weaponType = player.weaponType || 'none';
             state.heldItem = player.heldItem || null;
@@ -2775,7 +2816,7 @@ function gameLoop() {
             state.maskType = cpu.maskType || 'Classic';
             state.color = cpu.color;
             state.name = cpu.name;
-            state.boost = Math.floor(cpu.boost || 100);
+            state.boost = Math.round((cpu.boost || 100) * 10) / 10;
             state.isCPU = true;
             state.isShielded = false;
             state.isGhost = false;
@@ -2891,7 +2932,10 @@ function gameLoop() {
 
                 // Only include properties that changed
                 if (!prev || prev.hp !== state.hp) delta.hp = state.hp;
-                if (!prev || prev.boost !== state.boost) delta.boost = state.boost;
+                if (!prev || prev.boost !== state.boost) {
+                    delta.boost = state.boost;
+                    // console.log(`[DEBUG_DELTA] Sending boost update for ${ id }: ${ prev?.boost } -> ${ state.boost } `);
+                }
                 if (!prev || prev.ammo !== state.ammo) delta.ammo = state.ammo;
                 if (!prev || prev.weaponType !== state.weaponType) delta.weaponType = state.weaponType;
                 if (!prev || prev.heldItem !== state.heldItem) delta.heldItem = state.heldItem;
@@ -2992,12 +3036,12 @@ if (require.main === module) {
     ║     🏎️  ENTROPY ORCHESTRATION SERVER v1.0  🏎️             ║
     ║                                                           ║
     ║     Port: ${PORT}                                           ║
-    ║     Tick Rate: ${TICK_RATE}Hz                                      ║
-    ║     Physics: cannon-es                                    ║
+    ║     Tick Rate: ${TICK_RATE} Hz                                      ║
+    ║     Physics: cannon - es                                    ║
     ║                                                           ║
     ║     Waiting for players...                                ║
     ╚═══════════════════════════════════════════════════════════╝
-      `);
+    `);
     });
 }
 

@@ -126,11 +126,11 @@ function IndustrialScenery({ envIntensity, theme, trackData }) {
 
     return (
         <group>
-            <instancedMesh ref={mainBeamRef} args={[null, null, beams.length]}>
+            <instancedMesh ref={mainBeamRef} args={[null, null, beams.length]} frustumCulled={false}>
                 <boxGeometry args={[1, 1, 1]} /> {/* Scaled in matrix */}
                 <meshStandardMaterial color="#444" metalness={0.9} roughness={0.3} />
             </instancedMesh>
-            <instancedMesh ref={crossBeamRef} args={[null, null, beams.length]}>
+            <instancedMesh ref={crossBeamRef} args={[null, null, beams.length]} frustumCulled={false}>
                 <boxGeometry args={[1, 1, 1]} /> {/* Scaled in matrix */}
                 <meshStandardMaterial color="#333" metalness={0.9} roughness={0.3} />
             </instancedMesh>
@@ -231,12 +231,12 @@ function NeonForestScenery({ envIntensity, theme }) {
 
     return (
         <group>
-            <instancedMesh ref={trunkRef} args={[null, null, trees.length]}>
+            <instancedMesh ref={trunkRef} args={[null, null, trees.length]} frustumCulled={false}>
                 <cylinderGeometry args={[0.3, 0.5, 1, 6]} /> {/* Scaled in matrix? No, height varies */}
                 <meshStandardMaterial color="#331a00" />
             </instancedMesh>
             {[0, 1, 2].map(level => (
-                <instancedMesh key={level} ref={leafRefs[level]} args={[null, null, trees.length]}>
+                <instancedMesh key={level} ref={leafRefs[level]} args={[null, null, trees.length]} frustumCulled={false}>
                     <coneGeometry args={[3 - level, 5 - level, 6]} />
                     <meshStandardMaterial emissiveIntensity={0.5} transparent opacity={0.8} />
                 </instancedMesh>
@@ -291,7 +291,7 @@ function VolcanicScenery({ envIntensity, theme }) {
 
     return (
         <group>
-            <instancedMesh ref={meshRef} args={[null, null, rocks.length]}>
+            <instancedMesh ref={meshRef} args={[null, null, rocks.length]} frustumCulled={false}>
                 <dodecahedronGeometry args={[1, 0]} /> {/* Scaled in matrix */}
                 <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
             </instancedMesh>
@@ -356,7 +356,7 @@ function MysticScenery({ envIntensity, theme }) {
 
     return (
         <group ref={groupRef}>
-            <instancedMesh ref={meshRef} args={[null, null, crystals.length]}>
+            <instancedMesh ref={meshRef} args={[null, null, crystals.length]} frustumCulled={false}>
                 <octahedronGeometry args={[1, 0]} />
                 <meshStandardMaterial emissiveIntensity={0.6} transparent opacity={0.8} />
             </instancedMesh>
@@ -503,19 +503,19 @@ function RomanScenery({ envIntensity, theme, trackData }) {
 
     return (
         <group>
-            <instancedMesh ref={meshRefBase} args={[null, null, pillars.length]}>
+            <instancedMesh ref={meshRefBase} args={[null, null, pillars.length]} frustumCulled={false}>
                 <cylinderGeometry args={[2.5, 3, 2, 8]} />
                 <meshStandardMaterial color="#d4a574" />
             </instancedMesh>
-            <instancedMesh ref={meshRefShaft} args={[null, null, pillars.length]}>
+            <instancedMesh ref={meshRefShaft} args={[null, null, pillars.length]} frustumCulled={false}>
                 <cylinderGeometry args={[1.5, 2, 26, 8]} />
                 <meshStandardMaterial />
             </instancedMesh>
-            <instancedMesh ref={meshRefTop} args={[null, null, pillars.length]}>
+            <instancedMesh ref={meshRefTop} args={[null, null, pillars.length]} frustumCulled={false}>
                 <cylinderGeometry args={[3, 1.5, 2, 8]} />
                 <meshStandardMaterial color="#d4a574" />
             </instancedMesh>
-            <instancedMesh ref={meshRefTopper} args={[null, null, pillars.length]}>
+            <instancedMesh ref={meshRefTopper} args={[null, null, pillars.length]} frustumCulled={false}>
                 <octahedronGeometry args={[1, 0]} />
                 <meshStandardMaterial emissive="#ffffff" emissiveIntensity={1} toneMapped={false} />
             </instancedMesh>
@@ -788,7 +788,7 @@ function NeonPalms({ count = 50, envIntensity, color = '#00ffff', trackData }) {
     });
 
     return (
-        <instancedMesh ref={meshRef} args={[null, null, count]}>
+        <instancedMesh ref={meshRef} args={[null, null, count]} frustumCulled={false}>
             <cylinderGeometry args={[1, 2, 30, 6]} />
             <meshStandardMaterial emissive={color} emissiveIntensity={0.6} envMapIntensity={envIntensity} metalness={0.8} roughness={0.3} />
         </instancedMesh>

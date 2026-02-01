@@ -131,13 +131,7 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                         0%, 100% { transform: translateX(0); }
                         50% { transform: translateX(10px); }
                     }
-                    @keyframes timerFlicker {
-                        0%, 100% { opacity: 1; transform: scale(1); }
-                        95% { opacity: 1; transform: scale(1); }
-                        96% { opacity: 0.8; transform: scale(0.98); }
-                        97% { opacity: 1; transform: scale(1.02); }
-                        98% { opacity: 0.9; transform: scale(1); }
-                    }
+
                 `}</style>
             </div>
         );
@@ -421,7 +415,7 @@ const styles = {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        animation: 'timerFlicker 2s infinite'
+
     },
     lobbyTimerLabel: {
         fontSize: '0.9rem',
