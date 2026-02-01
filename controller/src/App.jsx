@@ -198,7 +198,7 @@ function vibrate(pattern) {
 // =============================================================================
 const MASKS = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
 
-function LobbyScreen({ onJoin, savedIdentity = {} }) {
+function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0 }) {
     const [name, setName] = useState(savedIdentity.name || '');
     const [maskIndex, setMaskIndex] = useState(() => {
         const savedMask = savedIdentity.maskType || 'Classic';
@@ -218,6 +218,19 @@ function LobbyScreen({ onJoin, savedIdentity = {} }) {
     return (
         <div style={styles.container('#ff00ff')}>
             <h1 style={styles.title}>Entropy</h1>
+
+            {/* Lobby Timer */}
+            {serverTimer > 0 && (
+                <div style={{
+                    marginBottom: 20,
+                    fontSize: 18,
+                    color: '#00ffff',
+                    fontWeight: 600,
+                    textShadow: '0 0 10px #00ffff'
+                }}>
+                    Starting in {serverTimer}s...
+                </div>
+            )}
 
             {/* Mask Selector */}
             <div style={{
@@ -462,8 +475,8 @@ function DrivingScreen({ playerState }) {
                 <div
                     style={{
                         padding: '8px 14px',
-                        background: locateCooldown > 0 
-                            ? 'rgba(100, 100, 100, 0.5)' 
+                        background: locateCooldown > 0
+                            ? 'rgba(100, 100, 100, 0.5)'
                             : 'linear-gradient(135deg, #ffaa00 0%, #ff6600 100%)',
                         borderRadius: 8,
                         border: '2px solid #ffaa00',
@@ -709,9 +722,10 @@ export default function App() {
     const [playerState, setPlayerState] = useState(null);
     const [playerId, setPlayerId] = useState(null);
     const [winner, setWinner] = useState(null);
-    const [resultsCountdown, setResultsCountdown] = useState(5);
+    const [serverTimer, setServerTimer] = useState(0); // Track server's timer
     const [demoMessage, setDemoMessage] = useState(null);
     const missingTicksRef = useRef(0); // Track consecutive ticks where player is missing
+    const dismissedResultsRef = useRef(false); // Track if user manually dismissed results
 
     // Load saved name/mask from localStorage for pre-fill
     const getSavedIdentity = () => {
@@ -731,23 +745,20 @@ export default function App() {
         setPlayerId(null);
         setPlayerState(null);
         setWinner(null);
-        setResultsCountdown(5);
+        setServerTimer(0);
         missingTicksRef.current = 0;
+        dismissedResultsRef.current = false; // Reset dismissal flag
         if (message) {
             setDemoMessage(message);
             setTimeout(() => setDemoMessage(null), 3000);
         }
     }, []);
 
-    // Results countdown timer
-    useEffect(() => {
-        if (gameState === 'results' && resultsCountdown > 0) {
-            const timer = setTimeout(() => setResultsCountdown(c => c - 1), 1000);
-            return () => clearTimeout(timer);
-        } else if (gameState === 'results' && resultsCountdown === 0) {
-            resetToLobby();
-        }
-    }, [gameState, resultsCountdown, resetToLobby]);
+    // Manual dismissal of results screen
+    const handleDismissResults = () => {
+        dismissedResultsRef.current = true;
+        resetToLobby();
+    };
 
     useEffect(() => {
         socket.on('joined', ({ id, color, hp }) => {
@@ -755,6 +766,7 @@ export default function App() {
             setPlayerState({ color, hp, boost: 100 });
             setGameState('driving');
             missingTicksRef.current = 0;
+            dismissedResultsRef.current = false; // Reset dismissal flag
             vibrate(100);
         });
 
@@ -780,22 +792,31 @@ export default function App() {
         });
 
         // Handle server game state changes (LOBBY, COUNTDOWN, RACING, WINNER)
-        socket.on('gameState', ({ state, winner: gameWinner }) => {
-            console.log('[CONTROLLER] Server gameState:', state, 'winner:', gameWinner);
-            
+        socket.on('gameState', ({ state, timer, winner: gameWinner }) => {
+            console.log('[CONTROLLER] Server gameState:', state, 'timer:', timer, 'winner:', gameWinner);
+
+            // Sync timer
+            setServerTimer(timer || 0);
+
             if (state === 'WINNER') {
-                // Show results screen with winner info
-                setWinner(gameWinner || 'Unknown');
-                setResultsCountdown(5);
-                setGameState('results');
-                vibrate([100, 100, 100, 100, 300]);
+                // Only show results if NOT dismissed
+                if (!dismissedResultsRef.current) {
+                    setWinner(gameWinner || 'Unknown');
+                    setGameState('results');
+                    // Only vibrate once when entering state
+                    if (gameState !== 'results') {
+                        vibrate([100, 100, 100, 100, 300]);
+                    }
+                }
             } else if (state === 'LOBBY') {
                 // Server returned to lobby - reset controller if we were in game
-                if (gameState !== 'lobby' && gameState !== 'results') {
+                if (gameState !== 'lobby') {
                     resetToLobby();
                 }
+            } else if (state === 'RACING' || state === 'COUNTDOWN') {
+                // Ensure dismissed flag is reset when new game starts
+                dismissedResultsRef.current = false;
             }
-            // COUNTDOWN and RACING states don't require controller action
         });
 
         // Handle demo mode activation
@@ -828,7 +849,7 @@ export default function App() {
         };
     }, [gameState, resetToLobby]);
 
-    // Separate useEffect for worldState to properly track playerId changes
+    // Separate useEffect for worldState to properly track player presence
     useEffect(() => {
         const handleWorldState = (state) => {
             if (playerId && (gameState === 'driving' || gameState === 'drone')) {
@@ -845,7 +866,7 @@ export default function App() {
                 } else {
                     // Player not in worldState - increment missing counter
                     missingTicksRef.current++;
-                    
+
                     // After 3 ticks (~150ms at 60Hz), assume player is gone
                     if (missingTicksRef.current >= 3) {
                         console.log('[CONTROLLER] Player missing from worldState for 3+ ticks, resetting');
@@ -865,7 +886,7 @@ export default function App() {
             localStorage.setItem('entropy_lastName', name);
             localStorage.setItem('entropy_lastMask', maskType);
         } catch { /* ignore storage errors */ }
-        
+
         socket.emit('join', { name, maskType });
     };
 
@@ -896,7 +917,7 @@ export default function App() {
             return (
                 <>
                     {renderDemoToast()}
-                    <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} />
+                    <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} serverTimer={serverTimer} />
                 </>
             );
         case 'driving':
@@ -905,13 +926,13 @@ export default function App() {
             return <DroneScreen />;
         case 'results':
             return (
-                <ResultsScreen 
-                    winner={winner} 
-                    countdown={resultsCountdown}
-                    onBackToLobby={() => resetToLobby()}
+                <ResultsScreen
+                    winner={winner}
+                    countdown={serverTimer}
+                    onBackToLobby={handleDismissResults}
                 />
             );
         default:
-            return <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} />;
+            return <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} serverTimer={serverTimer} />;
     }
 }

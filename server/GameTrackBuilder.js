@@ -360,7 +360,7 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
 
             // compute perpendicular to this segment
             const dx = bpt.x - a.x; const dz = bpt.z - a.z;
-            const llen = Math.sqrt(dx*dx + dz*dz) || 1.0;
+            const llen = Math.sqrt(dx * dx + dz * dz) || 1.0;
             const nx = -dz / llen; const nz = dx / llen;
             const widen = 1.25;
             const vi0 = si; const vi1 = (si + 1) % points.length;
@@ -392,7 +392,7 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
         smoothLeft.push({ x: p1.x + nx * halfWidth, z: p1.z + nz * halfWidth });
         smoothRight.push({ x: p1.x - nx * halfWidth, z: p1.z - nz * halfWidth });
     }
-    
+
     // 3. Use the post-processed boundaries
     // finalBoundaries was computed with optional local nudges to avoid waypoint intersections
     for (let i = 0; i < finalBoundaries.length; i++) boundaries.push(finalBoundaries[i]);
@@ -407,7 +407,8 @@ function createTrackFromPath(originalPoints, width, loop = true, smoothSegments 
     return {
         boundaries,
         outerPolygon: isCCW ? leftVerts : rightVerts,
-        innerPolygon: isCCW ? rightVerts : leftVerts
+        innerPolygon: isCCW ? rightVerts : leftVerts,
+        path: smoothPoints // Expose smoothed path for CPU navigation
     };
 }
 

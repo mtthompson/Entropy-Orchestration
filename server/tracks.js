@@ -13,7 +13,7 @@ function buildRaceTrack(path, width, trackDef) {
 
     return {
         ...trackDef,
-        path,
+        path: result.path || path, // Use smoothed path if available
         width, // Store width for physics/terrain generation
         boundaries: result.boundaries,
         outerPolygon: result.outerPolygon,

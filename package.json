@@ -10,9 +10,12 @@
     "scripts": {
         "dev:server": "nodemon --config nodemon.json",
         "dev:renderer": "npm run dev --workspace=renderer",
-        "dev:controller": "npm run dev --workspace=controller"
+        "dev:controller": "npm run dev --workspace=controller",
+        "dev:all": "powershell -ExecutionPolicy Bypass -File ./scripts/start-dev.ps1",
+        "test": "jest"
     },
     "devDependencies": {
+        "jest": "^30.2.0",
         "nodemon": "^3.0.2"
     }
 }

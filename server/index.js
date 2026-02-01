@@ -34,7 +34,10 @@ function initializeWorkerPools() {
 }
 
 // Initialize workers on startup
-initializeWorkerPools();
+// Initialize workers on startup if running directly
+if (require.main === module) {
+    initializeWorkerPools();
+}
 
 // =============================================================================
 // CONFIGURATION
@@ -448,11 +451,40 @@ function submitCpuCalculationsAsync() {
             position: { x: cpu.body.position.x, y: cpu.body.position.y, z: cpu.body.position.z },
             quaternion: { w: cpu.body.quaternion.w, x: cpu.body.quaternion.x, y: cpu.body.quaternion.y, z: cpu.body.quaternion.z },
             velocity: { x: cpu.body.velocity.x, y: cpu.body.velocity.y, z: cpu.body.velocity.z },
-            waypointIndex: cpu.waypointIndex || 0
+            waypointIndex: cpu.waypointIndex || 0,
+            lapsCompleted: cpu.lapsCompleted || 0
         });
     }
 
     if (cpuList.length === 0) return;
+
+    // Calculate Race Positions for Rubberbanding
+    const raceStandings = [];
+    if (activeTrack.type === 'race') {
+        // Collect all racers
+        for (const [id, player] of players) {
+            if (player.type === 'driver' && player.hp > 0) {
+                raceStandings.push({ id, laps: player.lapsCompleted || 0, wp: player.waypointIndex || 0 });
+            }
+        }
+        for (const [id, cpu] of cpuPlayers) {
+            if (cpu.body && cpu.hp > 0) {
+                raceStandings.push({ id, laps: cpu.lapsCompleted || 0, wp: cpu.waypointIndex || 0 });
+            }
+        }
+        // Sort: High laps first, then high waypoints
+        raceStandings.sort((a, b) => {
+            if (a.laps !== b.laps) return b.laps - a.laps;
+            return b.wp - a.wp;
+        });
+    }
+
+    // Attach rank to cpuList
+    for (const cpu of cpuList) {
+        const rankIdx = raceStandings.findIndex(r => r.id === cpu.id);
+        cpu.rank = rankIdx !== -1 ? rankIdx + 1 : 1;
+        cpu.totalRacers = raceStandings.length || 1;
+    }
 
     // Build entity list for arena targeting
     const allEntities = [];
@@ -1037,6 +1069,7 @@ function updatePlayerPhysics(player, input) {
 
     const desiredVelX = forward.x * player.speed;
     const desiredVelZ = forward.z * player.speed;
+    const blend = 0.1;
     player.body.velocity.x = player.body.velocity.x + (desiredVelX - player.body.velocity.x) * blend;
     player.body.velocity.z = player.body.velocity.z + (desiredVelZ - player.body.velocity.z) * blend;
 
@@ -1109,6 +1142,17 @@ function applyPowerupState(player, type, durationMs) {
 // COLLISION HANDLING
 // =============================================================================
 world.addEventListener('postStep', () => {
+    // Reusable temporary vectors to reduce GC
+    const relVel = new CANNON.Vec3();
+    const v1to2 = new CANNON.Vec3();
+    const p1Forward = new CANNON.Vec3();
+    const p2Forward = new CANNON.Vec3();
+    const pForward = new CANNON.Vec3();
+    const cForward = new CANNON.Vec3();
+    const f1 = new CANNON.Vec3();
+    const f2 = new CANNON.Vec3();
+    const DAMAGE_COOLDOWN_MS = 500;
+
     // --- WALL COLLISION DETECTION ---
     for (const [id, player] of players) {
         if (!player.body || player.type !== 'driver') continue;
@@ -1116,10 +1160,13 @@ world.addEventListener('postStep', () => {
         // Check contacts with walls
         for (const contact of world.contacts) {
             const isPlayerBody = contact.bi === player.body || contact.bj === player.body;
+            // Early continue if not involved
+            if (!isPlayerBody) continue;
+
             const otherBody = contact.bi === player.body ? contact.bj : contact.bi;
             const isWall = trackWalls.includes(otherBody);
 
-            if (isPlayerBody && isWall) {
+            if (isWall) {
                 // Wall collision detected!
                 const impactSpeed = player.body.velocity.length();
                 if (impactSpeed > 5) {
@@ -1128,6 +1175,8 @@ world.addEventListener('postStep', () => {
             }
         }
     }
+
+    const now = Date.now();
 
     // Check collisions between players
     for (const [id1, p1] of players) {
@@ -1141,13 +1190,21 @@ world.addEventListener('postStep', () => {
 
             // Check if bodies are colliding
             const dist = p1.body.position.distanceTo(p2.body.position);
-            if (dist < 3.2) { // Overlapping spheres (Increased from 2.2 for 1.5x scale)
-                const relVel = new CANNON.Vec3();
+            if (dist < 3.2) { // Overlapping spheres
+
+                // Damage Cooldown Check
+                if (p1.lastDamageTime && now - p1.lastDamageTime < DAMAGE_COOLDOWN_MS) continue;
+                if (p2.lastDamageTime && now - p2.lastDamageTime < DAMAGE_COOLDOWN_MS) continue;
+
                 p1.body.velocity.vsub(p2.body.velocity, relVel);
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    // Cap base damage to prevent instant kills (max 40 base damage per hit)
+                    // Update Cooldowns
+                    p1.lastDamageTime = now;
+                    p2.lastDamageTime = now;
+
+                    // Cap base damage
                     let damage1 = Math.min(40, Math.floor(impactSpeed * 1.0));
                     let damage2 = Math.min(40, Math.floor(impactSpeed * 1.0));
                     let knockback1 = 1.0;
@@ -1158,40 +1215,36 @@ world.addEventListener('postStep', () => {
                     if (p2.maskType === 'Oni') damage2 *= 0.85;
 
                     // RAMMING LOGIC
-                    // Calculate attack angles
-                    // Vector from 1 to 2
-                    const v1to2 = new CANNON.Vec3();
                     p2.body.position.vsub(p1.body.position, v1to2);
                     v1to2.normalize();
 
-                    // P1's forward vector (negative Z is forward)
-                    const p1Forward = new CANNON.Vec3(0, 0, -1);
+                    // P1's forward vector
+                    p1Forward.set(0, 0, -1);
                     p1.body.quaternion.vmult(p1Forward, p1Forward);
 
-                    // P2's forward vector (negative Z is forward)
-                    const p2Forward = new CANNON.Vec3(0, 0, -1);
+                    // P2's forward vector
+                    p2Forward.set(0, 0, -1);
                     p2.body.quaternion.vmult(p2Forward, p2Forward);
 
-                    // Dot products (> 0.7 is roughly < 45 degrees)
+                    // Dot products
                     const p1FacingP2 = p1Forward.dot(v1to2);
-                    const p2FacingP1 = p2Forward.dot(v1to2.negate()); // v2to1 is needed? v1to2.negate() is v2to1
+                    // Reuse v1to2 for negate but be careful, dot doesn't modify. 
+                    // v1to2.negate() checks p2 to p1.
+                    const p2FacingP1 = p2Forward.dot(v1to2.negate());
+                    // Restore v1to2 just in case we need it? No, loop continues.
 
                     // Check P1 Ramming P2
                     if (p1FacingP2 > 0.7) {
-                        // P1 is hitting P2 frontally
-                        damage2 *= 1.2; // Further reduced
-                        damage1 *= 0.7; // Less reduction for attacker
-                        knockback2 = 2.0; // P2 gets punted
-                        console.log(`[COMBAT] ${p1.name} RAMMED ${p2.name}!`);
+                        damage2 *= 1.2;
+                        damage1 *= 0.7;
+                        knockback2 = 2.0;
                     }
 
                     // Check P2 Ramming P1
                     if (p2FacingP1 > 0.7) {
-                        // P2 is hitting P1 frontally
-                        damage1 *= 1.2; // Further reduced
-                        damage2 *= 0.7; // Less reduction for attacker
+                        damage1 *= 1.2;
+                        damage2 *= 0.7;
                         knockback1 = 2.0;
-                        console.log(`[COMBAT] ${p2.name} RAMMED ${p1.name}!`);
                     }
 
                     // Juggernaut Logic
@@ -1202,15 +1255,8 @@ world.addEventListener('postStep', () => {
                     if (p1.isShielded) damage1 = 0;
                     if (p2.isShielded) damage2 = 0;
 
-                    // Apply Knockback Impulse
-                    // ... (Simplistic impulse already handled by physics engine restitution, 
-                    // but we can add extra "Juice" here if needed. 
-                    // For now, reliance on physics + mass diffs (Juggernaut) is safer).
-
                     p1.hp -= Math.floor(damage1);
                     p2.hp -= Math.floor(damage2);
-
-                    console.log(`[COLLISION] ${p1.name} (-${damage1}) <-> ${p2.name} (-${damage2}) | Speed: ${impactSpeed.toFixed(1)}`);
 
                     // Emit damage events
                     io.to(id1).emit('damage', { hp: p1.hp, damage: damage1 });
@@ -1241,66 +1287,63 @@ world.addEventListener('postStep', () => {
             if (player.isGhost || cpu.isGhost) continue;
 
             const dist = player.body.position.distanceTo(cpu.body.position);
-            if (dist < 3.2) { // Overlapping spheres (Increased from 2.2 for 1.5x scale)
-                const relVel = new CANNON.Vec3();
+            if (dist < 3.2) {
+                // Damage Cooldown Check
+                if (player.lastDamageTime && now - player.lastDamageTime < DAMAGE_COOLDOWN_MS) continue;
+                if (cpu.lastDamageTime && now - cpu.lastDamageTime < DAMAGE_COOLDOWN_MS) continue;
+
                 player.body.velocity.vsub(cpu.body.velocity, relVel);
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    // Cap base damage to prevent instant kills (max 40 base damage per hit)
+                    player.lastDamageTime = now;
+                    cpu.lastDamageTime = now;
+
                     let damageToPlayer = Math.min(40, Math.floor(impactSpeed * 1.0));
                     let damageToCPU = Math.min(40, Math.floor(impactSpeed * 1.0));
 
-                    // ONI MASK: 15% damage resistance
+                    // ONI MASK
                     if (player.maskType === 'Oni') damageToPlayer *= 0.85;
                     if (cpu.maskType === 'Oni') damageToCPU *= 0.85;
 
                     // RAMMING LOGIC
-                    const v1to2 = new CANNON.Vec3();
                     cpu.body.position.vsub(player.body.position, v1to2);
                     v1to2.normalize();
 
-                    // Player heading - use correct quaternion rotation
-                    const pForward = new CANNON.Vec3(0, 0, -1);
+                    pForward.set(0, 0, -1);
                     player.body.quaternion.vmult(pForward, pForward);
 
-                    // CPU heading - use correct quaternion rotation
-                    const cForward = new CANNON.Vec3(0, 0, -1);
+                    cForward.set(0, 0, -1);
                     cpu.body.quaternion.vmult(cForward, cForward);
 
                     const playerRamming = pForward.dot(v1to2);
                     const cpuRamming = cForward.dot(v1to2.negate());
 
                     if (playerRamming > 0.7) {
-                        damageToPlayer *= 0.7; // Less reduction for attacker
-                        damageToCPU *= 1.2; // Further reduced
-                        console.log(`[COMBAT] ${player.name} RAMMED ${cpu.name}!`);
+                        damageToPlayer *= 0.7;
+                        damageToCPU *= 1.2;
                     }
 
                     if (cpuRamming > 0.7) {
-                        damageToCPU *= 0.7; // Less reduction for attacker
-                        damageToPlayer *= 1.2; // Further reduced to help humans
-                        console.log(`[COMBAT] ${cpu.name} RAMMED ${player.name}!`);
+                        damageToCPU *= 0.7;
+                        damageToPlayer *= 1.2;
                     }
 
-                    // Juggernaut and Shield Logic
+                    // Juggernaut and Shield
                     if (player.isJuggernaut) { damageToPlayer *= 0.2; damageToCPU *= 1.5; }
                     if (player.isShielded) damageToPlayer = 0;
 
                     player.hp -= Math.floor(damageToPlayer);
                     cpu.hp -= Math.floor(damageToCPU);
 
-                    console.log(`[COLLISION] ${player.name} (-${damageToPlayer}) <-> ${cpu.name} (-${damageToCPU}) | Speed: ${impactSpeed.toFixed(1)}`);
-
                     io.to(playerId).emit('damage', { hp: player.hp, damage: damageToPlayer });
 
                     if (player.hp <= 0) {
                         switchToDrone(playerId);
-                        updateLeaderboard(cpu.name, 'kills', 1, true); // CPU gets kill credit
+                        updateLeaderboard(cpu.name, 'kills', 1, true);
                         checkWinCondition();
                     }
                     if (cpu.hp <= 0) {
-                        console.log(`[CPU] ${cpu.name} eliminated by ${player.name}. Respawning in ${RESPAWN_COOLDOWN / 1000}s`);
                         world.removeBody(cpu.body);
                         cpu.body = null;
                         cpu.type = 'eliminated';
@@ -1308,7 +1351,6 @@ world.addEventListener('postStep', () => {
                         updateLeaderboard(cpu.name, 'deaths', 1, true);
                         checkWinCondition();
 
-                        // Start respawn timer
                         setTimeout(() => {
                             respawnCPU(cpuId);
                         }, RESPAWN_COOLDOWN);
@@ -1317,6 +1359,7 @@ world.addEventListener('postStep', () => {
             }
         }
     }
+
 
     // Check collisions between CPUs
     const cpuArray = Array.from(cpuPlayers.entries());
@@ -1328,46 +1371,44 @@ world.addEventListener('postStep', () => {
             const [id2, cpu2] = cpuArray[j];
             if (!cpu2.body || cpu2.hp <= 0) continue;
 
-            // Ghost Logic
             if (cpu1.isGhost || cpu2.isGhost) continue;
 
             const dist = cpu1.body.position.distanceTo(cpu2.body.position);
-            if (dist < 3.2) { // Overlapping spheres (Increased from 2.2 for 1.5x scale)
-                const relVel = new CANNON.Vec3();
+            if (dist < 3.2) {
+                if (cpu1.lastDamageTime && now - cpu1.lastDamageTime < DAMAGE_COOLDOWN_MS) continue;
+                if (cpu2.lastDamageTime && now - cpu2.lastDamageTime < DAMAGE_COOLDOWN_MS) continue;
+
                 cpu1.body.velocity.vsub(cpu2.body.velocity, relVel);
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    // Cap base damage to prevent instant kills (max 40 base damage per hit)
+                    cpu1.lastDamageTime = now;
+                    cpu2.lastDamageTime = now;
+
                     let damage1 = Math.min(40, Math.floor(impactSpeed * 1.0));
                     let damage2 = Math.min(40, Math.floor(impactSpeed * 1.0));
 
-                    // RAMMING LOGIC
-                    const v1to2 = new CANNON.Vec3();
+                    // RAMMING
                     cpu2.body.position.vsub(cpu1.body.position, v1to2);
                     v1to2.normalize();
 
-                    // CPU1 heading - use correct quaternion rotation
-                    const f1 = new CANNON.Vec3(0, 0, -1);
+                    f1.set(0, 0, -1);
                     cpu1.body.quaternion.vmult(f1, f1);
 
-                    // CPU2 heading - use correct quaternion rotation
-                    const f2 = new CANNON.Vec3(0, 0, -1);
+                    f2.set(0, 0, -1);
                     cpu2.body.quaternion.vmult(f2, f2);
 
                     const cpu1Ramming = f1.dot(v1to2);
                     const cpu2Ramming = f2.dot(v1to2.negate());
 
                     if (cpu1Ramming > 0.7) {
-                        damage1 *= 0.7; // Less reduction for attacker
-                        damage2 *= 1.2; // Further reduced
-                        console.log(`[COMBAT] ${cpu1.name} RAMMED ${cpu2.name}!`);
+                        damage1 *= 0.7;
+                        damage2 *= 1.2;
                     }
 
                     if (cpu2Ramming > 0.7) {
-                        damage2 *= 0.7; // Less reduction for attacker
-                        damage1 *= 1.2; // Further reduced
-                        console.log(`[COMBAT] ${cpu2.name} RAMMED ${cpu1.name}!`);
+                        damage2 *= 0.7;
+                        damage1 *= 1.2;
                     }
 
                     // Mask Abilities
@@ -1377,10 +1418,7 @@ world.addEventListener('postStep', () => {
                     cpu1.hp -= Math.floor(damage1);
                     cpu2.hp -= Math.floor(damage2);
 
-                    console.log(`[COLLISION] ${cpu1.name} (-${damage1}) <-> ${cpu2.name} (-${damage2}) | Speed: ${impactSpeed.toFixed(1)}`);
-
                     if (cpu1.hp <= 0) {
-                        console.log(`[CPU] ${cpu1.name} eliminated by ${cpu2.name}. Respawning in ${RESPAWN_COOLDOWN / 1000}s`);
                         world.removeBody(cpu1.body);
                         cpu1.body = null;
                         cpu1.type = 'eliminated';
@@ -1388,13 +1426,11 @@ world.addEventListener('postStep', () => {
                         updateLeaderboard(cpu1.name, 'deaths', 1, true);
                         checkWinCondition();
 
-                        // Start respawn timer
                         setTimeout(() => {
                             respawnCPU(id1);
                         }, RESPAWN_COOLDOWN);
                     }
                     if (cpu2.hp <= 0) {
-                        console.log(`[CPU] ${cpu2.name} eliminated by ${cpu1.name}. Respawning in ${RESPAWN_COOLDOWN / 1000}s`);
                         world.removeBody(cpu2.body);
                         cpu2.body = null;
                         cpu2.type = 'eliminated';
@@ -1402,7 +1438,6 @@ world.addEventListener('postStep', () => {
                         updateLeaderboard(cpu2.name, 'deaths', 1, true);
                         checkWinCondition();
 
-                        // Start respawn timer
                         setTimeout(() => {
                             respawnCPU(id2);
                         }, RESPAWN_COOLDOWN);
@@ -1540,7 +1575,9 @@ function checkPowerupCollisions() {
 }
 
 // Spawn powerups periodically
-setInterval(spawnPowerup, POWERUP_SPAWN_INTERVAL);
+if (require.main === module) {
+    setInterval(spawnPowerup, POWERUP_SPAWN_INTERVAL);
+}
 
 // =============================================================================
 // TRAPS (Drone ability)
@@ -2262,13 +2299,39 @@ io.on('connection', (socket) => {
 
             // AUTO-START LOGIC
             // Start countdown if we have at least 1 player in LOBBY (Single Player allowed)
-            if (gameState === 'LOBBY' && players.size >= 1) {
-                // If not already counting down, start it
-                if (gameTimer === 0) {
-                    console.log("[GAME] Auto-start sequence initiated...");
-                    // Start countdown after a brief delay to let them see the "Waiting" for a split second?
-                    // Or immediate? Immediate is fine.
-                    startCountdown();
+            if (gameState === 'LOBBY') {
+                const humanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
+
+                if (humanCount === 1 && gameTimer === 0) {
+                    console.log("[GAME] First player joined - starting lobby timer (30s)...");
+                    gameTimer = 30; // 30 seconds to join
+                    broadcastGameState();
+
+                    // Start lobby countdown
+                    const lobbyInterval = setInterval(() => {
+                        // checks
+                        if (gameState !== 'LOBBY') {
+                            clearInterval(lobbyInterval);
+                            return;
+                        }
+
+                        const currentHumanCount = [...players.values()].filter(p => !p.isCPU && p.type === 'driver').length;
+                        if (currentHumanCount === 0) {
+                            console.log("[GAME] All players left lobby - canceling timer");
+                            gameTimer = 0;
+                            broadcastGameState();
+                            clearInterval(lobbyInterval);
+                            return;
+                        }
+
+                        gameTimer--;
+                        broadcastGameState();
+
+                        if (gameTimer <= 0) {
+                            clearInterval(lobbyInterval);
+                            startCountdown();
+                        }
+                    }, 1000);
                 }
             }
 
@@ -2729,21 +2792,46 @@ function gameLoop() {
     }
 }
 
-setInterval(gameLoop, 1000 / TICK_RATE);
+if (require.main === module) {
+    setInterval(gameLoop, 1000 / TICK_RATE);
 
-// =============================================================================
-// START SERVER
-// =============================================================================
-httpServer.listen(PORT, () => {
-    console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║     🏎️  ENTROPY ORCHESTRATION SERVER v1.0  🏎️             ║
-║                                                           ║
-║     Port: ${PORT}                                           ║
-║     Tick Rate: ${TICK_RATE}Hz                                      ║
-║     Physics: cannon-es                                    ║
-║                                                           ║
-║     Waiting for players...                                ║
-╚═══════════════════════════════════════════════════════════╝
-  `);
-});
+    // =============================================================================
+    // START SERVER
+    // =============================================================================
+    httpServer.listen(PORT, () => {
+        console.log(`
+    ╔═══════════════════════════════════════════════════════════╗
+    ║     🏎️  ENTROPY ORCHESTRATION SERVER v1.0  🏎️             ║
+    ║                                                           ║
+    ║     Port: ${PORT}                                           ║
+    ║     Tick Rate: ${TICK_RATE}Hz                                      ║
+    ║     Physics: cannon-es                                    ║
+    ║                                                           ║
+    ║     Waiting for players...                                ║
+    ╚═══════════════════════════════════════════════════════════╝
+      `);
+    });
+}
+
+module.exports = {
+    world,
+    players,
+    cpuPlayers,
+    createPlayerBody,
+    updatePlayerPhysics,
+    gameLoop,
+    TICK_RATE,
+    io,
+    httpServer,
+    spawnCPUOpponents,
+    getActiveTrack: () => activeTrack, // Getter for test
+    selectRandomTrack,
+    setGameState: (state) => { gameState = state; }, // Helper for test
+    powerups,
+    projectiles,
+    traps,
+    createProjectile,
+    spawnTrap,
+    spawnPowerup,
+    CANON: CANNON // Export CANNON if needed for tests
+};
