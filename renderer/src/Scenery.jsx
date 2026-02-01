@@ -18,7 +18,7 @@ export function Scenery({ trackData, graphicsSettings, theme }) {
 
             {/* Theme-specific scenery */}
             {sceneryType === 'stadium' && <StadiumScenery envIntensity={envIntensity} theme={theme} trackData={trackData} />}
-            {sceneryType === 'industrial' && <IndustrialScenery envIntensity={envIntensity} theme={theme} />}
+            {sceneryType === 'industrial' && <IndustrialScenery envIntensity={envIntensity} theme={theme} trackData={trackData} />}
             {sceneryType === 'neon_forest' && <NeonForestScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'nature' && <NatureScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'volcanic' && <VolcanicScenery envIntensity={envIntensity} theme={theme} />}
@@ -27,7 +27,7 @@ export function Scenery({ trackData, graphicsSettings, theme }) {
             {sceneryType === 'classic' && <ClassicScenery envIntensity={envIntensity} theme={theme} trackData={trackData} />}
             {sceneryType === 'warning' && <WarningScenery envIntensity={envIntensity} theme={theme} />}
             {sceneryType === 'speed' && <SpeedScenery envIntensity={envIntensity} theme={theme} />}
-            {sceneryType === 'roman' && <RomanScenery envIntensity={envIntensity} theme={theme} />}
+            {sceneryType === 'roman' && <RomanScenery envIntensity={envIntensity} theme={theme} trackData={trackData} />}
             {sceneryType === 'prison' && <PrisonScenery envIntensity={envIntensity} theme={theme} />}
 
             {/* Floating 67 Memes - keep the easter egg */}
@@ -64,29 +64,39 @@ function ThemeSky({ theme }) {
 function StadiumScenery({ envIntensity, theme, trackData }) {
     return (
         <group>
-            <ArenaLights color1={theme?.primaryColor} color2={theme?.secondaryColor} />
+            <ArenaLights color1={theme?.primaryColor} color2={theme?.secondaryColor} trackData={trackData} />
             <Mountains envIntensity={envIntensity} color="#2a0a4e" />
-            <LaserBeams color={theme?.secondaryColor || '#00ff00'} />
+            <LaserBeams color={theme?.secondaryColor || '#00ff00'} trackData={trackData} />
             <NeonPalms count={40} envIntensity={envIntensity} color={theme?.primaryColor} trackData={trackData} />
         </group>
     );
 }
 
 // Industrial - metal beams, smoke stacks
-function IndustrialScenery({ envIntensity, theme }) {
+function IndustrialScenery({ envIntensity, theme, trackData }) {
     const beams = useMemo(() => {
         const arr = [];
+        let radius = 130; // Default
+        if (trackData) {
+            const isArena = trackData.type === 'arena';
+            if (isArena) {
+                radius = (trackData.radius || 100) * 1.5 + 20;
+            } else {
+                const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
+                radius = floorRadius + 30;
+            }
+        }
         for (let i = 0; i < 12; i++) {
             const angle = (i / 12) * Math.PI * 2;
             arr.push({
-                x: Math.cos(angle) * 130,
-                z: Math.sin(angle) * 130,
+                x: Math.cos(angle) * radius,
+                z: Math.sin(angle) * radius,
                 height: 30 + Math.random() * 20,
                 rotation: Math.random() * 0.3
             });
         }
         return arr;
-    }, []);
+    }, [trackData]);
 
     return (
         <group>
@@ -103,16 +113,23 @@ function IndustrialScenery({ envIntensity, theme }) {
                     <pointLight position={[0, beam.height, 0]} color={theme?.primaryColor || '#ff6600'} intensity={0.5} distance={20} />
                 </group>
             ))}
-            <SmokeStacks />
+            <SmokeStacks trackData={trackData} />
         </group>
     );
 }
 
-function SmokeStacks() {
+function SmokeStacks({ trackData }) {
+    const positions = useMemo(() => {
+        if (!trackData) return [[-100, -130], [100, -130]];
+        const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
+        const stackZ = -floorRadius - 20;
+        return [[-floorRadius - 20, stackZ], [floorRadius + 20, stackZ]];
+    }, [trackData]);
+
     return (
         <group>
-            {[-100, 100].map((x, i) => (
-                <group key={i} position={[x, 0, -130]}>
+            {positions.map((pos, i) => (
+                <group key={i} position={[pos[0], 0, pos[1]]}>
                     <mesh position={[0, 25, 0]}>
                         <cylinderGeometry args={[5, 8, 50, 12]} />
                         <meshStandardMaterial color="#333" metalness={0.8} roughness={0.5} />
@@ -354,15 +371,24 @@ function SpeedScenery({ envIntensity, theme }) {
 }
 
 // Roman - pillars, torches
-function RomanScenery({ envIntensity, theme }) {
+function RomanScenery({ envIntensity, theme, trackData }) {
     const pillars = useMemo(() => {
         const arr = [];
+        const isArena = trackData?.type === 'arena';
+        const arenaRadius = trackData?.radius || 100;
+        
         for (let i = 0; i < 12; i++) {
             const angle = (i / 12) * Math.PI * 2;
-            arr.push({ x: Math.cos(angle) * 110, z: Math.sin(angle) * 110 });
+            let radius;
+            if (isArena) {
+                radius = arenaRadius * 1.5 + 20; // Match NeonPalms placement
+            } else {
+                radius = 130; // Fixed for race tracks
+            }
+            arr.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius });
         }
         return arr;
-    }, []);
+    }, [trackData]);
 
     return (
         <group>
@@ -424,15 +450,21 @@ function NeonRing({ position, radius, color }) {
     );
 }
 
-function ArenaLights({ color1 = '#ff00ff', color2 = '#00ffff', castShadow = false }) {
+function ArenaLights({ color1 = '#ff00ff', color2 = '#00ffff', castShadow = false, trackData }) {
     const lights = useMemo(() => {
         const arr = [];
+        let radius = 100; // Default for arenas
+        if (trackData && trackData.type === 'race') {
+            // For race tracks, place outside floor
+            const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
+            radius = floorRadius + 20;
+        }
         for (let i = 0; i < 8; i++) {
             const angle = (i / 8) * Math.PI * 2;
-            arr.push({ x: Math.cos(angle) * 100, z: Math.sin(angle) * 100, color: i % 2 === 0 ? color1 : color2, phase: i * 0.5 });
+            arr.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, color: i % 2 === 0 ? color1 : color2, phase: i * 0.5 });
         }
         return arr;
-    }, [color1, color2]);
+    }, [color1, color2, trackData]);
 
     return (
         <group>
@@ -460,16 +492,27 @@ function PulsingSpotlight({ position, color, phase, castShadow }) {
     );
 }
 
-function LaserBeams({ color = '#00ff00', count = 4 }) {
+function LaserBeams({ color = '#00ff00', count = 4, trackData }) {
     const ref = useRef();
     useFrame((state) => {
         if (ref.current) ref.current.rotation.y = state.clock.elapsedTime * 0.3;
     });
 
+    const beamPositions = useMemo(() => {
+        if (!trackData || trackData.type === 'arena') {
+            return Array(count).fill([0, 80, 0]); // Center for arenas
+        } else {
+            // For race tracks, place outside
+            const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
+            const radius = floorRadius + 30;
+            return Array(count).fill([radius, 80, 0]); // At edge
+        }
+    }, [count, trackData]);
+
     return (
         <group ref={ref}>
-            {Array(count).fill(0).map((_, i) => (
-                <mesh key={i} position={[0, 80, 0]} rotation={[Math.PI / 3, (i / count) * Math.PI * 2, 0]}>
+            {beamPositions.map((pos, i) => (
+                <mesh key={i} position={pos} rotation={[Math.PI / 3, (i / count) * Math.PI * 2, 0]}>
                     <cylinderGeometry args={[0.1, 0.1, 300, 4]} />
                     <meshBasicMaterial color={color} transparent opacity={0.3} />
                 </mesh>
@@ -590,7 +633,9 @@ function NeonPalms({ count = 50, envIntensity, color = '#00ffff', trackData }) {
             if (isArena) {
                 radius = arenaRadius * 1.5 + Math.random() * 50;
             } else {
-                radius = 120 + Math.random() * 80;
+                // Place outside the floor bounds
+                const floorRadius = Math.max(trackData.floorSize.width, trackData.floorSize.depth) / 2;
+                radius = floorRadius + 50 + Math.random() * 50; // Outside floor + margin
             }
 
             temp.push({

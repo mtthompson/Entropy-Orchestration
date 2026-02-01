@@ -332,7 +332,8 @@ TRACKS.push(buildRaceTrack(OVAL_PATH, 55, {
     spawnPoints: generateAlignedSpawns(OVAL_PATH, 10, 12),
     startLine: generateStartLine(OVAL_PATH, 55),
     powerupBounds: { minX: -140, maxX: 140, minZ: -200, maxZ: 200 },
-    floorSize: { width: 350, depth: 450 }
+    floorSize: { width: 350, depth: 450 },
+    sceneryType: 'stadium'
 }));
 
 // =============================================================================
@@ -344,7 +345,8 @@ TRACKS.push(buildArena(160, 24, {
     type: 'arena',
     spawnPoints: generateCircleSpawns(120, 12),
     powerupBounds: { minX: -140, maxX: 140, minZ: -140, maxZ: 140 },
-    floorSize: { width: 380, depth: 380 }
+    floorSize: { width: 380, depth: 380 },
+    sceneryType: 'industrial'
 }));
 
 // =============================================================================
@@ -365,7 +367,8 @@ TRACKS.push(buildRaceTrack(SWITCHBACK_PATH, 70, {
     spawnPoints: generateAlignedSpawns(SWITCHBACK_PATH, 10, 8),
     startLine: generateStartLine(SWITCHBACK_PATH, 70),
     powerupBounds: { minX: -175, maxX: 175, minZ: -250, maxZ: 200 },
-    floorSize: { width: 420, depth: 520 }
+    floorSize: { width: 420, depth: 520 },
+    sceneryType: 'neon_forest'
 }));
 
 // =============================================================================
@@ -384,7 +387,8 @@ TRACKS.push(buildRaceTrack(CLOVER_PATH, 75, {
     spawnPoints: generateAlignedSpawns(CLOVER_PATH, 10, 8),
     startLine: generateStartLine(CLOVER_PATH, 75),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
-    floorSize: { width: 420, depth: 520 }
+    floorSize: { width: 420, depth: 520 },
+    sceneryType: 'nature'
 }));
 
 // =============================================================================
@@ -396,7 +400,8 @@ TRACKS.push(buildArena(135, 6, {
     type: 'arena',
     spawnPoints: generateCircleSpawns(100, 12),
     powerupBounds: { minX: -115, maxX: 115, minZ: -115, maxZ: 115 },
-    floorSize: { width: 330, depth: 330 }
+    floorSize: { width: 330, depth: 330 },
+    sceneryType: 'volcanic'
 }));
 
 // =============================================================================
@@ -417,7 +422,8 @@ TRACKS.push(buildRaceTrack(DRAGON_PATH, 40, {
     spawnPoints: generateAlignedSpawns(DRAGON_PATH, 15, 8),
     startLine: generateStartLine(DRAGON_PATH, 40),
     powerupBounds: { minX: -200, maxX: 150, minZ: -275, maxZ: 250 },
-    floorSize: { width: 480, depth: 600 }
+    floorSize: { width: 480, depth: 600 },
+    sceneryType: 'dragon'
 }));
 
 // =============================================================================
@@ -429,7 +435,8 @@ TRACKS.push(buildArena(125, 8, {
     type: 'arena',
     spawnPoints: generateCircleSpawns(90, 10),
     powerupBounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
-    floorSize: { width: 280, depth: 280 }
+    floorSize: { width: 310, depth: 310 },
+    sceneryType: 'mystic'
 }));
 
 // =============================================================================
@@ -452,7 +459,8 @@ TRACKS.push(buildRaceTrack(GP_PATH, 45, {
     spawnPoints: generateAlignedSpawns(GP_PATH, 15, 8),
     startLine: generateStartLine(GP_PATH, 45),
     powerupBounds: { minX: -175, maxX: 175, minZ: -225, maxZ: 225 },
-    floorSize: { width: 420, depth: 520 }
+    floorSize: { width: 420, depth: 520 },
+    sceneryType: 'classic'
 }));
 
 // =============================================================================
@@ -464,7 +472,8 @@ TRACKS.push(buildArena(150, 3, {
     type: 'arena',
     spawnPoints: generateCircleSpawns(75, 8),
     powerupBounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
-    floorSize: { width: 350, depth: 350 }
+    floorSize: { width: 350, depth: 350 },
+    sceneryType: 'warning'
 }));
 
 // =============================================================================
@@ -482,7 +491,8 @@ TRACKS.push(buildRaceTrack(STRIP_PATH, 85, {
     spawnPoints: generateAlignedSpawns(STRIP_PATH, 10, 8),
     startLine: generateStartLine(STRIP_PATH, 85),
     powerupBounds: { minX: -125, maxX: 125, minZ: -300, maxZ: 275 },
-    floorSize: { width: 300, depth: 650 }
+    floorSize: { width: 300, depth: 650 },
+    sceneryType: 'speed'
 }));
 
 // =============================================================================
@@ -494,7 +504,8 @@ TRACKS.push(buildArena(185, 20, {
     type: 'arena',
     spawnPoints: generateCircleSpawns(135, 12),
     powerupBounds: { minX: -160, maxX: 160, minZ: -160, maxZ: 160 },
-    floorSize: { width: 420, depth: 420 }
+    floorSize: { width: 420, depth: 420 },
+    sceneryType: 'roman'
 }));
 
 // =============================================================================
@@ -506,7 +517,8 @@ TRACKS.push(buildArena(105, 12, {
     type: 'arena',
     spawnPoints: generateCircleSpawns(60, 12),
     powerupBounds: { minX: -85, maxX: 85, minZ: -85, maxZ: 85 },
-    floorSize: { width: 250, depth: 250 }
+    floorSize: { width: 250, depth: 250 },
+    sceneryType: 'prison'
 }));
 
 // =============================================================================

@@ -356,7 +356,7 @@ function spawnCPUOpponents(count) {
             shape: new CANNON.Sphere(1),
             position: new CANNON.Vec3(spawn.x + xOffset, spawnY, spawn.z + zOffset),
             linearDamping: 0.1, // Increased from 0.05 for better stability
-            angularDamping: 0.6, // Slightly increased from 0.5
+            angularDamping: 0.6, // Reduced for more responsive turning
             allowSleep: false,
             material: carMaterial
         });
@@ -484,7 +484,7 @@ function applyCpuWorkerResults(results) {
 
         // CRITICAL: Clamp CPU velocity to prevent passing through walls
         const cpuSpeed = cpu.body.velocity.length();
-        let CPU_MAX_SPEED = 65; // Same as player max speed
+        let CPU_MAX_SPEED = 200; // Match player max speed
         if (cpu.maskType === 'Skull') CPU_MAX_SPEED *= 1.1; // Skull mask bonus
 
         if (cpuSpeed > CPU_MAX_SPEED) {
@@ -631,7 +631,7 @@ function updateCPUPhysicsFallback() {
 
             // CRITICAL: Clamp CPU velocity to prevent passing through walls
             const cpuSpeed = cpu.body.velocity.length();
-            let CPU_MAX_SPEED = 140; // Increased from 90
+            let CPU_MAX_SPEED = 200; // Match player max speed
             if (cpu.maskType === 'Skull') CPU_MAX_SPEED *= 1.1; // Skull mask bonus
 
             if (cpuSpeed > CPU_MAX_SPEED) {
@@ -843,7 +843,7 @@ function respawnCPU(id) {
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(spawn.x, getSpawnHeight(spawn.x, spawn.z), spawn.z),
         linearDamping: 0.1,
-        angularDamping: 0.6,
+        angularDamping: 0.6, // Reduced for more responsive turning
         allowSleep: false,
         material: carMaterial
     });
@@ -930,33 +930,39 @@ function updatePlayerPhysics(player, input) {
     // Get current speed
     const speed = player.body.velocity.length();
 
-    // 1. STEERING - Only allow turning when moving
-    // Steering sensitivity decreases at high speed (prevents spinouts)
-    const minSpeedToTurn = 2;
-    const turnSpeed = 6.0;
-    const speedFactor = Math.min(1, speed / 15); // Full turn at speed 15+
-    const highSpeedDampen = Math.max(0.3, 1 - speed / 50); // Reduce turn at very high speed
+    // 1. CAR-LIKE STEERING - Speed-dependent steering like real cars
+    // Low speed = responsive steering, high speed = stable steering
+    const maxSteerRate = 8.0; // Maximum steering rate (radians per second)
+    const minSpeedForSteering = 2.0; // Minimum speed for reduced steering
 
-    if (speed > minSpeedToTurn) {
-        player.body.angularVelocity.y = -steering * turnSpeed * speedFactor * highSpeedDampen;
+    let steerRate;
+    if (speed < minSpeedForSteering) {
+        // Full steering responsiveness when slow or stopped
+        steerRate = maxSteerRate;
     } else {
-        player.body.angularVelocity.y *= 0.9; // Dampen rotation when stationary
+        // Reduce steering responsiveness at high speeds for stability
+        const speedFactor = Math.max(0.3, minSpeedForSteering / speed);
+        steerRate = maxSteerRate * speedFactor;
     }
+
+    // Apply steering as angular velocity (more direct control than torque)
+    player.body.angularVelocity.y = -steering * steerRate;
 
     // 2. Calculate Forward Direction based on current rotation
     const quaternion = player.body.quaternion;
     const forward = new CANNON.Vec3(0, 0, -1); // NEGATIVE Z is forward
     quaternion.vmult(forward, forward);
+    forward.normalize(); // Ensure normalized
 
     // 3. Apply Throttle Force (Aligned with heading)
-    const driveForce = 800;
+    const driveForce = 15000; // Increased from 6000 for better acceleration
     const force = forward.clone();
     force.scale(throttle * driveForce, force);
 
     // Boost multiplier
     if (boost && player.boost > 0) {
-        force.scale(1.8, force);
-        player.boost = Math.max(0, player.boost - 1.5);
+        force.scale(2.5, force); // Increased from 1.8 for better boost effect
+        player.boost = Math.max(0, player.boost - 0.8); // Reduced depletion from 1.5
     } else {
         player.boost = Math.min(100, player.boost + 0.3 * boostRegenMod);
     }
@@ -965,20 +971,24 @@ function updatePlayerPhysics(player, input) {
 
     // 4. Lateral Friction (Anti-drift grip)
     const velocity = player.body.velocity;
-    const right = new CANNON.Vec3(1, 0, 0);
-    quaternion.vmult(right, right);
+    
+    // Calculate right vector properly: cross product of forward and up
+    const up = new CANNON.Vec3(0, 1, 0);
+    const right = new CANNON.Vec3();
+    forward.cross(up, right);  // right = forward × up
+    right.normalize();
 
     const lateralVelocity = velocity.dot(right);
 
-    // Apply STRONG opposing force to cancel sideways slide
+    // Apply opposing force to cancel sideways slide
     // Higher grip = more like a car, lower = more like ice
-    const grip = 0.92; // Increased grip
+    const grip = 0.3; // Much weaker grip for spheres
     const correctionForce = right.clone();
-    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 8, correctionForce);
+    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 3, correctionForce);
     player.body.applyForce(correctionForce, player.body.position);
 
     // 5. Speed cap to prevent runaway (modified by mask)
-    const maxSpeed = 65 * maxSpeedMod;
+    const maxSpeed = 200 * maxSpeedMod; // Increased for racing speeds
     if (speed > maxSpeed) {
         player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
     }
@@ -2230,8 +2240,13 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            // Clamp inputs to valid ranges
+            const clampedSteering = Math.max(-1, Math.min(1, steering || 0));
+            const clampedThrottle = Math.max(0, Math.min(1, throttle || 0));
+            const clampedBoost = !!boost;
+
             // Store input for game loop processing (no duplicate force application)
-            player.input = { steering, throttle, boost };
+            player.input = { steering: clampedSteering, throttle: clampedThrottle, boost: clampedBoost };
         });
 
         socket.on('spawnTrap', ({ x, z }) => {

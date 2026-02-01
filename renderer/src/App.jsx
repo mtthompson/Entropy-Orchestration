@@ -1411,37 +1411,39 @@ function CameraController({ players, gameState }) {
             const leader = sorted[0];
 
             if (leader && leader.position) {
-                // Determine heading vector from orientation or velocity
-                let heading = new THREE.Vector3(0, 0, -1);
+                // Get car's forward direction from quaternion (orientation)
+                let carForward = new THREE.Vector3(0, 0, -1); // Default forward is -Z in Three.js
                 if (leader.q) {
                     const q = new THREE.Quaternion(leader.q[0], leader.q[1], leader.q[2], leader.q[3]);
-                    heading.applyQuaternion(q);
-                    heading.y = 0; // Keep horizontal for camera logic
-                    heading.normalize();
-                } else {
-                    heading.set(leader.velocity?.x || 0, 0, leader.velocity?.z || 0);
-                    if (heading.length() > 5) {
-                        heading.normalize();
-                    } else {
-                        heading.copy(smoothVel.current);
+                    carForward.applyQuaternion(q);
+                    carForward.y = 0; // Keep horizontal for camera logic
+                    carForward.normalize();
+                }
+
+                // Use velocity as fallback if quaternion is not available or car is not moving
+                let heading = carForward.clone();
+                if (leader.velocity) {
+                    const velDir = new THREE.Vector3(leader.velocity.x, 0, leader.velocity.z);
+                    if (velDir.length() > 5) {
+                        heading.copy(velDir.normalize());
                     }
                 }
 
                 // Smoothly update camera heading
-                smoothVel.current.lerp(heading, 0.08); // More responsive lerp
+                smoothVel.current.lerp(heading, 0.08);
 
-                // Camera Offset: behind movement direction
+                // Camera Offset: behind the car's rear (opposite of forward direction)
                 const cameraDist = 35;
                 const cameraHeight = 18;
 
-                // Position camera behind leader
+                // Position camera behind car's rear
                 targetPos.current.set(
                     leader.position.x - smoothVel.current.x * cameraDist,
                     cameraHeight,
                     leader.position.z - smoothVel.current.z * cameraDist
                 );
 
-                // Look ahead of leader
+                // Look ahead in the car's forward direction
                 targetLookAt.current.set(
                     leader.position.x + smoothVel.current.x * 20,
                     0,
