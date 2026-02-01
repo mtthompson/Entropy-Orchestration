@@ -1019,6 +1019,8 @@ function CheckeredLine({ p1, p2, color1 = '#ffffff', color2 = '#000000' }) {
 // =============================================================================
 // TRACK WALL COMPONENT - Memoized for performance (NO useFrame per wall!)
 // =============================================================================
+const WALL_THICKNESS = 0.8; // Thin walls (match server physics)
+
 const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
     const wallColor = theme?.wallColor || '#ff00ff';
     const primaryColor = theme?.primaryColor || '#ff00ff';
@@ -1053,7 +1055,7 @@ const TrackWall = React.memo(function TrackWall({ wall, theme, heightMap }) {
         <group position={[centerX, 0, centerZ]} rotation={[0, -angle, 0]}>
             {/* Main wall panel - positioned at height/2 so bottom sits at Y=0 */}
             <mesh position={[0, height / 2, 0]}>
-                <boxGeometry args={[length, height, 0.8]} />
+                <boxGeometry args={[length, height, WALL_THICKNESS]} />
                 <meshStandardMaterial
                     color={darkWallColor}
                     emissive={wallColor}

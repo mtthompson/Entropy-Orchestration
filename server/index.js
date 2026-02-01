@@ -118,6 +118,7 @@ const trackWalls = []; // Currently active walls in physics world
 const prebuiltTrackWalls = new Map(); // trackId -> array of CANNON.Body (inactive until needed)
 let activeHeightMap = null; // Current terrain height data
 let terrainBody = null; // Heightfield physics body
+const WALL_THICKNESS = 0.8; // Thin walls (match renderer visuals)
 
 // Pre-build all track walls at startup for instant track switching
 function preloadAllTrackWalls() {
@@ -133,11 +134,12 @@ function preloadAllTrackWalls() {
             const centerX = (wall.x1 + wall.x2) / 2;
             const centerZ = (wall.z1 + wall.z2) / 2;
             const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
+            const wallHeight = wall.height ?? 5;
 
             const wallBody = new CANNON.Body({
                 mass: 0,
-                shape: new CANNON.Box(new CANNON.Vec3(length / 2, wall.height / 2, 2.5)),
-                position: new CANNON.Vec3(centerX, 2.5, centerZ),
+                shape: new CANNON.Box(new CANNON.Vec3(length / 2, wallHeight / 2, WALL_THICKNESS / 2)),
+                position: new CANNON.Vec3(centerX, wallHeight / 2, centerZ),
                 material: wallMaterial,
                 collisionResponse: false // Disabled until track is active
             });
@@ -215,18 +217,20 @@ function createTerrainHeightfield() {
 function updateWallPositions() {
     // Place all walls at fixed height - no terrain matching
     for (const wall of trackWalls) {
-        wall.position.y = 2.5; // Fixed height at wall.height / 2 (height=5)
+        let wallHeight = 5;
         // Keep rotation flat - only Y axis rotation for direction
         const wallData = activeTrack.boundaries.find(w =>
             Math.abs((w.x1 + w.x2) / 2 - wall.position.x) < 0.1 &&
             Math.abs((w.z1 + w.z2) / 2 - wall.position.z) < 0.1
         );
         if (wallData) {
+            wallHeight = wallData.height ?? 5;
             const angle = Math.atan2(wallData.z2 - wallData.z1, wallData.x2 - wallData.x1);
             wall.quaternion.setFromEuler(0, -angle, 0); // No slope
         }
+        wall.position.y = wallHeight / 2; // Fixed height at wallHeight / 2
     }
-    console.log(`[WALLS] Set ${trackWalls.length} walls to flat ground level (Y=2.5)`);
+    console.log(`[WALLS] Set ${trackWalls.length} walls to flat ground level (Y=height/2)`);
 }
 
 // Get spawn height at position (flat ground)
@@ -264,12 +268,44 @@ const LAPS_TO_WIN = 3;
 // BOUNDARY ENFORCEMENT
 // =============================================================================
 function getTrackBounds() {
-    const bounds = activeTrack.powerupBounds;
+    const margin = 10;
+
+    // Start with floorSize if available (preferred visual ground bounds)
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+
+    if (activeTrack?.floorSize) {
+        const halfW = activeTrack.floorSize.width / 2;
+        const halfD = activeTrack.floorSize.depth / 2;
+        minX = Math.min(minX, -halfW);
+        maxX = Math.max(maxX, halfW);
+        minZ = Math.min(minZ, -halfD);
+        maxZ = Math.max(maxZ, halfD);
+    }
+
+    // Expand to include walls (their endpoints) and account for wall thickness
+    if (activeTrack?.boundaries?.length) {
+        for (const wall of activeTrack.boundaries) {
+            minX = Math.min(minX, wall.x1, wall.x2 - 0);
+            maxX = Math.max(maxX, wall.x1, wall.x2 + 0);
+            minZ = Math.min(minZ, wall.z1, wall.z2 - 0);
+            maxZ = Math.max(maxZ, wall.z1, wall.z2 + 0);
+        }
+    }
+
+    // Fallback to powerupBounds if nothing else
+    if (!isFinite(minX) || !isFinite(minZ)) {
+        const bounds = activeTrack.powerupBounds || { minX: -200, maxX: 200, minZ: -200, maxZ: 200 };
+        minX = bounds.minX;
+        maxX = bounds.maxX;
+        minZ = bounds.minZ;
+        maxZ = bounds.maxZ;
+    }
+
     return {
-        minX: bounds.minX - 10,
-        maxX: bounds.maxX + 10,
-        minZ: bounds.minZ - 10,
-        maxZ: bounds.maxZ + 10
+        minX: minX - margin - WALL_THICKNESS,
+        maxX: maxX + margin + WALL_THICKNESS,
+        minZ: minZ - margin - WALL_THICKNESS,
+        maxZ: maxZ + margin + WALL_THICKNESS
     };
 }
 
