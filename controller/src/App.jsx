@@ -37,6 +37,7 @@ const styles = {
         textTransform: 'uppercase',
         letterSpacing: 4,
         marginBottom: 40,
+        textAlign: 'center',
         textShadow: '0 0 20px #ff00ff, 0 0 40px #ff00ff'
     },
     input: {
@@ -973,7 +974,7 @@ export default function App() {
             socket.off('demoMode');
             socket.off('disconnect');
         };
-    }, [gameState, resetToLobby]);
+    }, [gameState, resetToLobby, serverState, playerId]);
 
     // Separate useEffect for worldState to properly track player presence
     useEffect(() => {

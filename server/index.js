@@ -108,7 +108,7 @@ function initObjectPools() {
     }
 }
 
-initObjectPools();
+
 
 // =============================================================================
 // CONFIGURATION
@@ -183,6 +183,8 @@ const groundBody = new CANNON.Body({
 });
 groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0); // Rotate to be horizontal
 world.addBody(groundBody);
+
+initObjectPools();
 
 // =============================================================================
 // TRACK SYSTEM - Pre-built walls for all tracks at startup
@@ -565,6 +567,7 @@ function submitCpuCalculationsAsync() {
         cpuList,
         trackPath: activeTrack.path || null,
         trackType: activeTrack.type,
+        trackBounds: activeTrack.powerupBounds || { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
         allEntities
     });
 }
@@ -1045,6 +1048,11 @@ function respawnCPU(id) {
 
 function updatePlayerPhysics(player, input) {
     if (!player.body) return;
+
+    const timestep = 1 / TICK_RATE;
+    if (Math.random() < 0.01) {
+        console.log(`[PHYSICS_DEBUG] ID: ${player.id} Type: ${player.type} Pos: ${player.body.position.x.toFixed(2)},${player.body.position.z.toFixed(2)} Input: S=${input.steering.toFixed(2)} Th=${input.throttle.toFixed(2)} Timestep: ${timestep}`);
+    }
 
     // Lap tracking for race tracks
     if (activeTrack.type === 'race' && activeTrack.path && gameState === 'RACING') {
@@ -1536,6 +1544,7 @@ world.addEventListener('postStep', () => {
                         setTimeout(() => {
                             respawnCPU(id1);
                         }, RESPAWN_COOLDOWN);
+                        break; // Stop checking collisions for this dead CPU
                     }
                     if (cpu2.hp <= 0) {
                         world.removeBody(cpu2.body);

@@ -93,7 +93,7 @@ function getWobble(id, timeStr) {
 /**
  * Get target for CPU in arena mode (chase nearest enemy or patrol center)
  */
-function getArenaTarget(cpuPos, cpuId, allEntities) {
+function getArenaTarget(position, cpuId, allEntities, trackBounds) {
     let nearestTarget = null;
     let nearestDistSq = Infinity;
 
@@ -104,7 +104,7 @@ function getArenaTarget(cpuPos, cpuId, allEntities) {
     // Prioritize humans
     for (const entity of humans) {
         if (entity.id === cpuId || entity.hp <= 0) continue;
-        const distSq = distanceSquared(cpuPos, entity.position);
+        const distSq = distanceSquared(position, entity.position);
         if (distSq < nearestDistSq) {
             nearestDistSq = distSq;
             nearestTarget = entity.position;
@@ -115,7 +115,7 @@ function getArenaTarget(cpuPos, cpuId, allEntities) {
     if (!nearestTarget) {
         for (const entity of cpus) {
             if (entity.id === cpuId || entity.hp <= 0) continue;
-            const distSq = distanceSquared(cpuPos, entity.position);
+            const distSq = distanceSquared(position, entity.position);
             if (distSq < nearestDistSq) {
                 nearestDistSq = distSq;
                 nearestTarget = entity.position;
@@ -123,9 +123,23 @@ function getArenaTarget(cpuPos, cpuId, allEntities) {
         }
     }
 
+    // Fallback: Patrol center with some randomness
     if (!nearestTarget) {
         const offset = (cpuId.charCodeAt(4) || 0) % 20 - 10;
         nearestTarget = { x: offset, z: offset };
+    }
+
+    // Safety Clamp: Ensure target is within reasonable arena bounds
+    // Use smallest dimension of bounds or default to 80
+    const maxRadius = trackBounds ? Math.min(Math.abs(trackBounds.maxX), Math.abs(trackBounds.maxZ)) : 80;
+
+    if (Math.abs(nearestTarget.x) > maxRadius || Math.abs(nearestTarget.z) > maxRadius) {
+        // Clamp to circle
+        const dist = Math.sqrt(nearestTarget.x * nearestTarget.x + nearestTarget.z * nearestTarget.z);
+        if (dist > maxRadius) {
+            const scale = maxRadius / dist;
+            nearestTarget = { x: nearestTarget.x * scale, z: nearestTarget.z * scale };
+        }
     }
 
     return nearestTarget;
@@ -230,7 +244,7 @@ parentPort.on('message', (message) => {
         switch (type) {
             case 'calculateCpuBatch': {
                 // Process batch of CPU calculations
-                const { cpuList, trackPath, trackType, allEntities } = payload;
+                const { cpuList, trackPath, trackType, allEntities, trackBounds } = payload;
                 const isRacing = trackType === 'race' && trackPath;
 
                 result = cpuList.map(cpu => {
@@ -247,7 +261,7 @@ parentPort.on('message', (message) => {
                         target = { x: waypoint.x, z: waypoint.z };
                         newWaypointIndex = waypoint.waypointIndex;
                     } else {
-                        target = getArenaTarget(cpu.position, cpu.id, allEntities);
+                        target = getArenaTarget(cpu.position, cpu.id, allEntities, trackBounds);
                     }
 
                     const steerResult = calculateSteering(cpu, target, isRacing);
@@ -293,7 +307,7 @@ parentPort.on('message', (message) => {
 
             case 'calculateSingleCpu': {
                 // Single CPU calculation
-                const { cpu, trackPath, trackType, allEntities } = payload;
+                const { cpu, trackPath, trackType, allEntities, trackBounds } = payload;
                 const isRacing = trackType === 'race' && trackPath;
 
                 let target;
@@ -309,7 +323,7 @@ parentPort.on('message', (message) => {
                     target = { x: waypoint.x, z: waypoint.z };
                     newWaypointIndex = waypoint.waypointIndex;
                 } else {
-                    target = getArenaTarget(cpu.position, cpu.id, allEntities);
+                    target = getArenaTarget(cpu.position, cpu.id, allEntities, trackBounds);
                 }
 
                 const steerResult = calculateSteering(cpu, target, isRacing);
