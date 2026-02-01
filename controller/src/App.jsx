@@ -263,7 +263,6 @@ function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0 }) {
                 onChange={(e) => setName(e.target.value)}
                 style={styles.input}
                 maxLength={12}
-                autoFocus
             />
 
             <button
