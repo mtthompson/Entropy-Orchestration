@@ -21,9 +21,9 @@ import { PerformanceOverlay } from './PerformanceOverlay';
 // SOCKET CONNECTION
 // =============================================================================
 // In dev: connects to localhost:3000 with default /socket.io path
-// In prod: connects to same host with /api/socket.io path (tailscale strips /api, routes to server)
+// In prod: renderer on subdomain connects to main domain at jam.gimongous.net/api
 const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const SERVER_URL = isDev ? 'http://localhost:3000' : window.location.origin;
+const SERVER_URL = isDev ? 'http://localhost:3000' : 'https://jam.gimongous.net';
 const socketPath = isDev ? '/socket.io' : '/api/socket.io';
 const socket = io(SERVER_URL, { query: { role: 'admin' }, path: socketPath });
 
