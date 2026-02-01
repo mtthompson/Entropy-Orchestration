@@ -168,30 +168,16 @@ function calculateSteering(cpuData, target, isRacing) {
         steering += wobble;
     }
 
-    // Throttle reduces with sharp turns - increased base values for faster gameplay
+    // Throttle: reduce when turning sharply
     const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-
-    let baseThrottle = isRacing ? 550 : 450;
-
-    // Rubberbanding
-    if (isRacing && rank && totalRacers > 1) {
-        if (rank === 1) {
-            // Leader: slight penalty to keep pack close
-            baseThrottle *= 0.95;
-        } else if (rank === totalRacers) {
-            // Last place: boost to catch up
-            baseThrottle *= 1.15;
-        } else if (rank > totalRacers / 2) {
-            // Bottom half
-            baseThrottle *= 1.08;
-        }
-    }
-
-    const throttle = baseThrottle + baseThrottle * turnFactor;
+    const throttle = 0.6 + 0.4 * turnFactor; // 0.6 to 1.0 based on turn sharpness
 
     return {
-        steering,
-        throttle,
+        input: {
+            steering: Math.max(-1, Math.min(1, steering)),
+            throttle: Math.max(0, Math.min(1, throttle)), // Normalize for unified physics (0 to 1)
+            boost: false // Set by combat logic
+        },
         angleDiff,
         currentAngle
     };
@@ -264,18 +250,40 @@ parentPort.on('message', (message) => {
                         target = getArenaTarget(cpu.position, cpu.id, allEntities);
                     }
 
-                    const steering = calculateSteering(cpu, target, isRacing);
+                    const steerResult = calculateSteering(cpu, target, isRacing);
                     const combatBoost = checkCombatTargets(
                         cpu,
                         allEntities,
-                        steering.currentAngle,
+                        steerResult.currentAngle,
                         isRacing
                     );
 
+                    const input = steerResult.input;
+                    input.boost = combatBoost > 1.0;
+
+                    // Standardize fire logic: 5% chance if enemy in range/angle
+                    let shouldFire = false;
+                    if (cpu.ammo > 0 && Math.random() < 0.05) {
+                        for (const entity of allEntities) {
+                            if (entity.id === cpu.id || entity.hp <= 0) continue;
+                            const dx = entity.position.x - cpu.position.x;
+                            const dz = entity.position.z - cpu.position.z;
+                            const distSq = dx * dx + dz * dz;
+                            if (distSq < 1600) { // 40 range
+                                const toAngle = Math.atan2(dx, -dz);
+                                const aimDiff = Math.abs(normalizeAngle(toAngle - steerResult.currentAngle));
+                                if (aimDiff < Math.PI / 8) {
+                                    shouldFire = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     return {
                         id: cpu.id,
-                        steering: steering.steering,
-                        throttle: steering.throttle * combatBoost,
+                        input: input,
+                        fire: shouldFire,
                         waypointIndex: newWaypointIndex,
                         target
                     };
@@ -304,18 +312,40 @@ parentPort.on('message', (message) => {
                     target = getArenaTarget(cpu.position, cpu.id, allEntities);
                 }
 
-                const steering = calculateSteering(cpu, target, isRacing);
+                const steerResult = calculateSteering(cpu, target, isRacing);
                 const combatBoost = checkCombatTargets(
                     cpu,
                     allEntities,
-                    steering.currentAngle,
+                    steerResult.currentAngle,
                     isRacing
                 );
 
+                const input = steerResult.input;
+                input.boost = combatBoost > 1.0;
+
+                // Standardize fire logic: 5% chance if enemy in range/angle
+                let shouldFire = false;
+                if (cpu.ammo > 0 && Math.random() < 0.05) {
+                    for (const entity of allEntities) {
+                        if (entity.id === cpu.id || entity.hp <= 0) continue;
+                        const dx = entity.position.x - cpu.position.x;
+                        const dz = entity.position.z - cpu.position.z;
+                        const distSq = dx * dx + dz * dz;
+                        if (distSq < 1600) { // 40 range
+                            const toAngle = Math.atan2(dx, -dz);
+                            const aimDiff = Math.abs(normalizeAngle(toAngle - steerResult.currentAngle));
+                            if (aimDiff < Math.PI / 8) {
+                                shouldFire = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 result = {
                     id: cpu.id,
-                    steering: steering.steering,
-                    throttle: steering.throttle * combatBoost,
+                    input: input,
+                    fire: shouldFire,
                     waypointIndex: newWaypointIndex,
                     target
                 };

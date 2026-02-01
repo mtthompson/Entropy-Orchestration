@@ -663,7 +663,6 @@ export default {
     PowerupBurst,
     AmbientParticles,
     SpeedLinesEffect,
-    SpeedLinesEffect,
     DustTrail,
     ParticleExplosion
 };

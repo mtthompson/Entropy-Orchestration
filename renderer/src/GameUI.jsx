@@ -53,8 +53,8 @@ export function GameUI({ gameState, gameTimer, winner, onCountdownTick }) {
                 <div style={styles.lobbyBox}>
                     {/* Main Title with glow */}
                     <h1 style={styles.lobbyTitle}>
-                        <span style={styles.titleGlow}>DEMOLITION</span>
-                        <span style={styles.titleAccent}> ARENA</span>
+                        <span style={styles.titleGlow}>ENTROPY</span>
+                        <span style={styles.titleAccent}> ORCHESTRATION</span>
                     </h1>
 
                     {/* Hidden Identity Section */}

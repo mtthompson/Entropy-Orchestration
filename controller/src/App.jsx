@@ -198,16 +198,18 @@ function vibrate(pattern) {
 // =============================================================================
 const MASKS = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
 
-function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0 }) {
+function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0, serverState = 'LOBBY', hasJoined = false }) {
     const [name, setName] = useState(savedIdentity.name || '');
     const [maskIndex, setMaskIndex] = useState(() => {
         const savedMask = savedIdentity.maskType || 'Classic';
         const idx = MASKS.indexOf(savedMask);
         return idx >= 0 ? idx : 0;
     });
+    const [isJoining, setIsJoining] = useState(false);
 
     const handleJoin = () => {
-        if (name.trim()) {
+        if (name.trim() && !isJoining && serverState !== 'COUNTDOWN' && !hasJoined) {
+            setIsJoining(true);
             onJoin(name.trim(), MASKS[maskIndex]);
         }
     };
@@ -215,9 +217,11 @@ function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0 }) {
     const nextMask = () => setMaskIndex((i) => (i + 1) % MASKS.length);
     const prevMask = () => setMaskIndex((i) => (i - 1 + MASKS.length) % MASKS.length);
 
+    const isButtonDisabled = !name.trim() || isJoining || serverState === 'COUNTDOWN' || hasJoined;
+
     return (
         <div style={styles.container('#ff00ff')}>
-            <h1 style={styles.title}>Entropy</h1>
+            <h1 style={styles.title}>Entropy Orchestration</h1>
 
             {/* Lobby Timer */}
             {serverTimer > 0 && (
@@ -256,25 +260,51 @@ function LobbyScreen({ onJoin, savedIdentity = {}, serverTimer = 0 }) {
                 >▶</button>
             </div>
 
-            <input
-                type="text"
-                placeholder="Enter your name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={styles.input}
-                maxLength={12}
-            />
+            {/* UI State: Joined vs Not Joined */}
+            {hasJoined ? (
+                <div style={{
+                    background: 'rgba(0, 255, 0, 0.1)',
+                    border: '2px solid #00ff00',
+                    padding: '24px',
+                    borderRadius: 16,
+                    textAlign: 'center',
+                    width: '100%',
+                    maxWidth: 300,
+                    boxShadow: '0 0 20px rgba(0, 255, 0, 0.2)'
+                }}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#00ff00', textTransform: 'uppercase', letterSpacing: 2 }}>Joined</div>
+                    <div style={{ fontSize: 14, opacity: 0.7, marginTop: 10 }}>Ready to race! Waiting for others...</div>
+                </div>
+            ) : (
+                <>
+                    <input
+                        type="text"
+                        placeholder="Enter your name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        style={styles.input}
+                        maxLength={12}
+                    />
 
-            <button
-                style={styles.button('#ff00ff')}
-                onClick={handleJoin}
-                onTouchEnd={(e) => {
-                    e.preventDefault();
-                    handleJoin();
-                }}
-            >
-                Join Race
-            </button>
+                    <button
+                        style={{
+                            ...styles.button('#ff00ff'),
+                            opacity: isButtonDisabled ? 0.5 : 1,
+                            cursor: isButtonDisabled ? 'not-allowed' : 'pointer',
+                            filter: isButtonDisabled ? 'grayscale(0.8)' : 'none'
+                        }}
+                        onClick={handleJoin}
+                        onTouchEnd={(e) => {
+                            e.preventDefault();
+                            if (!isButtonDisabled) handleJoin();
+                        }}
+                        disabled={isButtonDisabled}
+                    >
+                        {serverState === 'COUNTDOWN' ? 'GET READY...' : isJoining ? 'Joining...' : 'Join Race'}
+                    </button>
+                </>
+            )}
         </div>
     );
 }
@@ -432,6 +462,15 @@ function DrivingScreen({ playerState }) {
     const isThrottling = inputRef.current.throttle > 0;
     const isBoosting = inputRef.current.boost;
     const steering = inputRef.current.steering;
+    const heldItem = playerState?.heldItem;
+    const activePowerup = playerState?.activePowerup;
+
+    const handleUseItem = () => {
+        if (heldItem) {
+            socket.emit('useItem');
+            vibrate(50);
+        }
+    };
 
     return (
         <div style={styles.container(color)}>
@@ -439,6 +478,28 @@ function DrivingScreen({ playerState }) {
             <div style={{ position: 'relative', ...styles.healthBar.container }}>
                 <div style={styles.healthBar.fill(hp, color)} />
                 <div style={styles.healthBar.text}>{hp} HP</div>
+
+                {/* Active Powerup Indicator */}
+                {activePowerup && (
+                    <div style={{
+                        position: 'absolute',
+                        right: -10,
+                        top: -10,
+                        padding: '4px 8px',
+                        background: '#ff00ff',
+                        borderRadius: 20,
+                        fontSize: 10,
+                        fontWeight: 900,
+                        border: '2px solid white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        boxShadow: '0 0 10px #ff00ff'
+                    }}>
+                        <span>{activePowerup.type === 'Shield' ? '🛡️' : activePowerup.type === 'Ghost' ? '👻' : '🦾'}</span>
+                        <span>{Math.ceil(activePowerup.r / 1000)}s</span>
+                    </div>
+                )}
             </div>
 
             {/* Boost Meter */}
@@ -517,6 +578,52 @@ function DrivingScreen({ playerState }) {
                     }} />
                 </div>
             </div>
+
+            {/* Held Item & Use Button */}
+            {heldItem && (
+                <div style={{
+                    position: 'fixed',
+                    right: 20,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 10,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 10
+                }}>
+                    <div style={{
+                        width: 70,
+                        height: 70,
+                        background: 'linear-gradient(135deg, #00ffaa 0%, #00cc88 100%)',
+                        borderRadius: '50%',
+                        border: '3px solid #ffffff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        boxShadow: '0 0 20px rgba(0, 255, 170, 0.5)',
+                        color: '#000',
+                        fontSize: 12,
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        transition: 'transform 0.1s active'
+                    }}
+                        onTouchStart={(e) => { e.preventDefault(); handleUseItem(); }}
+                        onClick={handleUseItem}
+                    >
+                        <span style={{ fontSize: 28 }}>
+                            {heldItem === 'Repair' ? '🔧' :
+                                heldItem === 'Shield' ? '🛡️' :
+                                    heldItem === 'Ghost' ? '👻' :
+                                        heldItem === 'Juggernaut' ? '🦾' :
+                                            heldItem === 'Boost' ? '💨' :
+                                                heldItem === '67Meme' ? '🏆' : '📦'}
+                        </span>
+                        <span>USE</span>
+                    </div>
+                </div>
+            )}
 
             {/* Controls */}
             <div style={styles.controls}>
@@ -718,6 +825,7 @@ function ResultsScreen({ winner, countdown, onBackToLobby }) {
 // =============================================================================
 export default function App() {
     const [gameState, setGameState] = useState('lobby'); // lobby, driving, drone, results
+    const [serverState, setServerState] = useState('LOBBY'); // LOBBY, COUNTDOWN, RACING, WINNER
     const [playerState, setPlayerState] = useState(null);
     const [playerId, setPlayerId] = useState(null);
     const [winner, setWinner] = useState(null);
@@ -761,9 +869,17 @@ export default function App() {
 
     useEffect(() => {
         socket.on('joined', ({ id, color, hp }) => {
+            console.log('[CONTROLLER] Successfully joined! ID:', id);
             setPlayerId(id);
-            setPlayerState({ color, hp, boost: 100 });
-            setGameState('driving');
+            setPlayerState({ color, hp, boost: 100, ammo: 0, weaponType: 'none' });
+
+            // Only transition to driving screen if the race is starting or in progress
+            // Late joiners (RACING) or start of race (COUNTDOWN) go straight in.
+            // Lobby joiners stay in lobby view to see status.
+            if (serverState !== 'LOBBY') {
+                setGameState('driving');
+            }
+
             missingTicksRef.current = 0;
             dismissedResultsRef.current = false; // Reset dismissal flag
             vibrate(100);
@@ -775,7 +891,10 @@ export default function App() {
             vibrate([100, 50, 100]);
         });
 
-        socket.on('powerup', ({ type }) => {
+        socket.on('powerup', ({ type, ammo, weaponType }) => {
+            if (ammo !== undefined && weaponType !== undefined) {
+                setPlayerState(prev => ({ ...prev, ammo, weaponType }));
+            }
             vibrate(type === 'Repair' ? [50, 50, 50] : [200]);
         });
 
@@ -794,8 +913,9 @@ export default function App() {
         socket.on('gameState', ({ state, timer, winner: gameWinner }) => {
             console.log('[CONTROLLER] Server gameState:', state, 'timer:', timer, 'winner:', gameWinner);
 
-            // Sync timer
+            // Sync states
             setServerTimer(timer || 0);
+            setServerState(state);
 
             if (state === 'WINNER') {
                 // Only show results if NOT dismissed
@@ -808,13 +928,20 @@ export default function App() {
                     }
                 }
             } else if (state === 'LOBBY') {
-                // Server returned to lobby - reset controller if we were in game
-                if (gameState !== 'lobby') {
+                // Server returned to lobby - reset controller if we were in results
+                // OR if we were in driving/drone but are no longer in the game (handled by worldState/missingTicks)
+                if (gameState === 'results') {
                     resetToLobby();
                 }
             } else if (state === 'RACING' || state === 'COUNTDOWN') {
                 // Ensure dismissed flag is reset when new game starts
                 dismissedResultsRef.current = false;
+
+                // Transition joined players to driving screen
+                if (playerId && gameState === 'lobby') {
+                    console.log('[CONTROLLER] Joining race in progress/starting');
+                    setGameState('driving');
+                }
             }
         });
 
@@ -856,9 +983,15 @@ export default function App() {
                     // Player found - update state and reset missing counter
                     const player = state.players[playerId];
                     setPlayerState(prev => {
-                        const newState = { ...prev };
-                        if (player.hp !== undefined) newState.hp = player.hp;
-                        if (player.boost !== undefined) newState.boost = player.boost;
+                        const newState = { ...prev, ...player };
+
+                        // Handle properties that might be arrays/objects if they ever become such,
+                        // but for now simple spread handles p, v, q, hp, boost, ammo, weaponType
+
+                        // Special handling to ensure we don't lose color/name from delta if server omits them
+                        if (!player.color && prev?.color) newState.color = prev.color;
+                        if (!player.name && prev?.name) newState.name = prev.name;
+
                         return newState;
                     });
                     missingTicksRef.current = 0;
@@ -916,7 +1049,13 @@ export default function App() {
             return (
                 <>
                     {renderDemoToast()}
-                    <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} serverTimer={serverTimer} />
+                    <LobbyScreen
+                        onJoin={handleJoin}
+                        savedIdentity={getSavedIdentity()}
+                        serverTimer={serverTimer}
+                        serverState={serverState}
+                        hasJoined={!!playerId}
+                    />
                 </>
             );
         case 'driving':
@@ -932,6 +1071,14 @@ export default function App() {
                 />
             );
         default:
-            return <LobbyScreen onJoin={handleJoin} savedIdentity={getSavedIdentity()} serverTimer={serverTimer} />;
+            return (
+                <LobbyScreen
+                    onJoin={handleJoin}
+                    savedIdentity={getSavedIdentity()}
+                    serverTimer={serverTimer}
+                    serverState={serverState}
+                    hasJoined={!!playerId}
+                />
+            );
     }
 }

@@ -40,12 +40,89 @@ if (require.main === module) {
 }
 
 // =============================================================================
+// GAME STATE
+// =============================================================================
+const players = new Map();       // id -> { body, hp, type, color, name }
+const cpuPlayers = new Map();    // id -> { body, waypointIndex, ... }
+const projectiles = new Map();   // id -> { body, ownerId, type, damage }
+const powerups = new Map();      // id -> { body, type }
+const traps = new Map();         // id -> { body }
+
+const projectilePool = [];
+const powerupPool = [];
+const trapPool = [];
+const MAX_POOL_SIZE = 20;
+const MAX_PROJECTILE_POOL_SIZE = 50;
+
+const CAR_COLORS = [
+    '#FF00FF', '#00FFFF', '#FF6B00', '#00FF00',
+    '#FF0066', '#6600FF', '#FFFF00', '#00FF99'
+];
+
+const MASK_TYPES = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
+const CPU_NAMES = ['NEON', 'RAZOR', 'VOLT', 'BLAZE', 'CYBER', 'TURBO'];
+let cpuIdCounter = 0;
+let projectileIdCounter = 0;
+
+const LAPS_TO_WIN = 3;
+
+const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon', '67Meme'];
+
+const projectilePool = [];
+const powerupPool = [];
+const trapPool = [];
+const MAX_POOL_SIZE = 20;
+const MAX_PROJECTILE_POOL_SIZE = 50;
+
+function initObjectPools() {
+    console.log(`[POOL] Initializing object pools (Size: ${MAX_POOL_SIZE}, Projectiles: ${MAX_PROJECTILE_POOL_SIZE})`);
+    for (let i = 0; i < MAX_POOL_SIZE; i++) {
+        // Powerup pool
+        const pBody = new CANNON.Body({
+            mass: 0,
+            shape: new CANNON.Sphere(1.5),
+            isTrigger: true,
+            position: new CANNON.Vec3(0, -500, 0), // Start in void
+            collisionResponse: false
+        });
+        world.addBody(pBody); // Pre-add to world
+        powerupPool.push(pBody);
+
+        // Trap pool
+        const tBody = new CANNON.Body({
+            mass: 0,
+            shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 1)),
+            position: new CANNON.Vec3(0, -500, 0), // Start in void
+            collisionResponse: false
+        });
+        world.addBody(tBody); // Pre-add to world
+        trapPool.push(tBody);
+    }
+
+    // Projectile pool
+    for (let i = 0; i < MAX_PROJECTILE_POOL_SIZE; i++) {
+        const body = new CANNON.Body({
+            mass: 1,
+            shape: new CANNON.Sphere(0.3),
+            linearDamping: 0,
+            angularDamping: 0,
+            position: new CANNON.Vec3(0, -500, 0),
+            collisionResponse: false
+        });
+        world.addBody(body); // Pre-add to world
+        projectilePool.push(body);
+    }
+}
+
+initObjectPools();
+
+// =============================================================================
 // CONFIGURATION
 // =============================================================================
 const PORT = process.env.PORT || 3000;
 const TICK_RATE = 60;
 const DAMAGE_THRESHOLD = 20; // Increased from 15 to make it harder to kill
-const MAX_SPEED = 210; // Slightly increased
+const MAX_SPEED = 250; // Increased from 210
 const POWERUP_SPAWN_INTERVAL = 7000; // 5-10s average
 const POWERUP_TYPES = ['Repair', 'Boost'];
 const MAX_POWERUPS = 10; // Prevent accumulation during idle
@@ -217,6 +294,8 @@ function activateTrackWalls(trackId) {
             trackWalls.push(wall);
         }
         console.log(`[TRACK] Activated ${trackWalls.length} pre-built walls for track ${trackId}`);
+        // Pre-spawn some powerups for performance warm-up
+        spawnInitialPowerups(8);
     } else {
         console.error(`[TRACK] No pre-built walls found for track ${trackId}`);
     }
@@ -276,27 +355,7 @@ function getSpawnHeight(x, z) {
 createTerrainHeightfield();
 
 
-// =============================================================================
-// GAME STATE
-// =============================================================================
-const players = new Map();       // id -> { body, hp, type, color, name }
-const cpuPlayers = new Map();    // id -> { body, waypointIndex, ... }
-const projectiles = new Map();   // id -> { body, ownerId, type, damage }
-const powerups = new Map();      // id -> { body, type }
-const traps = new Map();         // id -> { body }
 
-const CAR_COLORS = [
-    '#FF00FF', '#00FFFF', '#FF6B00', '#00FF00',
-    '#FF0066', '#6600FF', '#FFFF00', '#00FF99'
-];
-
-const MASK_TYPES = ['Classic', 'Oni', 'Tech', 'Clown', 'Skull'];
-const CPU_NAMES = ['NEON', 'RAZOR', 'VOLT', 'BLAZE', 'CYBER', 'TURBO'];
-let cpuIdCounter = 0;
-let projectileIdCounter = 0;
-
-// Lap tracking constants
-const LAPS_TO_WIN = 3;
 
 // =============================================================================
 // BOUNDARY ENFORCEMENT
@@ -541,38 +600,27 @@ function applyCpuWorkerResults(results) {
             cpu.waypointIndex = result.waypointIndex;
         }
 
-        // Apply steering with smoothing
-        const steerSmoothing = 0.8;
-        cpu.body.angularVelocity.y = (cpu.body.angularVelocity.y * steerSmoothing) + (result.steering * (1 - steerSmoothing));
+        // Use standard physics update for CPUs
+        updatePlayerPhysics(cpu, result.input);
 
-        // Apply Clown Mask random burst
-        if (cpu.maskType === 'Clown' && Math.random() < 0.003) {
-            const burst = new CANNON.Vec3(0, 0, -1);
-            cpu.body.quaternion.vmult(burst, burst);
-            burst.scale(450, burst);
-            cpu.body.applyImpulse(burst, cpu.body.position);
-            console.log(`[CLOWN] ${cpu.name} got a random burst!`);
-        }
-
-        // Apply throttle force
-        const forward = new CANNON.Vec3(0, 0, -1);
-        cpu.body.quaternion.vmult(forward, forward);
-        forward.scale(result.throttle, forward);
-        cpu.body.applyForce(forward, cpu.body.position);
-
-        // CRITICAL: Clamp CPU velocity to prevent passing through walls
-        const cpuSpeed = cpu.body.velocity.length();
-        let CPU_MAX_SPEED = 85; // Faster than player (70) but not insane
-        if (cpu.maskType === 'Skull') CPU_MAX_SPEED *= 1.1; // Skull mask bonus
-
-        if (cpuSpeed > CPU_MAX_SPEED) {
-            cpu.body.velocity.scale(CPU_MAX_SPEED / cpuSpeed, cpu.body.velocity);
-        }
-
-        // Enforce boundaries - reset waypoints if teleported
-        if (enforceBoundaries(cpu.body)) {
-            cpu.waypointIndex = 0;
-            cpu.speed = 0;
+        // Firing logic from worker
+        if (result.fire && cpu.ammo > 0) {
+            cpu.ammo--;
+            const forward = new CANNON.Vec3(0, 0, -1);
+            cpu.body.quaternion.vmult(forward, forward);
+            const projPos = {
+                x: cpu.body.position.x + forward.x * 2.5,
+                y: cpu.body.position.y,
+                z: cpu.body.position.z + forward.z * 2.5
+            };
+            const projType = cpu.weaponType || 'laser';
+            createProjectile(cpu.id, projType, projPos, { x: forward.x, z: forward.z });
+            io.emit('projectileFired', {
+                ownerId: cpu.id,
+                position: projPos,
+                direction: { x: forward.x, z: forward.z },
+                type: projType
+            });
         }
     }
 }
@@ -710,7 +758,7 @@ function updateCPUPhysicsFallback() {
 
             // CRITICAL: Clamp CPU velocity to prevent passing through walls
             const cpuSpeed = cpu.body.velocity.length();
-            let CPU_MAX_SPEED = 85; // Faster than player (70) but not insane
+            let CPU_MAX_SPEED = 110; // Increased from 85 (Player is 100)
             if (cpu.maskType === 'Skull') CPU_MAX_SPEED *= 1.1; // Skull mask bonus
 
             if (cpuSpeed > CPU_MAX_SPEED) {
@@ -744,15 +792,25 @@ function createProjectile(ownerId, type, position, direction) {
     const speed = type === 'missile' ? 80 : 120; // Missiles slower but stronger
     const damage = type === 'missile' ? 40 : 20;
 
-    const body = new CANNON.Body({
-        mass: 1,
-        shape: new CANNON.Sphere(0.3),
-        position: new CANNON.Vec3(position.x, position.y, position.z),
-        linearDamping: 0,
-        angularDamping: 0
-    });
+    let body;
+    if (projectilePool.length > 0) {
+        body = projectilePool.pop();
+        body.position.set(position.x, position.y, position.z);
+        body.velocity.set(direction.x * speed, 0, direction.z * speed);
+        body.angularVelocity.set(0, 0, 0);
+        body.quaternion.set(0, 0, 0, 1);
+        body.wakeUp();
+    } else {
+        body = new CANNON.Body({
+            mass: 1,
+            shape: new CANNON.Sphere(0.3),
+            position: new CANNON.Vec3(position.x, position.y, position.z),
+            linearDamping: 0,
+            angularDamping: 0
+        });
+        body.velocity.set(direction.x * speed, 0, direction.z * speed);
+    }
 
-    body.velocity.set(direction.x * speed, 0, direction.z * speed);
     world.addBody(body);
 
     const projectile = {
@@ -769,8 +827,14 @@ function createProjectile(ownerId, type, position, direction) {
     // Auto-destroy after 3 seconds
     setTimeout(() => {
         if (projectiles.has(projId)) {
-            world.removeBody(projectiles.get(projId).body);
+            const proj = projectiles.get(projId);
+            world.removeBody(proj.body);
             projectiles.delete(projId);
+
+            // Return to pool
+            if (projectilePool.length < MAX_PROJECTILE_POOL_SIZE) {
+                projectilePool.push(proj.body);
+            }
         }
     }, 3000);
 
@@ -796,6 +860,11 @@ function updateProjectiles() {
                 world.removeBody(proj.body);
                 projectiles.delete(projId);
 
+                // Return to pool
+                if (projectilePool.length < MAX_PROJECTILE_POOL_SIZE) {
+                    projectilePool.push(proj.body);
+                }
+
                 // Check if player died
                 if (player.hp <= 0) {
                     switchToDrone(playerId);
@@ -813,6 +882,11 @@ function updateProjectiles() {
                 cpu.hp -= proj.damage;
                 world.removeBody(proj.body);
                 projectiles.delete(projId);
+
+                // Return to pool
+                if (projectilePool.length < MAX_PROJECTILE_POOL_SIZE) {
+                    projectilePool.push(proj.body);
+                }
 
                 if (cpu.hp <= 0) {
                     world.removeBody(cpu.body);
@@ -1042,16 +1116,16 @@ function updatePlayerPhysics(player, input) {
     forward.normalize();
 
     // 3. Arcade Drive: target-speed approach and direct velocity alignment
-    const baseMaxSpeed = 70 * maxSpeedMod;
+    const baseMaxSpeed = 100 * maxSpeedMod; // Increased from 70
     let targetSpeed = throttle * baseMaxSpeed;
 
-    let accelRate = 95;
-    let brakeRate = 140;
-    let coastRate = 60;
+    let accelRate = 130; // Increased from 95
+    let brakeRate = 160; // Increased from 140
+    let coastRate = 70; // Increased from 60
 
     if (boost && player.boost > 0) {
-        targetSpeed *= 1.35;
-        accelRate *= 1.25;
+        targetSpeed *= 1.5; // Increased from 1.35
+        accelRate *= 1.35; // Increased from 1.25
         player.boost = Math.max(0, player.boost - 1.0); // Increased consumption (was 0.8)
     } else {
         player.boost = Math.min(100, player.boost + 0.4 * boostRegenMod); // Increased regen (was 0.3)
@@ -1069,20 +1143,37 @@ function updatePlayerPhysics(player, input) {
 
     const desiredVelX = forward.x * player.speed;
     const desiredVelZ = forward.z * player.speed;
-    const blend = 0.1;
+    const blend = player.isCPU ? 0.08 : 0.1; // Slightly stiffer for CPUs
     player.body.velocity.x = player.body.velocity.x + (desiredVelX - player.body.velocity.x) * blend;
     player.body.velocity.z = player.body.velocity.z + (desiredVelZ - player.body.velocity.z) * blend;
 
-    // Boundary enforcement - reset waypoints if teleported
-    if (enforceBoundaries(player.body)) {
-        player.waypointIndex = 0;
-        player.speed = 0;
+    // =============================================
+    // FINAL SAFETY: CLAMP SPEED AND BOUNDARIES
+    // =============================================
+    const currentSpeed = player.body.velocity.length();
+    let maxSpeedValue = player.isCPU ? 110 : 100; // Standardize base speeds
+    if (maskType === 'Skull') maxSpeedValue *= 1.1;
+
+    if (currentSpeed > maxSpeedValue) {
+        player.body.velocity.scale(maxSpeedValue / currentSpeed, player.body.velocity);
     }
 
-    // 5. Speed cap to prevent runaway (modified by mask/boost)
-    const maxSpeed = Math.max(baseMaxSpeed, targetSpeed);
-    if (speed > maxSpeed) {
-        player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
+    if (enforceBoundaries(player.body)) {
+        player.speed = 0;
+        if (player.isCPU) {
+            player.waypointIndex = 0;
+        }
+        if (player.body && player.body.quaternion) {
+            const fwd = new CANNON.Vec3(0, 0, -1);
+            player.body.quaternion.vmult(fwd, fwd);
+            player.yaw = Math.atan2(fwd.x, -fwd.z);
+        } else {
+            player.yaw = 0;
+        }
+        player.body.angularVelocity.set(0, 0, 0);
+        if (!player.isCPU) {
+            io.to(player.id).emit('respawned', { reason: 'out_of_bounds' });
+        }
     }
 }
 
@@ -1105,6 +1196,7 @@ function applyPowerupState(player, type, durationMs) {
     player.isShielded = false;
     player.isGhost = false;
     player.isJuggernaut = false;
+    player.activePowerup = { type, duration: durationMs, startTime: Date.now() };
 
     // Apply new state
     if (type === 'Shield') {
@@ -1448,39 +1540,56 @@ world.addEventListener('postStep', () => {
     }
 });
 
-// =============================================================================
-// POWER-UPS
-// =============================================================================
-const EXTENDED_POWERUP_TYPES = ['Repair', 'Repair', 'Boost', 'Boost', 'Shield', 'Ghost', 'Juggernaut', 'Weapon', 'Weapon', '67Meme']; // Weighted
 
-// =============================================================================
-// OBJECT POOLING
-// =============================================================================
+
+const projectilePool = [];
 const powerupPool = [];
 const trapPool = [];
 const MAX_POOL_SIZE = 20;
+const MAX_PROJECTILE_POOL_SIZE = 50;
 
 function initObjectPools() {
-    console.log(`[POOL] Initializing object pools (Size: ${MAX_POOL_SIZE})`);
+    console.log(`[POOL] Initializing object pools (Size: ${MAX_POOL_SIZE}, Projectiles: ${MAX_PROJECTILE_POOL_SIZE})`);
     for (let i = 0; i < MAX_POOL_SIZE; i++) {
         // Powerup pool
         const pBody = new CANNON.Body({
             mass: 0,
             shape: new CANNON.Sphere(1.5),
-            isTrigger: true
+            isTrigger: true,
+            position: new CANNON.Vec3(0, -500, 0), // Start in void
+            collisionResponse: false
         });
+        world.addBody(pBody); // Pre-add to world
         powerupPool.push(pBody);
 
         // Trap pool
         const tBody = new CANNON.Body({
             mass: 0,
-            shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 1))
+            shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 1)),
+            position: new CANNON.Vec3(0, -500, 0), // Start in void
+            collisionResponse: false
         });
+        world.addBody(tBody); // Pre-add to world
         trapPool.push(tBody);
+    }
+
+    // Projectile pool
+    for (let i = 0; i < MAX_PROJECTILE_POOL_SIZE; i++) {
+        const body = new CANNON.Body({
+            mass: 1,
+            shape: new CANNON.Sphere(0.3),
+            linearDamping: 0,
+            angularDamping: 0,
+            position: new CANNON.Vec3(0, -500, 0),
+            collisionResponse: false
+        });
+        world.addBody(body); // Pre-add to world
+        projectilePool.push(body);
     }
 }
 
 initObjectPools();
+
 
 function spawnPowerup() {
     // Prevent accumulation - cap at MAX_POWERUPS
@@ -1507,63 +1616,82 @@ function spawnPowerup() {
     // Get body from pool
     const body = powerupPool.pop();
     body.position.set(x, y, z);
-    world.addBody(body);
+    body.collisionResponse = true; // Enable interactions
+    // No need to addBody, it's already there
 
     powerups.set(id, { body, type, position: { x, y, z }, spawnTime: Date.now() });
 
     console.log(`[POWERUP] Spawned ${type} at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) [${powerups.size}/${MAX_POWERUPS}]`);
 
-    // Auto-expire after POWERUP_LIFETIME
+    // Auto-expire after POWERUP_LIFETIME with some jitter to stagger cleanup
+    const jitter = (Math.random() - 0.5) * 20000; // +/- 10 seconds
     setTimeout(() => {
         if (powerups.has(id)) {
             const p = powerups.get(id);
-            world.removeBody(p.body);
+            // "Remove" by moving to void
+            p.body.position.set(0, -500, 0);
+            p.body.collisionResponse = false;
+
             powerupPool.push(p.body); // Return to pool
             powerups.delete(id);
             console.log(`[POWERUP] Expired ${type} [${powerups.size}/${MAX_POWERUPS}]`);
         }
-    }, POWERUP_LIFETIME);
+    }, POWERUP_LIFETIME + jitter);
+}
+
+function spawnInitialPowerups(count = 5) {
+    console.log(`[POWERUP] Spawning ${count} initial powerups to pre-warm client...`);
+    for (let i = 0; i < count; i++) {
+        spawnPowerup();
+    }
 }
 
 function checkPowerupCollisions() {
     for (const [pId, powerup] of powerups) {
-        for (const [playerId, player] of players) {
-            if (player.type !== 'driver' || !player.body || !powerup.body) continue;
+        // Collect all potential collectors (Players and CPUs)
+        const candidates = [...players.entries(), ...cpuPlayers.entries()];
 
-            const dist = player.body.position.distanceTo(powerup.body.position);
+        for (const [id, entity] of candidates) {
+            if (!entity.body || !powerup.body || entity.hp <= 0) continue;
+            // Humans need 'driver' type, CPUs are always drivers
+            if (!entity.isCPU && entity.type !== 'driver') continue;
+
+            const dist = entity.body.position.distanceTo(powerup.body.position);
             if (dist < 2.5) {
+                const isCPU = entity.isCPU;
+
                 // Apply effect
                 if (powerup.type === 'Repair') {
-                    player.hp = Math.min(100, player.hp + 50);
+                    entity.hp = Math.min(100, entity.hp + 50);
                 } else if (powerup.type === 'Boost') {
-                    player.boost = 100; // Refill boost
+                    entity.boost = 100; // Refill boost
                     // Impulse
-                    const dir = player.body.velocity.clone();
+                    const dir = entity.body.velocity.clone();
                     dir.normalize();
                     dir.scale(50, dir);
-                    player.body.velocity.vadd(dir, player.body.velocity);
+                    entity.body.velocity.vadd(dir, entity.body.velocity);
                 } else if (powerup.type === 'Shield') {
-                    applyPowerupState(player, 'Shield', 5000);
+                    applyPowerupState(entity, 'Shield', 5000);
                 } else if (powerup.type === 'Ghost') {
-                    applyPowerupState(player, 'Ghost', 5000);
+                    applyPowerupState(entity, 'Ghost', 5000);
                 } else if (powerup.type === 'Juggernaut') {
-                    applyPowerupState(player, 'Juggernaut', 10000);
+                    applyPowerupState(entity, 'Juggernaut', 10000);
                 } else if (powerup.type === 'Weapon') {
-                    player.ammo = (player.ammo || 0) + 5;
-                    player.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
-                    console.log(`[POWERUP] ${player.name} picked up Weapon (${player.weaponType}, ${player.ammo} ammo)`);
-                    io.to(playerId).emit('powerup', { type: 'Weapon', ammo: player.ammo, weaponType: player.weaponType });
-                } else if (powerup.type === '67Meme') {
-                    player.hp = Math.min(100, player.hp + 67);
-                    console.log(`[POWERUP] ${player.name} picked up 67Meme - 6 7`);
-                    io.to(playerId).emit('powerup', { type: '67Meme' });
+                    entity.ammo = (entity.ammo || 0) + 5;
+                    entity.weaponType = Math.random() > 0.5 ? 'missile' : 'laser';
+                    console.log(`[POWERUP] ${entity.name} picked up Weapon (${entity.weaponType}, ${entity.ammo} ammo)`);
+                    if (!isCPU) io.to(id).emit('powerup', { type: 'Weapon', ammo: entity.ammo, weaponType: entity.weaponType });
                 } else {
-                    console.log(`[POWERUP] ${player.name} picked up ${powerup.type}`);
-                    io.to(playerId).emit('powerup', { type: powerup.type });
+                    // All other powerups go to Held Item slot
+                    entity.heldItem = powerup.type;
+                    console.log(`[POWERUP] ${entity.name} picked up and HELD ${powerup.type}`);
+                    if (!isCPU) io.to(id).emit('powerup', { type: powerup.type, isHeld: true });
                 }
 
-                // Remove powerup
-                world.removeBody(powerup.body);
+                // Remove powerup (return to void)
+                powerup.body.position.set(0, -500, 0);
+                powerup.body.collisionResponse = false;
+
                 if (powerupPool.length < MAX_POOL_SIZE) {
                     powerupPool.push(powerup.body); // Return to pool
                 }
@@ -1598,7 +1726,9 @@ function spawnTrap(x, z, ownerId) {
 
     const body = trapPool.pop();
     body.position.set(x, 0.5, z);
-    world.addBody(body);
+    body.collisionResponse = true; // Enable collisions
+    // world.addBody(body); // Already in world
+
     traps.set(id, { body, ownerId, position: { x, y: 0.5, z } });
 
     console.log(`[TRAP] Drone ${ownerId} placed trap at (${x.toFixed(1)}, ${z.toFixed(1)}) [${traps.size}/${MAX_TRAPS}]`);
@@ -1607,7 +1737,10 @@ function spawnTrap(x, z, ownerId) {
     setTimeout(() => {
         if (traps.has(id)) {
             const t = traps.get(id);
-            world.removeBody(t.body);
+            // "Remove" to void
+            t.body.position.set(0, -500, 0);
+            t.body.collisionResponse = false;
+
             trapPool.push(t.body); // Return to pool
             traps.delete(id);
         }
@@ -2268,6 +2401,10 @@ io.on('connection', (socket) => {
                 isJuggernaut: false,
                 lapsCompleted: 0,
                 waypointIndex: 0,
+                ammo: 0,
+                weaponType: 'none',
+                heldItem: null,
+                activePowerup: null,
                 input: { steering: 0, throttle: 0, boost: false } // Initialize input for game loop
             };
             players.set(socket.id, newPlayer);
@@ -2303,7 +2440,9 @@ io.on('connection', (socket) => {
             socket.emit('joined', {
                 id: socket.id,
                 color: newPlayer.color,
-                hp: newPlayer.hp
+                hp: newPlayer.hp,
+                ammo: newPlayer.ammo,
+                weaponType: newPlayer.weaponType
             });
 
             // AUTO-START LOGIC
@@ -2387,6 +2526,39 @@ io.on('connection', (socket) => {
             }
         });
 
+        // USE HELD ITEM
+        socket.on('useItem', () => {
+            const player = players.get(socket.id);
+            if (!player || player.type !== 'driver' || !player.heldItem) return;
+
+            const item = player.heldItem;
+            player.heldItem = null;
+
+            console.log(`[ITEM] ${player.name} used ${item}`);
+
+            if (item === 'Repair') {
+                player.hp = Math.min(100, player.hp + 50);
+            } else if (item === '67Meme') {
+                player.hp = Math.min(100, player.hp + 67);
+            } else if (item === 'Boost') {
+                player.boost = 100;
+                // Refetch current velocity in case it changed since loop start
+                const dir = player.body.velocity.clone();
+                dir.normalize();
+                if (dir.length() < 0.1) {
+                    // If stationary, boost forward
+                    const forward = new CANNON.Vec3(0, 0, -1);
+                    player.body.quaternion.vmult(forward, forward);
+                    forward.scale(50, dir);
+                } else {
+                    dir.scale(50, dir);
+                }
+                player.body.velocity.vadd(dir, player.body.velocity);
+            } else if (item === 'Shield' || item === 'Ghost' || item === 'Juggernaut') {
+                applyPowerupState(player, item, item === 'Juggernaut' ? 10000 : 5000);
+            }
+        });
+
         // FIRE WEAPON
         socket.on('fire', () => {
             const player = players.get(socket.id);
@@ -2467,6 +2639,10 @@ function getOrCreatePlayerState(id) {
             color: '#ffffff',
             name: '',
             boost: 100,
+            ammo: 0,
+            weaponType: 'none',
+            heldItem: null,
+            activePowerup: null,
             isShielded: false,
             isGhost: false,
             isJuggernaut: false,
@@ -2508,38 +2684,13 @@ function gameLoop() {
             // Update human player physics using stored input
             for (const [id, player] of players) {
                 if (player.type === 'driver' && player.body) {
-                    // Use neutral input if no input yet or in countdown (if we want to prevent early start)
-                    // But typically we want physics to run even if idle.
                     const input = player.input || { steering: 0, throttle: 0, boost: false };
                     updatePlayerPhysics(player, input);
                 }
             }
         }
 
-        // Safety: Clamp velocities and enforce boundaries
-        for (const [id, player] of players) {
-            if (player.type === 'driver' && player.body) {
-                const vel = player.body.velocity;
-                const speed = vel.length();
-                if (speed > MAX_SPEED) {
-                    vel.scale(MAX_SPEED / speed, vel);
-                }
-
-                // Enforce track boundaries
-                if (enforceBoundaries(player.body)) {
-                    player.speed = 0;
-                    if (player.body && player.body.quaternion) {
-                        const fwd = new CANNON.Vec3(0, 0, -1);
-                        player.body.quaternion.vmult(fwd, fwd);
-                        player.yaw = Math.atan2(fwd.x, -fwd.z);
-                    } else {
-                        player.yaw = 0;
-                    }
-                    player.body.angularVelocity.set(0, 0, 0);
-                    io.to(id).emit('respawned', { reason: 'out_of_bounds' });
-                }
-            }
-        }
+        // REDUNDANT CLAMPING/BOUNDARIES REMOVED - NOW HANDLED IN updatePlayerPhysics
 
         // Check powerup collisions
         checkPowerupCollisions();
@@ -2584,6 +2735,18 @@ function gameLoop() {
             state.color = player.color;
             state.name = player.name;
             state.boost = Math.floor(player.boost);
+            state.ammo = player.ammo || 0;
+            state.weaponType = player.weaponType || 'none';
+            state.heldItem = player.heldItem || null;
+
+            if (player.activePowerup) {
+                const elapsed = Date.now() - player.activePowerup.startTime;
+                const remaining = Math.max(0, player.activePowerup.duration - elapsed);
+                state.activePowerup = { type: player.activePowerup.type, r: Math.floor(remaining) };
+            } else {
+                state.activePowerup = null;
+            }
+
             state.isShielded = player.isShielded || false;
             state.isGhost = player.isGhost || false;
             state.isJuggernaut = player.isJuggernaut || false;
@@ -2691,6 +2854,10 @@ function gameLoop() {
                     color: state.color,
                     name: state.name,
                     boost: state.boost,
+                    ammo: state.ammo,
+                    weaponType: state.weaponType,
+                    heldItem: state.heldItem,
+                    activePowerup: state.activePowerup,
                     isShielded: state.isShielded,
                     isGhost: state.isGhost,
                     isJuggernaut: state.isJuggernaut,
@@ -2698,13 +2865,17 @@ function gameLoop() {
                     waypointIndex: state.waypointIndex,
                     raceProgress: state.raceProgress,
                     isCPU: state.isCPU,
-                    q: [state.quaternion.x, state.quaternion.y, state.quaternion.z, state.quaternion.w]
+                    q: state.quaternion ? [state.quaternion.x, state.quaternion.y, state.quaternion.z, state.quaternion.w] : null
                 };
 
                 // Cache for delta comparison
                 previousPlayerState.set(id, {
                     hp: state.hp,
                     boost: state.boost,
+                    ammo: state.ammo,
+                    weaponType: state.weaponType,
+                    heldItem: state.heldItem,
+                    activePowerup: state.activePowerup ? state.activePowerup.type : null,
                     type: state.type,
                     isShielded: state.isShielded,
                     isGhost: state.isGhost,
@@ -2728,12 +2899,21 @@ function gameLoop() {
                 const delta = {
                     p: state.position ? [state.position.x, state.position.y, state.position.z] : null,
                     v: state.velocity ? [state.velocity.x, state.velocity.y, state.velocity.z] : null,
-                    q: [state.quaternion.x, state.quaternion.y, state.quaternion.z, state.quaternion.w]
+                    q: state.quaternion ? [state.quaternion.x, state.quaternion.y, state.quaternion.z, state.quaternion.w] : null
                 };
 
                 // Only include properties that changed
                 if (!prev || prev.hp !== state.hp) delta.hp = state.hp;
                 if (!prev || prev.boost !== state.boost) delta.boost = state.boost;
+                if (!prev || prev.ammo !== state.ammo) delta.ammo = state.ammo;
+                if (!prev || prev.weaponType !== state.weaponType) delta.weaponType = state.weaponType;
+                if (!prev || prev.heldItem !== state.heldItem) delta.heldItem = state.heldItem;
+
+                // For activePowerup, always send if it exists (for countdown sync) OR if it just ended
+                if (state.activePowerup || (prev && prev.activePowerup)) {
+                    delta.activePowerup = state.activePowerup;
+                }
+
                 if (!prev || prev.type !== state.type) delta.type = state.type;
                 if (!prev || prev.isShielded !== state.isShielded) delta.isShielded = state.isShielded;
                 if (!prev || prev.isGhost !== state.isGhost) delta.isGhost = state.isGhost;
@@ -2760,6 +2940,10 @@ function gameLoop() {
                 if (prev) {
                     prev.hp = state.hp;
                     prev.boost = state.boost;
+                    prev.ammo = state.ammo;
+                    prev.weaponType = state.weaponType;
+                    prev.heldItem = state.heldItem;
+                    prev.activePowerup = state.activePowerup ? state.activePowerup.type : null;
                     prev.type = state.type;
                     prev.isShielded = state.isShielded;
                     prev.isGhost = state.isGhost;
@@ -2770,6 +2954,10 @@ function gameLoop() {
                     previousPlayerState.set(id, {
                         hp: Math.floor(state.hp),
                         boost: Math.floor(state.boost),
+                        ammo: state.ammo,
+                        weaponType: state.weaponType,
+                        heldItem: state.heldItem,
+                        activePowerup: state.activePowerup ? state.activePowerup.type : null,
                         type: state.type,
                         isShielded: state.isShielded,
                         isGhost: state.isGhost,

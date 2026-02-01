@@ -60,7 +60,7 @@ function getTerrainHeight(heightMap, x, z) {
     return h0 * (1 - fz) + h1 * fz;
 }
 
-function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
+const SynthwaveGrid = React.memo(({ floorSize, graphicsSettings, theme }) => {
     const width = floorSize?.width || 250;
     const depth = floorSize?.depth || 250;
     const primaryColor = theme?.primaryColor || '#ff00ff';
@@ -80,12 +80,12 @@ function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
             </mesh>
         </group>
     );
-}
+});
 
 // =============================================================================
 // TERRAIN MESH - Renders hills from heightmap data (off-track terrain)
 // =============================================================================
-function TerrainMesh({ heightMap, theme, graphicsSettings }) {
+const TerrainMesh = React.memo(({ heightMap, theme, graphicsSettings }) => {
     const meshRef = useRef();
 
     // Generate terrain geometry with vertex colors
@@ -186,12 +186,12 @@ function TerrainMesh({ heightMap, theme, graphicsSettings }) {
             </mesh>
         </group>
     );
-}
+});
 
 // =============================================================================
 // TRACK SURFACE OVERLAY - Renders solid floor inside track boundaries
 // =============================================================================
-function TrackSurface({ trackData, theme }) {
+const TrackSurface = React.memo(({ trackData, theme }) => {
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
 
@@ -272,11 +272,9 @@ function TrackSurface({ trackData, theme }) {
                     roughness={0.6}
                 />
             </mesh>
-
-
         </group>
     );
-}
+});
 
 // =============================================================================
 // MASK GEOMETRY SWITCHER - moved outside for performance
@@ -403,7 +401,7 @@ const GeometricModel = React.memo(({ maskType, color }) => {
 // =============================================================================
 // CAR COMPONENT WITH TRAIL
 // =============================================================================
-function Car({ id, worldStateRef, color, maskType, isLocating }) {
+const Car = React.memo(({ id, worldStateRef, color, maskType, isLocating }) => {
     const meshRef = useRef();
     const targetPos = useRef(new THREE.Vector3(0, 0, 0));
     const beaconRef = useRef();
@@ -523,7 +521,7 @@ function Car({ id, worldStateRef, color, maskType, isLocating }) {
             </group>
         </Trail>
     );
-}
+});
 
 
 
@@ -536,7 +534,7 @@ function Car({ id, worldStateRef, color, maskType, isLocating }) {
 // =============================================================================
 // POWERUP VISUAL
 // =============================================================================
-function Powerup({ position, type }) {
+const Powerup = React.memo(({ position, type }) => {
     const meshRef = useRef();
     const glowRef = useRef();
     const beaconRef = useRef();
@@ -638,12 +636,12 @@ function Powerup({ position, type }) {
             <pointLight color={color} intensity={1.5} distance={8} />
         </group>
     );
-}
+});
 
 // =============================================================================
 // TRAP VISUAL
 // =============================================================================
-function Trap({ position }) {
+const Trap = React.memo(({ position }) => {
     const meshRef = useRef();
 
     useFrame((state) => {
@@ -672,26 +670,28 @@ function Trap({ position }) {
             )}
         </mesh>
     );
-}
+});
 
 // =============================================================================
 // PROJECTILE VISUAL
 // =============================================================================
-function Projectile({ id, worldStateRef, type }) {
+const Projectile = React.memo(({ id, worldStateRef, type }) => {
     const meshRef = useRef();
-    const startTime = useRef(Date.now());
-    const [visible, setVisible] = useState(true);
+    const visible = useRef(true); // Using ref instead of state to avoid re-renders
 
     // Projectile colors based on type
     const color = type === 'missile' ? '#ff6600' : '#00aaff';
 
     useFrame((state, delta) => {
-        if (!meshRef.current || !visible) return;
+        if (!meshRef.current || !visible.current) return;
 
         // Position update from ref (60Hz)
         const proj = worldStateRef.current.projectiles?.[id];
         if (proj && proj.position) {
             meshRef.current.position.set(proj.position.x, proj.position.y, proj.position.z);
+        } else {
+            // Projectile no longer in world state
+            visible.current = false;
         }
 
         // Animate glow
@@ -702,10 +702,10 @@ function Projectile({ id, worldStateRef, type }) {
         meshRef.current.rotation.z += delta * 5;
     });
 
-    if (!visible) return null;
+    if (!visible.current) return null;
 
     return (
-        <group position={position}>
+        <group>
             {/* Main projectile body */}
             <mesh ref={meshRef}>
                 {type === 'missile' ? (
@@ -759,7 +759,7 @@ function Projectile({ id, worldStateRef, type }) {
             <pointLight color={color} intensity={2} distance={5} />
         </group>
     );
-}
+});
 
 // =============================================================================
 // DEMO MODE INDICATOR
@@ -1457,6 +1457,21 @@ function CameraController({ players, gameState }) {
 
         camera.position.lerp(targetPos.current, 0.05);
 
+        // Dynamic FOV based on leader speed
+        if (activePlayers.length > 0) {
+            const sortedByProgress = activePlayers.sort((a, b) => (b.raceProgress || 0) - (a.raceProgress || 0));
+            const leaderPlayer = sortedByProgress[0];
+            if (leaderPlayer && leaderPlayer.velocity) {
+                const speed = Math.sqrt(leaderPlayer.velocity.x ** 2 + leaderPlayer.velocity.z ** 2);
+                const baseFov = 75;
+                const maxFov = 100;
+                const topSpeedScalar = 100; // Match server baseMaxSpeed
+                const targetFov = baseFov + (Math.min(1, speed / topSpeedScalar) * (maxFov - baseFov));
+                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.05);
+                camera.updateProjectionMatrix();
+            }
+        }
+
         // Smooth lookAt
         const currentLook = new THREE.Vector3();
         camera.getWorldDirection(currentLook);
@@ -1511,6 +1526,78 @@ function DebugBoundaries({ active }) {
         </group>
     );
 }
+
+// =============================================================================
+// MEMOIZED ITEM LAYERS - Prevents full list re-renders
+// =============================================================================
+
+const PowerupLayer = React.memo(({ powerups }) => {
+    return (
+        <group>
+            {Object.entries(powerups || {}).map(([id, p]) => (
+                <Powerup key={id} position={[p.position.x, p.position.y, p.position.z]} type={p.type} />
+            ))}
+        </group>
+    );
+});
+
+const TrapLayer = React.memo(({ traps }) => {
+    return (
+        <group>
+            {Object.entries(traps || {}).map(([id, t]) => (
+                <Trap key={id} position={[t.position.x, t.position.y, t.position.z]} />
+            ))}
+        </group>
+    );
+});
+
+const ProjectileLayer = React.memo(({ projectiles, worldStateRef }) => {
+    return (
+        <group>
+            {Object.entries(projectiles || {}).map(([id, p]) => (
+                <Projectile key={id} id={id} worldStateRef={worldStateRef} type={p.type} />
+            ))}
+        </group>
+    );
+});
+
+// =============================================================================
+// PRE-WARM LAYER - Primes GPU with all geometries/shaders at startup
+// =============================================================================
+const PreWarmLayer = React.memo(() => {
+    const [warmed, setWarmed] = useState(false);
+    const warmPos = [0, -100, 0]; // Render far below the world
+
+    useEffect(() => {
+        // Stay active for 2 seconds to ensure everything hits the GPU
+        const timer = setTimeout(() => setWarmed(true), 2000);
+        return () => clearTimeout(timer);
+    }, []);
+
+    if (warmed) return null;
+
+    // Dummy ref for Projectile component
+    const dummyRef = {
+        current: {
+            projectiles: {
+                warm_proj: { position: { x: 0, y: -100, z: 0 } },
+                warm_proj_m: { position: { x: 0, y: -100, z: 0 } }
+            }
+        }
+    };
+
+    return (
+        <group position={warmPos}>
+            {/* Render one of every major type */}
+            <Powerup position={[0, 0, 0]} type="Repair" />
+            <Powerup position={[2, 0, 0]} type="Boost" />
+            <Powerup position={[4, 0, 0]} type="Weapon" />
+            <Trap position={[-2, 0, 0]} />
+            <Projectile id="warm_proj" worldStateRef={dummyRef} type="laser" />
+            <Projectile id="warm_proj_m" worldStateRef={dummyRef} type="missile" />
+        </group>
+    );
+});
 
 // =============================================================================
 // MAIN SCENE
@@ -1747,31 +1834,16 @@ function Scene({ worldState, worldStateRef, trackData, theme, setEngineRpm, game
             })}
 
             {/* Powerups */}
-            {Object.entries(worldState.powerups || {}).map(([id, powerup]) => (
-                <Powerup
-                    key={id}
-                    position={[powerup.position.x, powerup.position.y, powerup.position.z]}
-                    type={powerup.type}
-                />
-            ))}
+            <PowerupLayer powerups={worldState.powerups} />
 
             {/* Traps */}
-            {Object.entries(worldState.traps || {}).map(([id, trap]) => (
-                <Trap
-                    key={id}
-                    position={[trap.position.x, trap.position.y, trap.position.z]}
-                />
-            ))}
+            <TrapLayer traps={worldState.traps} />
 
             {/* Projectiles */}
-            {Object.entries(worldState.projectiles || {}).map(([id, proj]) => (
-                <Projectile
-                    key={id}
-                    id={id}
-                    worldStateRef={worldStateRef}
-                    type={proj.type}
-                />
-            ))}
+            <ProjectileLayer projectiles={worldState.projectiles} worldStateRef={worldStateRef} />
+
+            {/* Pre-warm shaders/geometries */}
+            <PreWarmLayer />
 
             {/* Explosions */}
             {explosions.map(exp => (
@@ -2485,17 +2557,7 @@ export default function App() {
             setCpuCount(count);
         });
 
-        // Projectile fired events
-        socket.on('projectileFired', (data) => {
-            setProjectiles(prev => [...prev, {
-                id: Date.now(),
-                position: data.position,
-                direction: data.direction,
-                type: data.type,
-                ownerId: data.ownerId
-            }]);
-        });
-
+        // Powerup memes
         socket.on('powerup', (data) => {
             if (data.type === '67Meme') {
                 showToast('6 7', 'success');
@@ -2529,9 +2591,6 @@ export default function App() {
             socket.off('trackStyle');
             socket.off('leaderboard');
             socket.off('demoMode');
-            socket.off('projectileFired');
-            socket.off('connect');
-            socket.off('disconnect');
             socket.off('worldState');
             socket.off('gameState');
             socket.off('damage');

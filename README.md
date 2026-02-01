@@ -1,5 +1,10 @@
 # Entropy Orchestration 🏎️
 
+> [!WARNING]
+> **This is an entirely "vibe coded" project** developed using **Antigravity** and **GitHub Copilot**. 
+> It was created as an experiment to explore the strengths and weaknesses of various large language models (LLMs) during the **2026 Global Game Jam**. 
+> Expect the unexpected!
+
 A **48-hour Game Jam** demolition derby racing game with a synthwave aesthetic.
 
 ![Splash](./renderer/public/splash.png)
@@ -92,6 +97,5 @@ The "mask" game jam theme is interpreted as digital identity:
 - 5 visual mask styles for car customization
 - Future: Mask powerup to steal another player's appearance
 
-## 📜 License
-
-MIT - Made with 💜 for Game Jam 2026
+---
+Made with 💜 for Global Game Jam 2026
