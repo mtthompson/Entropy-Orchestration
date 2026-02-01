@@ -42,7 +42,7 @@ initializeWorkerPools();
 const PORT = process.env.PORT || 3000;
 const TICK_RATE = 60;
 const DAMAGE_THRESHOLD = 15;
-const MAX_SPEED = 80; // Hard cap on velocity to prevent physics explosions
+const MAX_SPEED = 120; // Hard cap on velocity to prevent physics explosions
 const POWERUP_SPAWN_INTERVAL = 7000; // 5-10s average
 const POWERUP_TYPES = ['Repair', 'Boost'];
 const MAX_POWERUPS = 10; // Prevent accumulation during idle
@@ -346,8 +346,8 @@ function spawnCPUOpponents(count) {
             mass: 50,
             shape: new CANNON.Sphere(1),
             position: new CANNON.Vec3(spawn.x + xOffset, spawnY, spawn.z + zOffset),
-            linearDamping: 0.3, // Reduced damping for more momentum
-            angularDamping: 0.3,
+            linearDamping: 0.15, // Low damping for momentum and speed
+            angularDamping: 0.5, // Moderate angular damping for stability
             allowSleep: false,
             material: carMaterial
         });
@@ -451,6 +451,13 @@ function applyCpuWorkerResults(results) {
         forward.scale(result.throttle, forward);
         cpu.body.applyForce(forward, cpu.body.position);
         
+        // CRITICAL: Clamp CPU velocity to prevent passing through walls
+        const cpuSpeed = cpu.body.velocity.length();
+        const CPU_MAX_SPEED = 65; // Same as player max speed
+        if (cpuSpeed > CPU_MAX_SPEED) {
+            cpu.body.velocity.scale(CPU_MAX_SPEED / cpuSpeed, cpu.body.velocity);
+        }
+        
         // Enforce boundaries
         enforceBoundaries(cpu.body);
     }
@@ -515,12 +522,12 @@ function updateCPUPhysicsFallback() {
             let angleDiff = normalizeAngle(targetAngle - currentAngle);
 
             // Apply steering proportional to angle difference
-            const steerStrength = 3.0;
+            const steerStrength = 4.0; // Increased for better cornering
             cpu.body.angularVelocity.y = angleDiff * steerStrength;
 
-            // Apply throttle (reduce when turning sharply)
+            // Apply throttle (reduce when turning sharply) - increased base values
             const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-            let baseThrottle = isRacing ? 350 : 280; // Reduced from 400/300 for balance
+            let baseThrottle = isRacing ? 550 : 450; // Increased from 350/280 for faster gameplay
             const throttleStrength = baseThrottle + baseThrottle * turnFactor;
 
             // Combat AI: detect nearby targets for ramming (less aggressive)
@@ -574,6 +581,13 @@ function updateCPUPhysicsFallback() {
             forward.scale(throttleStrength * combatBoost, forward); // Apply combat boost
 
             cpu.body.applyForce(forward, cpu.body.position);
+        }
+
+        // CRITICAL: Clamp CPU velocity to prevent passing through walls
+        const cpuSpeed = cpu.body.velocity.length();
+        const CPU_MAX_SPEED = 65; // Same as player max speed
+        if (cpuSpeed > CPU_MAX_SPEED) {
+            cpu.body.velocity.scale(CPU_MAX_SPEED / cpuSpeed, cpu.body.velocity);
         }
 
         // Enforce boundaries for CPU too
@@ -761,7 +775,7 @@ function updatePlayerPhysics(player, input) {
         if (Math.random() < 0.003) { // ~18% chance per second at 60fps
             const burst = new CANNON.Vec3(0, 0, -1);
             player.body.quaternion.vmult(burst, burst);
-            burst.scale(300, burst);
+            burst.scale(450, burst); // Increased burst power
             player.body.applyImpulse(burst, player.body.position);
         }
     }
@@ -772,17 +786,18 @@ function updatePlayerPhysics(player, input) {
     // Get current speed
     const speed = player.body.velocity.length();
 
-    // 1. STEERING - Only allow turning when moving
-    // Steering sensitivity decreases at high speed (prevents spinouts)
-    const minSpeedToTurn = 2;
-    const turnSpeed = 6.0;
-    const speedFactor = Math.min(1, speed / 15); // Full turn at speed 15+
-    const highSpeedDampen = Math.max(0.3, 1 - speed / 50); // Reduce turn at very high speed
+    // 1. STEERING - Responsive arcade-style turning
+    // Quick turn response at all speeds, slightly reduced at very high speed
+    const minSpeedToTurn = 1.5; // Lower threshold - can turn sooner
+    const baseTurnSpeed = 5.5; // Base turn rate
+    const speedFactor = Math.min(1, speed / 8); // Full turn responsiveness at speed 8+
+    const highSpeedDampen = Math.max(0.4, 1 - speed / 80); // Gentler reduction at high speed
 
     if (speed > minSpeedToTurn) {
-        player.body.angularVelocity.y = -steering * turnSpeed * speedFactor * highSpeedDampen;
+        player.body.angularVelocity.y = -steering * baseTurnSpeed * speedFactor * highSpeedDampen;
     } else {
-        player.body.angularVelocity.y *= 0.9; // Dampen rotation when stationary
+        // Allow some turning even when nearly stopped (helps with maneuvering)
+        player.body.angularVelocity.y = -steering * baseTurnSpeed * 0.3;
     }
 
     // 2. Calculate Forward Direction based on current rotation
@@ -790,38 +805,38 @@ function updatePlayerPhysics(player, input) {
     const forward = new CANNON.Vec3(0, 0, -1); // NEGATIVE Z is forward
     quaternion.vmult(forward, forward);
 
-    // 3. Apply Throttle Force (Aligned with heading)
-    const driveForce = 800;
+    // 3. Apply Throttle Force (Significantly increased for faster acceleration)
+    const driveForce = 1400; // Increased from 800 - much punchier acceleration
     const force = forward.clone();
     force.scale(throttle * driveForce, force);
 
-    // Boost multiplier
+    // Boost multiplier - more impactful
     if (boost && player.boost > 0) {
-        force.scale(1.8, force);
-        player.boost = Math.max(0, player.boost - 1.5);
+        force.scale(2.2, force); // Increased from 1.8 - boost feels powerful
+        player.boost = Math.max(0, player.boost - 1.2); // Slightly longer boost duration
     } else {
-        player.boost = Math.min(100, player.boost + 0.3 * boostRegenMod);
+        player.boost = Math.min(100, player.boost + 0.4 * boostRegenMod); // Faster regen
     }
 
     player.body.applyForce(force, player.body.position);
 
-    // 4. Lateral Friction (Anti-drift grip)
+    // 4. Lateral Friction (Balanced drift/grip)
     const velocity = player.body.velocity;
     const right = new CANNON.Vec3(1, 0, 0);
     quaternion.vmult(right, right);
 
     const lateralVelocity = velocity.dot(right);
 
-    // Apply STRONG opposing force to cancel sideways slide
-    // Higher grip = more like a car, lower = more like ice
-    const grip = 0.92; // Increased grip
+    // Dynamic grip: more grip at low speed, allows controlled drift at high speed
+    const speedRatio = Math.min(speed / 50, 1);
+    const grip = 0.95 - speedRatio * 0.15; // 0.95 at low speed, 0.80 at high speed
     const correctionForce = right.clone();
-    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 8, correctionForce);
+    correctionForce.scale(-lateralVelocity * grip * player.body.mass * 10, correctionForce);
 
     player.body.applyForce(correctionForce, player.body.position);
 
-    // 5. Speed cap to prevent runaway (modified by mask)
-    const maxSpeed = 45 * maxSpeedMod;
+    // 5. Speed cap increased for faster gameplay (modified by mask)
+    const maxSpeed = 65 * maxSpeedMod; // Increased from 45
     if (speed > maxSpeed) {
         player.body.velocity.scale(maxSpeed / speed, player.body.velocity);
     }
@@ -921,8 +936,9 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damage1 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
-                    let damage2 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
+                    // Cap base damage to prevent instant kills (max 40 base damage per hit)
+                    let damage1 = Math.min(40, Math.floor(impactSpeed * 1.0));
+                    let damage2 = Math.min(40, Math.floor(impactSpeed * 1.0));
                     let knockback1 = 1.0;
                     let knockback2 = 1.0;
 
@@ -1017,8 +1033,9 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damageToPlayer = Math.floor(impactSpeed * 1.2); // Further reduced for balance
-                    let damageToCPU = Math.floor(impactSpeed * 1.2); // Further reduced for balance
+                    // Cap base damage to prevent instant kills (max 40 base damage per hit)
+                    let damageToPlayer = Math.min(40, Math.floor(impactSpeed * 1.0));
+                    let damageToCPU = Math.min(40, Math.floor(impactSpeed * 1.0));
 
                     // ONI MASK: 15% damage resistance
                     if (player.maskType === 'Oni') damageToPlayer *= 0.85;
@@ -1098,8 +1115,9 @@ world.addEventListener('postStep', () => {
                 const impactSpeed = relVel.length();
 
                 if (impactSpeed > DAMAGE_THRESHOLD) {
-                    let damage1 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
-                    let damage2 = Math.floor(impactSpeed * 1.2); // Further reduced for balance
+                    // Cap base damage to prevent instant kills (max 40 base damage per hit)
+                    let damage1 = Math.min(40, Math.floor(impactSpeed * 1.0));
+                    let damage2 = Math.min(40, Math.floor(impactSpeed * 1.0));
 
                     // RAMMING LOGIC
                     const v1to2 = new CANNON.Vec3();
@@ -1365,7 +1383,22 @@ function broadcastLeaderboard() {
 // DEMO MODE SYSTEM
 // =============================================================================
 function startDemoMode() {
-    if (demoModeActive || gameState === 'RACING') return;
+    // Prevent starting if already active or in middle of a game
+    if (demoModeActive) {
+        console.log('[DEMO] Demo already active, skipping');
+        return;
+    }
+    if (gameState === 'RACING' || gameState === 'COUNTDOWN' || gameState === 'WINNER') {
+        console.log(`[DEMO] Cannot start demo - gameState is ${gameState}`);
+        return;
+    }
+    
+    // Check for human players one more time
+    const humanCount = [...players.values()].filter(p => !p.isCPU).length;
+    if (humanCount > 0) {
+        console.log('[DEMO] Human players present, canceling demo start');
+        return;
+    }
 
     console.log('[DEMO] Starting demo mode - CPU battle!');
     demoModeActive = true;
@@ -1427,12 +1460,13 @@ function stopDemoMode() {
 
 function resetDemoTimer() {
     if (demoModeTimer) clearTimeout(demoModeTimer);
+    demoModeTimer = null;
 
-    // Only set timer if no human players
+    // Only set timer if no human players and not already in demo/racing
     const humanCount = [...players.values()].filter(p => !p.isCPU).length;
-    if (humanCount === 0 && !demoModeActive) {
+    if (humanCount === 0 && !demoModeActive && gameState !== 'RACING' && gameState !== 'COUNTDOWN') {
         demoModeTimer = setTimeout(startDemoMode, DEMO_TIMEOUT);
-        console.log('[DEMO] Demo timer set - starting in 60s if no one joins');
+        console.log(`[DEMO] Demo timer set - starting in ${DEMO_TIMEOUT/1000}s if no one joins`);
     }
 }
 
@@ -1589,14 +1623,40 @@ function endRace(winner) {
     broadcastLeaderboard();
     broadcastGameState();
 
+    // Capture if this was a demo mode race
+    const wasDemoMode = demoModeActive;
+
     const interval = setInterval(() => {
         gameTimer--;
         broadcastGameState();
         if (gameTimer <= 0) {
             clearInterval(interval);
-            gameState = 'LOBBY';
             winnerName = null;
-            broadcastGameState();
+            
+            // If this was demo mode, restart demo automatically (loop demo battles)
+            if (wasDemoMode) {
+                const humanCount = [...players.values()].filter(p => !p.isCPU).length;
+                if (humanCount === 0) {
+                    // Reset for new demo race
+                    demoModeActive = false; // Reset flag so startDemoMode works
+                    removeCPUOpponents();
+                    gameState = 'LOBBY';
+                    broadcastGameState();
+                    // Start new demo after short delay
+                    setTimeout(startDemoMode, 3000);
+                    console.log('[DEMO] Demo race ended, restarting in 3 seconds...');
+                } else {
+                    // Human joined during demo, go to lobby
+                    demoModeActive = false;
+                    removeCPUOpponents();
+                    gameState = 'LOBBY';
+                    broadcastGameState();
+                    io.emit('demoMode', { active: false });
+                }
+            } else {
+                gameState = 'LOBBY';
+                broadcastGameState();
+            }
         }
     }, 1000);
 }
@@ -1684,8 +1744,8 @@ function createPlayerBody(player, x, z, rotation = 0) {
         mass: 50,
         shape: new CANNON.Sphere(1),
         position: new CANNON.Vec3(x, spawnY, z),
-        linearDamping: 0.5,
-        angularDamping: 0.5,
+        linearDamping: 0.15, // Low damping for better momentum and speed
+        angularDamping: 0.5, // Moderate angular damping for stability
         allowSleep: false,
         material: carMaterial,
         ccdSpeedThreshold: 1,
@@ -1725,6 +1785,10 @@ io.on('connection', (socket) => {
         floorSize: activeTrack.floorSize,
         path: activeTrack.path,
         type: activeTrack.type,
+        // Floor polygons for rendering distinct track/arena surface
+        floorPolygon: activeTrack.floorPolygon,
+        outerPolygon: activeTrack.outerPolygon,
+        innerPolygon: activeTrack.innerPolygon,
         heightMap: activeHeightMap ? {
             width: activeHeightMap.width,
             depth: activeHeightMap.depth,
@@ -1819,6 +1883,10 @@ io.on('connection', (socket) => {
                     floorSize: activeTrack.floorSize,
                     path: activeTrack.path,
                     type: activeTrack.type,
+                    // Floor polygons for rendering
+                    floorPolygon: activeTrack.floorPolygon,
+                    outerPolygon: activeTrack.outerPolygon,
+                    innerPolygon: activeTrack.innerPolygon,
                     heightMap: activeHeightMap ? {
                         width: activeHeightMap.width,
                         depth: activeHeightMap.depth,

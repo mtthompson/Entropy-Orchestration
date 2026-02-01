@@ -6,8 +6,8 @@ export function PerformanceOverlay({ stats, visible }) {
     return (
         <div style={{
             position: 'fixed',
-            top: '20px',
-            right: '320px',
+            bottom: '20px',
+            left: '20px',
             background: 'rgba(0, 0, 0, 0.85)',
             border: '2px solid #00ff00',
             borderRadius: '8px',
@@ -16,7 +16,7 @@ export function PerformanceOverlay({ stats, visible }) {
             fontSize: '12px',
             color: '#00ff00',
             zIndex: 1500,
-            minWidth: '180px',
+            minWidth: '160px',
             textShadow: '0 0 5px #00ff00'
         }}>
             <div style={{

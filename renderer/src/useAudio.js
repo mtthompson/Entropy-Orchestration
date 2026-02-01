@@ -27,65 +27,65 @@ export function useAudio(connected) {
 
     // 12 Track-specific music styles with comprehensive instrument configurations
     const TRACK_STYLES = {
-        'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.0, 
+        'track_01': { name: 'Classic Synthwave', bpm: 118, key: 'Dm', bassType: 'triangle', leadType: 'triangle', intensity: 1.0, filterMod: 1.0, 
             usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
             useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'basic', percStyle: 'electronic', noiseLevel: 0.3,
             progression: [0], melodyStyle: 'arpeggio', bassStyle: 'steady' },
-        'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.4, filterMod: 0.7, 
-            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: true, useBells: false, useMetallic: true, 
-            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: false, useReverse: false, useWobble: true, useGrowl: true, wobbleRate: 4, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.7,
+        'track_02': { name: 'Aggressive Darksynth', bpm: 140, key: 'Em', bassType: 'triangle', leadType: 'triangle', intensity: 1.2, filterMod: 0.7, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: true, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.4,
             progression: [3], melodyStyle: 'staccato', bassStyle: 'aggressive' },
-        'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.1, filterMod: 1.2, 
+        'track_03': { name: 'Outrun', bpm: 124, key: 'Am', bassType: 'triangle', leadType: 'triangle', intensity: 1.0, filterMod: 1.2, 
             usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: true, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
+            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.3,
             progression: [2, 5], melodyStyle: 'driving', bassStyle: 'syncopated' },
         'track_04': { name: 'Dreamwave', bpm: 100, key: 'F', bassType: 'triangle', leadType: 'sine', intensity: 0.7, filterMod: 1.5, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: false, useFormant: true, 
             useGranular: true, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 1, drumStyle: 'minimal', percStyle: 'minimal', noiseLevel: 0.2,
             progression: [4], melodyStyle: 'ambient', bassStyle: 'slow' },
-        'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.5, filterMod: 0.5, 
-            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
-            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: true, useWobble: true, useGrowl: true, wobbleRate: 8, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.8,
+        'track_05': { name: 'Industrial', bpm: 145, key: 'Bb', bassType: 'triangle', leadType: 'triangle', intensity: 1.2, filterMod: 0.6, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 6, drumStyle: 'driving', percStyle: 'industrial', noiseLevel: 0.5,
             progression: [3], melodyStyle: 'mechanical', bassStyle: 'aggressive' },
-        'track_06': { name: 'Cyberpunk', bpm: 130, key: 'C', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.2, filterMod: 0.8, 
-            usePluck: true, useArp: true, useSubBass: true, useDetuned: false, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
-            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.5,
+        'track_06': { name: 'Cyberpunk', bpm: 130, key: 'C', bassType: 'triangle', leadType: 'triangle', intensity: 1.0, filterMod: 0.9, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: false, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
             progression: [1, 2], melodyStyle: 'glitch', bassStyle: 'funky' },
-        'track_07': { name: 'Horror Synth', bpm: 90, key: 'Gm', bassType: 'sawtooth', leadType: 'triangle', intensity: 0.6, filterMod: 0.4, 
+        'track_07': { name: 'Horror Synth', bpm: 90, key: 'Gm', bassType: 'triangle', leadType: 'sine', intensity: 0.6, filterMod: 0.5, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
-            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: true, 
-            useGranular: true, useReverse: true, useWobble: false, useGrowl: true, wobbleRate: 1, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.7,
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: true, 
+            useGranular: true, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 1, drumStyle: 'minimal', percStyle: 'sparse', noiseLevel: 0.4,
             progression: [3], melodyStyle: 'dissonant', bassStyle: 'slow' },
-        'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.0, filterMod: 1.3, 
-            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: false, useStabs: true, useBells: false, useMetallic: false, 
+        'track_08': { name: '80s Pop', bpm: 120, key: 'C', bassType: 'triangle', leadType: 'triangle', intensity: 1.0, filterMod: 1.3, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: true, usePortamento: false, useGated: false, useTremolo: false, usePercussion: true, useFormant: false, 
             useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'basic', percStyle: 'live', noiseLevel: 0.3,
             progression: [1, 4], melodyStyle: 'pop', bassStyle: 'steady' },
-        'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.8, filterMod: 0.3, 
-            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
+        'track_09': { name: 'Gabber', bpm: 160, key: 'Am', bassType: 'triangle', leadType: 'triangle', intensity: 1.3, filterMod: 0.5, 
+            usePluck: false, useArp: false, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: false, useReverse: false, useWobble: true, useGrowl: true, wobbleRate: 8, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.9,
+            useGranular: false, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 6, drumStyle: 'driving', percStyle: 'minimal', noiseLevel: 0.5,
             progression: [3], melodyStyle: 'minimal', bassStyle: 'relentless' },
-        'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassType: 'triangle', leadType: 'sawtooth', intensity: 1.3, filterMod: 1.4, 
-            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: true, useStabs: true, useBells: false, useMetallic: false, 
+        'track_10': { name: 'Eurobeat', bpm: 155, key: 'Em', bassType: 'triangle', leadType: 'triangle', intensity: 1.1, filterMod: 1.4, 
+            usePluck: true, useArp: true, useSubBass: true, useDetuned: true, useFM: true, useStabs: false, useBells: false, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: false, 
-            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.4,
+            useGranular: false, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'electronic', noiseLevel: 0.3,
             progression: [5, 2], melodyStyle: 'euphoric', bassStyle: 'funky' },
         'track_11': { name: 'Epic Orchestral', bpm: 110, key: 'Dm', bassType: 'triangle', leadType: 'sine', intensity: 0.9, filterMod: 1.6, 
             usePluck: false, useArp: false, useSubBass: true, useDetuned: true, useFM: false, useStabs: false, useBells: true, useMetallic: false, 
             useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: false, useTremolo: true, usePercussion: true, useFormant: true, 
-            useGranular: true, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.3,
+            useGranular: true, useReverse: false, useWobble: false, useGrowl: false, wobbleRate: 2, drumStyle: 'minimal', percStyle: 'live', noiseLevel: 0.2,
             progression: [0, 4], melodyStyle: 'epic', bassStyle: 'slow' },
-        'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassType: 'sawtooth', leadType: 'sawtooth', intensity: 1.4, filterMod: 0.6, 
-            usePluck: false, useArp: true, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: true, 
-            useNoiseSweep: true, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
-            useGranular: true, useReverse: true, useWobble: true, useGrowl: true, wobbleRate: 4, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.6,
+        'track_12': { name: 'Claustrophobic', bpm: 135, key: 'Bb', bassType: 'triangle', leadType: 'triangle', intensity: 1.1, filterMod: 0.7, 
+            usePluck: false, useArp: true, useSubBass: true, useDetuned: false, useFM: false, useStabs: false, useBells: false, useMetallic: false, 
+            useNoiseSweep: false, usePWM: false, usePortamento: false, useGated: true, useTremolo: false, usePercussion: false, useFormant: false, 
+            useGranular: true, useReverse: false, useWobble: true, useGrowl: false, wobbleRate: 4, drumStyle: 'driving', percStyle: 'broken', noiseLevel: 0.4,
             progression: [3], melodyStyle: 'chaotic', bassStyle: 'aggressive' }
     };
 
@@ -169,6 +169,18 @@ export function useAudio(connected) {
                 { bar: 3, step: 2, note: 'E5', duration: 2 },
                 { bar: 3, step: 4, note: 'D5', duration: 4 },
                 { bar: 3, step: 8, note: 'C5', duration: 8 },
+            ],
+            bridge: [
+                // Contrasting section - more space, different feel
+                { bar: 0, step: 0, note: 'F5', duration: 8 },
+                { bar: 0, step: 8, note: 'E5', duration: 8 },
+                { bar: 1, step: 0, note: 'D5', duration: 4 },
+                { bar: 1, step: 4, note: 'E5', duration: 4 },
+                { bar: 1, step: 8, note: 'F5', duration: 8 },
+                { bar: 2, step: 0, note: 'G5', duration: 8 },
+                { bar: 2, step: 8, note: 'F5', duration: 4 },
+                { bar: 2, step: 12, note: 'E5', duration: 4 },
+                { bar: 3, step: 0, note: 'D5', duration: 16 },
             ],
         },
         
@@ -577,8 +589,20 @@ export function useAudio(connected) {
     // Get melody notes for current bar from complete melody
     const getCompleteMelody = (trackId, section, barInPhrase) => {
         const trackMelodies = COMPLETE_MELODIES[trackId] || COMPLETE_MELODIES['track_01'];
-        const isChorus = section === 3 || section === 6; // Chorus or Drop
-        const melodySet = isChorus ? trackMelodies.chorus : trackMelodies.verse;
+        
+        // Section mapping: 0=intro, 1=verse, 2=prechorus, 3=chorus, 4=bridge, 5=breakdown, 6=drop, 7=outro
+        let melodySet;
+        if (section === 3 || section === 6) {
+            // Chorus or Drop - use chorus melody
+            melodySet = trackMelodies.chorus;
+        } else if (section === 4 || section === 5) {
+            // Bridge or Breakdown - use bridge melody if available, else verse
+            melodySet = trackMelodies.bridge || trackMelodies.verse;
+        } else {
+            // Intro, verse, prechorus, outro - use verse melody
+            melodySet = trackMelodies.verse;
+        }
+        
         const bar = barInPhrase % 4;
         
         return melodySet.filter(note => note.bar === bar).map(note => ({
@@ -1571,10 +1595,10 @@ export function useAudio(connected) {
             scheduleReverse(ctx, startTime, measureDuration, intensity * 0.8);
         }
 
-        // Riser for buildups
-        if (barData.riser) {
-            scheduleRiser(ctx, startTime, measureDuration);
-        }
+        // Riser for buildups - DISABLED (was causing siren-like sound)
+        // if (barData.riser) {
+        //     scheduleRiser(ctx, startTime, measureDuration);
+        // }
 
         // Check if song is ending
         const songLength = songLengthRef.current || arrangement.length;
@@ -2049,7 +2073,7 @@ export function useAudio(connected) {
             const gain = ctx.createGain();
             const filter = ctx.createBiquadFilter();
 
-            osc.type = style.leadType === 'square' ? 'square' : 'sawtooth';
+            osc.type = 'triangle'; // Softer than sawtooth/square for arpeggios
             osc.frequency.value = freq * (i < 4 ? 1 : 2); // Second half octave up
 
             filter.type = 'lowpass';
@@ -2372,14 +2396,14 @@ export function useAudio(connected) {
             const gain = ctx.createGain();
             const filter = ctx.createBiquadFilter();
 
-            osc.type = style.leadType || 'square';
+            osc.type = 'triangle'; // Softer than square
             osc.frequency.value = freq;
 
             filter.type = 'lowpass';
-            filter.frequency.value = 2000;
-            filter.Q.value = 2;
+            filter.frequency.value = 1500;
+            filter.Q.value = 1;
 
-            gain.gain.setValueAtTime(0.15 * intensity, time);
+            gain.gain.setValueAtTime(0.1 * intensity, time);
             gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
 
             osc.connect(filter);

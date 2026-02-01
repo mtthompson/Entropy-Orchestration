@@ -122,12 +122,12 @@ function calculateSteering(cpuData, target, isRacing) {
     // Angle difference
     let angleDiff = normalizeAngle(targetAngle - currentAngle);
 
-    // Steering proportional to angle
-    const steering = angleDiff * 3.0;
+    // Steering proportional to angle - increased for better cornering
+    const steering = angleDiff * 4.0;
 
-    // Throttle reduces with sharp turns
+    // Throttle reduces with sharp turns - increased base values for faster gameplay
     const turnFactor = 1 - Math.abs(angleDiff) / Math.PI;
-    const baseThrottle = isRacing ? 350 : 280;
+    const baseThrottle = isRacing ? 550 : 450;
     const throttle = baseThrottle + baseThrottle * turnFactor;
 
     return {

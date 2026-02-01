@@ -10,9 +10,12 @@ export function AdminPanel({
     showToast,
     graphicsSettings,
     onGraphicsChange,
-    performanceStats
+    performanceStats,
+    visible,
+    onToggleVisible
 }) {
     const [showGraphics, setShowGraphics] = React.useState(false);
+    
     // Debug logging
     React.useEffect(() => {
         console.log('[AdminPanel] Props updated:', { tracksCount: tracks?.length, currentTrack: currentTrack?.name, cpuCount, gameState });
@@ -100,9 +103,39 @@ export function AdminPanel({
                     50% { box-shadow: 0 0 40px rgba(255, 0, 255, 0.6); }
                 }
             `}</style>
+            
+            {/* Toggle Button - Always visible */}
+            <button
+                onClick={onToggleVisible}
+                style={{
+                    position: 'fixed',
+                    bottom: '20px',
+                    right: '20px',
+                    width: '44px',
+                    height: '44px',
+                    background: visible ? 'rgba(255, 0, 255, 0.3)' : 'rgba(0, 0, 0, 0.8)',
+                    border: `2px solid ${visible ? '#ff00ff' : '#666'}`,
+                    borderRadius: '8px',
+                    color: visible ? '#ff00ff' : '#888',
+                    fontFamily: 'monospace',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                    zIndex: 1600,
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}
+                title="Toggle Admin Panel (Tab)"
+            >
+                {visible ? '✕' : '⚙'}
+            </button>
+            
+            {/* Main Panel */}
+            {visible && (
             <div style={{
                 position: 'fixed',
-                bottom: '20px',
+                bottom: '80px',
                 right: '20px',
                 width: '280px',
                 background: 'rgba(0, 0, 0, 0.85)',
@@ -498,9 +531,10 @@ export function AdminPanel({
                     lineHeight: '1.4'
                 }}>
                     SPACE: Start | R: Restart<br/>
-                    +/-: CPU | ←→: Browse Tracks
+                    +/-: CPU | Tab: Hide Panel
                 </div>
             </div>
+            )}
         </>
     );
 }

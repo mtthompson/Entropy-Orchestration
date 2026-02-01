@@ -34,7 +34,7 @@ function createMockPlayer(id, options = {}) {
         type: options.type || 'driver',
         hp: options.hp !== undefined ? options.hp : 100,
         boost: options.boost !== undefined ? options.boost : 100,
-        body: options.body || createMockBody(),
+        body: options.body !== undefined ? options.body : createMockBody(),
         isShielded: options.isShielded || false,
         isGhost: options.isGhost || false,
         isJuggernaut: options.isJuggernaut || false,

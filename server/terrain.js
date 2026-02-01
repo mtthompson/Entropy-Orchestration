@@ -140,38 +140,38 @@ function getTerrainHeight(heightMap, x, z) {
  * Create height map configuration for different track types
  */
 const TERRAIN_PRESETS = {
-    // Race tracks - flat track surface with hills outside
+    // Race tracks - flat track surface with prominent hills outside
     race_gentle: {
-        hillScale: 2,
-        hillFrequency: 0.015,
-        resolution: 0.1
+        hillScale: 5,
+        hillFrequency: 0.012,
+        resolution: 0.15
     },
     race_hilly: {
-        hillScale: 4,
-        hillFrequency: 0.02,
-        resolution: 0.1
+        hillScale: 8,
+        hillFrequency: 0.018,
+        resolution: 0.15
     },
-    // Arenas - mostly flat with gentle undulations
+    // Arenas - noticeable undulations
     arena_flat: {
-        hillScale: 1,
+        hillScale: 3,
         hillFrequency: 0.01,
-        resolution: 0.08
+        resolution: 0.12
     },
     arena_bumpy: {
-        hillScale: 2,
-        hillFrequency: 0.025,
-        resolution: 0.1
+        hillScale: 6,
+        hillFrequency: 0.02,
+        resolution: 0.15
     },
     // Special themes
     volcanic: {
-        hillScale: 5,
-        hillFrequency: 0.03,
-        resolution: 0.12
+        hillScale: 10,
+        hillFrequency: 0.025,
+        resolution: 0.18
     },
     nature: {
-        hillScale: 3,
-        hillFrequency: 0.018,
-        resolution: 0.1
+        hillScale: 7,
+        hillFrequency: 0.015,
+        resolution: 0.15
     }
 };
 

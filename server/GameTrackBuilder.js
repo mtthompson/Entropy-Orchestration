@@ -100,7 +100,10 @@ function validateSpawnPoints(spawnPoints, boundaries, minClearance = 15) {
  * @param {Array} points - Array of {x, z} points defining the center path.
  * @param {number} width - Width of the track corridor.
  * @param {boolean} loop - Whether to close the loop (connect last to first).
- * @returns {Array} Array of boundary objects {x1, z1, x2, z2, height}
+ * @returns {object} { boundaries, outerPolygon, innerPolygon } 
+ *                   boundaries: Array of wall objects {x1, z1, x2, z2, height}
+ *                   outerPolygon: Array of {x, z} points for outer edge
+ *                   innerPolygon: Array of {x, z} points for inner edge
  */
 function createTrackFromPath(points, width, loop = true) {
     const boundaries = [];
@@ -184,13 +187,19 @@ function createTrackFromPath(points, width, loop = true) {
         });
     }
 
-    return boundaries;
+    // Return boundaries and floor polygons for rendering
+    return {
+        boundaries,
+        outerPolygon: leftVerts,
+        innerPolygon: rightVerts
+    };
 }
 
 /**
  * Creates a circular arena
  * @param {number} radius 
  * @param {number} segments 
+ * @returns {object} { boundaries, floorPolygon }
  */
 function createArena(radius, segments = 32) {
     const points = [];
@@ -215,7 +224,12 @@ function createArena(radius, segments = 32) {
             height: 4
         });
     }
-    return boundaries;
+    
+    // Return boundaries and the floor polygon (same as boundary points for arena)
+    return {
+        boundaries,
+        floorPolygon: points
+    };
 }
 
 module.exports = { createTrackFromPath, createArena, validateSpawnPoints };

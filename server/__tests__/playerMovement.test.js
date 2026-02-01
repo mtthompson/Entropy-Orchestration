@@ -395,12 +395,12 @@ describe('Speed Limits', () => {
         expect(speed).toBe(MAX_SPEED);
     });
 
-    test('player max speed is 45 (or 49.5 for Skull)', () => {
-        const normalMaxSpeed = 45;
-        const skullMaxSpeed = 45 * 1.1;
+    test('player max speed is 65 (or 71.5 for Skull)', () => {
+        const normalMaxSpeed = 65;
+        const skullMaxSpeed = 65 * 1.1;
         
-        expect(normalMaxSpeed).toBe(45);
-        expect(skullMaxSpeed).toBeCloseTo(49.5);
+        expect(normalMaxSpeed).toBe(65);
+        expect(skullMaxSpeed).toBeCloseTo(71.5);
     });
 
     test('velocity scaling preserves direction', () => {

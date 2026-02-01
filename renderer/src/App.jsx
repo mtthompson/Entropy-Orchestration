@@ -34,134 +34,204 @@ function SynthwaveGrid({ floorSize, graphicsSettings, theme }) {
     
     // Use theme colors or fallback to defaults
     const primaryColor = theme?.primaryColor || '#ff00ff';
-    const secondaryColor = theme?.secondaryColor || '#00ffff';
-    const floorColor = theme?.floorColor || '#0a051a';
-    const meshRef = useRef();
-    const gridRef = useRef();
-
-    // Animated grid scroll effect
-    useFrame((state) => {
-        if (gridRef.current) {
-            gridRef.current.position.z = (state.clock.elapsedTime * 5) % 10 - 5;
-        }
-    });
-
-    const envIntensity = graphicsSettings?.enableHDR ? 1.2 : 0.5;
 
     return (
         <group>
-            {/* Reflective base floor */}
-            <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-                <planeGeometry args={[width * 1.5, depth * 1.5, 64, 64]} />
-                <meshStandardMaterial
-                    color={floorColor}
-                    metalness={1.0}
-                    roughness={0.2}
-                    envMapIntensity={envIntensity}
-                />
+            {/* Simple dark base floor far below - acts as void/abyss */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]} receiveShadow>
+                <planeGeometry args={[width * 3, depth * 3]} />
+                <meshBasicMaterial color="#000000" />
             </mesh>
 
-            {/* Animated grid lines - multiple layers for depth */}
-            <group ref={gridRef}>
-                <gridHelper
-                    args={[Math.max(width, depth) * 1.5, 60, primaryColor, '#' + new THREE.Color(primaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
-                    position={[0, 0.02, 0]}
-                />
-            </group>
-
-            {/* Secondary grid for parallax effect */}
-            <gridHelper
-                args={[Math.max(width, depth), 30, secondaryColor, '#' + new THREE.Color(secondaryColor).offsetHSL(0, 0, -0.2).getHexString()]}
-                position={[0, 0.03, 0]}
-            />
-
-            {/* Fog floor edge glow */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
-                <ringGeometry args={[Math.max(width, depth) * 0.5, Math.max(width, depth) * 0.8, 64]} />
-                <meshBasicMaterial color={primaryColor} transparent opacity={0.1} side={THREE.DoubleSide} />
+            {/* Subtle edge glow at horizon */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -4.9, 0]}>
+                <ringGeometry args={[Math.max(width, depth) * 0.8, Math.max(width, depth) * 1.5, 64]} />
+                <meshBasicMaterial color={primaryColor} transparent opacity={0.05} side={THREE.DoubleSide} />
             </mesh>
         </group>
     );
 }
 
 // =============================================================================
-// TRACK SURFACE OVERLAY - Renders track path with distinct surface
+// TERRAIN MESH - Renders hills from heightmap data (off-track terrain)
+// =============================================================================
+function TerrainMesh({ heightMap, theme, graphicsSettings }) {
+    const meshRef = useRef();
+    
+    // Amplification factor for hills to make them more visible
+    const HILL_AMPLIFY = 3.0;
+    
+    // Generate terrain geometry from heightmap matrix
+    const geometry = useMemo(() => {
+        if (!heightMap || !heightMap.matrix || heightMap.matrix.length === 0) {
+            console.log('[TerrainMesh] No heightmap data');
+            return null;
+        }
+        
+        const { matrix, width, depth, gridWidth, gridDepth } = heightMap;
+        console.log(`[TerrainMesh] Creating terrain mesh: ${gridWidth}x${gridDepth}, size: ${width}x${depth}`);
+        
+        // PlaneGeometry segments = vertices - 1
+        const geo = new THREE.PlaneGeometry(
+            width,
+            depth,
+            gridWidth - 1,
+            gridDepth - 1
+        );
+        
+        // Rotate to XZ plane
+        geo.rotateX(-Math.PI / 2);
+        
+        const positions = geo.attributes.position.array;
+        const vertexCount = positions.length / 3;
+        
+        // Apply amplified heights
+        let maxHeight = 0;
+        for (let vertIdx = 0; vertIdx < vertexCount; vertIdx++) {
+            const ix = vertIdx % gridWidth;
+            const iz = Math.floor(vertIdx / gridWidth);
+            const posIdx = vertIdx * 3;
+            
+            if (matrix[ix] && matrix[ix][iz] !== undefined) {
+                // Amplify height for visibility
+                const h = matrix[ix][iz] * HILL_AMPLIFY;
+                positions[posIdx + 1] = h;
+                if (h > maxHeight) maxHeight = h;
+            }
+        }
+        
+        console.log(`[TerrainMesh] Applied heights (amplified ${HILL_AMPLIFY}x), max height: ${maxHeight.toFixed(2)}`);
+        
+        geo.computeVertexNormals();
+        geo.attributes.position.needsUpdate = true;
+        
+        return geo;
+    }, [heightMap]);
+    
+    if (!geometry) return null;
+    
+    const primaryColor = theme?.primaryColor || '#ff00ff';
+    // Darker, more distinct off-track color (dirt/grass-like but synthwave)
+    const terrainColor = '#1a0a2e'; // Deep purple-black for off-track
+    
+    return (
+        <group>
+            {/* Main terrain surface - darker and more rugged looking */}
+            <mesh
+                ref={meshRef}
+                geometry={geometry}
+                position={[0, 0, 0]}
+                receiveShadow
+            >
+                <meshStandardMaterial
+                    color={terrainColor}
+                    metalness={0.2}
+                    roughness={0.9}
+                    flatShading={true}  // Flat shading makes hills more visible
+                />
+            </mesh>
+            
+            {/* Wireframe overlay - more prominent for terrain readability */}
+            <mesh
+                geometry={geometry}
+                position={[0, 0.02, 0]}
+            >
+                <meshBasicMaterial
+                    color={primaryColor}
+                    wireframe={true}
+                    transparent={true}
+                    opacity={0.25}
+                />
+            </mesh>
+        </group>
+    );
+}
+
+// =============================================================================
+// TRACK SURFACE OVERLAY - Renders solid floor inside track boundaries
 // =============================================================================
 function TrackSurface({ trackData, theme }) {
-    const pathPoints = trackData?.path;
-    if (!pathPoints || pathPoints.length < 3) return null;
-
-    const trackWidth = trackData?.trackWidth || 20;
     const primaryColor = theme?.primaryColor || '#ff00ff';
     const secondaryColor = theme?.secondaryColor || '#00ffff';
-
-    // Create track surface shape from path
-    const shape = useMemo(() => {
-        if (!pathPoints || pathPoints.length < 3) return null;
-
-        const shape = new THREE.Shape();
-        const innerPoints = [];
-        const outerPoints = [];
-
-        for (let i = 0; i < pathPoints.length; i++) {
-            const curr = pathPoints[i];
-            const next = pathPoints[(i + 1) % pathPoints.length];
-            const prev = pathPoints[(i - 1 + pathPoints.length) % pathPoints.length];
-
-            // Calculate perpendicular direction
-            const dx = next.x - prev.x;
-            const dz = next.z - prev.z;
-            const len = Math.sqrt(dx * dx + dz * dz) || 1;
-            const perpX = -dz / len;
-            const perpZ = dx / len;
-
-            const halfWidth = trackWidth / 2;
-            innerPoints.push({ x: curr.x - perpX * halfWidth, z: curr.z - perpZ * halfWidth });
-            outerPoints.push({ x: curr.x + perpX * halfWidth, z: curr.z + perpZ * halfWidth });
+    
+    // Track floor color - bright enough to be clearly distinct from off-track
+    const trackFloorColor = '#3a3a5e'; // Lighter blue-gray for track surface
+    
+    // Create geometry for arena (single polygon) or race track (outer with inner hole)
+    const geometry = useMemo(() => {
+        // Arena: has floorPolygon (single closed polygon)
+        if (trackData?.floorPolygon && trackData.floorPolygon.length >= 3) {
+            const shape = new THREE.Shape();
+            const pts = trackData.floorPolygon;
+            shape.moveTo(pts[0].x, pts[0].z);
+            for (let i = 1; i < pts.length; i++) {
+                shape.lineTo(pts[i].x, pts[i].z);
+            }
+            shape.lineTo(pts[0].x, pts[0].z);
+            return new THREE.ShapeGeometry(shape);
         }
-
-        // Build shape from outer points, then inner points (reversed for hole)
-        shape.moveTo(outerPoints[0].x, outerPoints[0].z);
-        for (let i = 1; i < outerPoints.length; i++) {
-            shape.lineTo(outerPoints[i].x, outerPoints[i].z);
+        
+        // Race track: has outerPolygon and innerPolygon
+        if (trackData?.outerPolygon && trackData?.innerPolygon && 
+            trackData.outerPolygon.length >= 3 && trackData.innerPolygon.length >= 3) {
+            const shape = new THREE.Shape();
+            const outer = trackData.outerPolygon;
+            const inner = trackData.innerPolygon;
+            
+            // Build outer boundary
+            shape.moveTo(outer[0].x, outer[0].z);
+            for (let i = 1; i < outer.length; i++) {
+                shape.lineTo(outer[i].x, outer[i].z);
+            }
+            shape.lineTo(outer[0].x, outer[0].z);
+            
+            // Create hole with inner boundary (reversed winding)
+            const hole = new THREE.Path();
+            hole.moveTo(inner[0].x, inner[0].z);
+            for (let i = inner.length - 1; i >= 0; i--) {
+                hole.lineTo(inner[i].x, inner[i].z);
+            }
+            shape.holes.push(hole);
+            
+            return new THREE.ShapeGeometry(shape);
         }
-        shape.lineTo(outerPoints[0].x, outerPoints[0].z);
+        
+        return null;
+    }, [trackData?.floorPolygon, trackData?.outerPolygon, trackData?.innerPolygon]);
 
-        // Create hole with inner points (reversed)
-        const hole = new THREE.Path();
-        hole.moveTo(innerPoints[0].x, innerPoints[0].z);
-        for (let i = innerPoints.length - 1; i >= 0; i--) {
-            hole.lineTo(innerPoints[i].x, innerPoints[i].z);
-        }
-        shape.holes.push(hole);
-
-        return shape;
-    }, [pathPoints, trackWidth]);
-
-    if (!shape) return null;
+    if (!geometry) return null;
 
     return (
         <group>
-            {/* Track surface with different material */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-                <shapeGeometry args={[shape]} />
+            {/* Main track floor - solid and bright */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.15, 0]}>
+                <primitive object={geometry} attach="geometry" />
                 <meshStandardMaterial
-                    color="#1a1a2e"
-                    metalness={0.6}
-                    roughness={0.4}
-                    transparent
-                    opacity={0.8}
+                    color={trackFloorColor}
+                    metalness={0.4}
+                    roughness={0.6}
                 />
             </mesh>
 
-            {/* Track edge glow - inner */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
-                <shapeGeometry args={[shape]} />
+            {/* Subtle grid pattern on track */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.16, 0]}>
+                <primitive object={geometry.clone()} attach="geometry" />
+                <meshBasicMaterial
+                    color={secondaryColor}
+                    wireframe
+                    transparent
+                    opacity={0.12}
+                />
+            </mesh>
+            
+            {/* Track edge glow */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.17, 0]}>
+                <primitive object={geometry.clone()} attach="geometry" />
                 <meshBasicMaterial
                     color={primaryColor}
                     wireframe
                     transparent
-                    opacity={0.3}
+                    opacity={0.25}
                 />
             </mesh>
         </group>
@@ -697,7 +767,7 @@ function LeaderboardDisplay({ entries, visible }) {
 // =============================================================================
 // ELIMINATION REVEAL BANNER
 // =============================================================================
-// Shows when a player is eliminated, revealing their true identity
+// Shows when a player is eliminated, revealing their true identity with drama!
 function EliminationBanner({ eliminations }) {
     // eliminations is an array of { name, maskType, color, timestamp }
     const visibleEliminations = eliminations.filter(e =>
@@ -721,47 +791,60 @@ function EliminationBanner({ eliminations }) {
             {visibleEliminations.map((elim, i) => {
                 const age = Date.now() - elim.timestamp;
                 const opacity = Math.max(0, 1 - (age / 4000));
-                const scale = 1 + (age < 500 ? (1 - age / 500) * 0.3 : 0);
+                const scale = 1 + (age < 500 ? (1 - age / 500) * 0.2 : 0);
                 const maskIcon = MASK_ICONS[elim.maskType] || '🎭';
 
                 return (
                     <div key={elim.timestamp + i} style={{
-                        background: 'linear-gradient(135deg, rgba(255,0,100,0.9), rgba(100,0,255,0.8))',
-                        padding: '20px 40px',
-                        borderRadius: 12,
+                        background: 'linear-gradient(135deg, rgba(20,0,30,0.95), rgba(50,0,80,0.9))',
+                        padding: '25px 50px',
+                        borderRadius: 16,
                         textAlign: 'center',
                         fontFamily: 'monospace',
-                        boxShadow: `0 0 40px ${elim.color}, 0 0 80px rgba(255,0,255,0.5)`,
+                        boxShadow: `0 0 50px ${elim.color}, 0 0 100px rgba(255,0,255,0.4)`,
                         border: `3px solid ${elim.color}`,
                         opacity: opacity,
                         transform: `scale(${scale})`,
-                        animation: 'eliminationPulse 0.5s ease-out'
+                        animation: 'eliminationSlam 0.3s ease-out'
                     }}>
-                        <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 4 }}>
-                            💀 UNMASKED 💀
+                        {/* Header */}
+                        <div style={{ 
+                            fontSize: 14, 
+                            letterSpacing: 4,
+                            color: '#ff0055',
+                            fontWeight: 600,
+                            marginBottom: 8
+                        }}>
+                            💥 ELIMINATED 💥
                         </div>
-                        <div style={{ fontSize: 32, marginBottom: 4 }}>
+                        
+                        {/* Icon */}
+                        <div style={{ 
+                            fontSize: 48, 
+                            marginBottom: 8,
+                            filter: `drop-shadow(0 0 15px ${elim.color})`
+                        }}>
                             {maskIcon}
                         </div>
+                        
+                        {/* Name */}
                         <div style={{
-                            fontSize: 24,
+                            fontSize: 32,
                             fontWeight: 700,
-                            color: elim.color,
-                            textShadow: `0 0 20px ${elim.color}`
+                            color: '#ffffff',
+                            textShadow: `0 0 20px ${elim.color}`,
+                            letterSpacing: 2
                         }}>
                             {elim.name}
-                        </div>
-                        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-                            WAS ELIMINATED
                         </div>
                     </div>
                 );
             })}
 
             <style>{`
-                @keyframes eliminationPulse {
+                @keyframes eliminationSlam {
                     0% { transform: scale(1.5); opacity: 0; }
-                    50% { transform: scale(1.1); }
+                    60% { transform: scale(0.95); }
                     100% { transform: scale(1); opacity: 1; }
                 }
             `}</style>
@@ -1344,6 +1427,11 @@ function Scene({ worldState, trackData, theme, setEngineRpm, gameState, isDemo, 
 
             <SynthwaveGrid floorSize={trackData?.floorSize} graphicsSettings={graphicsSettings} theme={theme} />
             
+            {/* Terrain Hills - renders heightmap as 3D mesh */}
+            {trackData?.heightMap && (
+                <TerrainMesh heightMap={trackData.heightMap} theme={theme} graphicsSettings={graphicsSettings} />
+            )}
+            
             {/* Track Surface Overlay - distinguishes track from outer area */}
             <TrackSurface trackData={trackData} theme={theme} />
             
@@ -1490,22 +1578,42 @@ function QROverlay() {
             position: 'fixed',
             top: 20,
             right: 20,
-            padding: 16,
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            borderRadius: 12,
-            boxShadow: '0 0 30px rgba(255, 0, 255, 0.5)',
-            zIndex: 1000
+            padding: 20,
+            backgroundColor: 'rgba(255, 255, 255, 0.98)',
+            borderRadius: 16,
+            boxShadow: '0 0 40px rgba(0, 255, 255, 0.6), 0 0 80px rgba(255, 0, 255, 0.4)',
+            zIndex: 1000,
+            border: '3px solid #00ffff',
+            animation: 'qrPulse 2s ease-in-out infinite'
         }}>
-            <QRCode value="https://jam.gimongous.net" size={120} />
             <div style={{
                 textAlign: 'center',
-                marginTop: 8,
+                marginBottom: 10,
                 fontFamily: 'monospace',
-                fontSize: 10,
-                color: '#0a0012'
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#ff00ff',
+                letterSpacing: 2
+            }}>
+                📱 SCAN TO PLAY
+            </div>
+            <QRCode value="https://jam.gimongous.net" size={140} />
+            <div style={{
+                textAlign: 'center',
+                marginTop: 10,
+                fontFamily: 'monospace',
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#0a0020'
             }}>
                 jam.gimongous.net
             </div>
+            <style>{`
+                @keyframes qrPulse {
+                    0%, 100% { box-shadow: 0 0 40px rgba(0,255,255,0.6), 0 0 80px rgba(255,0,255,0.4); }
+                    50% { box-shadow: 0 0 60px rgba(0,255,255,0.8), 0 0 100px rgba(255,0,255,0.6); }
+                }
+            `}</style>
         </div>
     );
 }
@@ -1532,17 +1640,46 @@ function PlayerList({ players, gameState }) {
             top: 20,
             left: 20,
             fontFamily: 'monospace',
-            color: '#fff',
-            textShadow: '0 0 10px #ff00ff',
-            zIndex: 1000
+            zIndex: 1000,
+            background: 'rgba(0, 0, 20, 0.85)',
+            borderRadius: 12,
+            padding: 16,
+            border: isRacing ? '2px solid rgba(255,0,255,0.6)' : '2px solid rgba(0,255,255,0.4)',
+            boxShadow: isRacing 
+                ? '0 0 20px rgba(255,0,255,0.3)' 
+                : '0 0 20px rgba(0,255,255,0.2)',
+            minWidth: 200
         }}>
-            <div style={{ fontSize: 14, marginBottom: 8, opacity: 0.7 }}>
-                {isRacing ? '🎭 MASKED RACERS' : 'PLAYERS'}: {activePlayers.length}
+            {/* Header */}
+            <div style={{ 
+                fontSize: 12, 
+                marginBottom: 12, 
+                letterSpacing: 2,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: isRacing ? '#ff00ff' : '#00ffff',
+                textShadow: isRacing ? '0 0 10px #ff00ff' : '0 0 10px #00ffff'
+            }}>
+                {isRacing ? (
+                    <>
+                        <span style={{ fontSize: 16 }}>�</span>
+                        <span>RACERS</span>
+                        <span style={{ marginLeft: 'auto', opacity: 0.8 }}>{activePlayers.length}</span>
+                    </>
+                ) : (
+                    <>
+                        <span>PLAYERS</span>
+                        <span style={{ marginLeft: 'auto', opacity: 0.8 }}>{activePlayers.length}</span>
+                    </>
+                )}
             </div>
+            
             {activePlayers.map(([id, player], index) => {
-                // During race, hide real identity
+                // During race, hide real identity with masked name
                 const displayName = isRacing
-                    ? `MASKED RACER #${index + 1}`
+                    ? `RACER #${index + 1}`
                     : player.name;
                 const maskIcon = MASK_ICONS[player.maskType] || '🎭';
 
@@ -1554,49 +1691,79 @@ function PlayerList({ players, gameState }) {
                     <div key={id} style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
-                        marginBottom: 4,
-                        animation: isLowHP ? 'pulse 0.5s infinite' : 'none'
+                        gap: 10,
+                        marginBottom: 8,
+                        padding: '8px 10px',
+                        background: isRacing 
+                            ? 'rgba(255,0,255,0.1)' 
+                            : 'rgba(255,255,255,0.05)',
+                        borderRadius: 8,
+                        border: isLowHP 
+                            ? '1px solid rgba(255,0,0,0.5)' 
+                            : '1px solid rgba(255,255,255,0.1)',
+                        animation: isLowHP ? 'playerPulse 0.5s infinite' : 'none'
                     }}>
-                        {/* Mask icon instead of color dot */}
+                        {/* Mask icon with glow */}
                         <span style={{
-                            fontSize: 16,
-                            filter: `drop-shadow(0 0 ${4 + glowIntensity * 6}px ${player.color})`,
-                            opacity: 0.5 + glowIntensity * 0.5
+                            fontSize: 20,
+                            filter: `drop-shadow(0 0 ${4 + glowIntensity * 8}px ${player.color})`,
+                            opacity: 0.6 + glowIntensity * 0.4
                         }}>
                             {maskIcon}
                         </span>
-                        <span style={{
-                            fontSize: 12,
-                            color: isRacing ? '#aaa' : '#fff'
-                        }}>
-                            {displayName}
-                        </span>
-                        <div style={{
-                            width: 60,
-                            height: 6,
-                            backgroundColor: '#333',
-                            borderRadius: 3,
-                            overflow: 'hidden',
-                            boxShadow: isLowHP ? '0 0 8px #ff0000' : 'none'
-                        }}>
+                        
+                        {/* Name and HP */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{
-                                width: `${player.hp}%`,
-                                height: '100%',
-                                backgroundColor: player.hp > 50 ? '#00ff00' : player.hp > 25 ? '#ffff00' : '#ff0000',
-                                transition: 'width 0.2s',
-                                boxShadow: `inset 0 0 ${glowIntensity * 10}px rgba(255,255,255,0.3)`
-                            }} />
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: isRacing ? '#ccc' : '#fff',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                textShadow: isRacing 
+                                    ? 'none' 
+                                    : `0 0 8px ${player.color}`
+                            }}>
+                                {displayName}
+                            </div>
+                            <div style={{
+                                width: '100%',
+                                height: 5,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                                borderRadius: 3,
+                                overflow: 'hidden',
+                                marginTop: 4
+                            }}>
+                                <div style={{
+                                    width: `${player.hp}%`,
+                                    height: '100%',
+                                    backgroundColor: player.hp > 50 ? '#00ff00' : player.hp > 25 ? '#ffff00' : '#ff0000',
+                                    transition: 'width 0.2s',
+                                    boxShadow: `0 0 ${glowIntensity * 8}px currentColor`
+                                }} />
+                            </div>
                         </div>
+                        
+                        {/* HP Number */}
+                        <span style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: player.hp > 50 ? '#00ff00' : player.hp > 25 ? '#ffff00' : '#ff0000',
+                            minWidth: 28,
+                            textAlign: 'right'
+                        }}>
+                            {Math.round(player.hp)}
+                        </span>
                     </div>
                 );
             })}
 
             {/* CSS Animation for low HP pulse */}
             <style>{`
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
+                @keyframes playerPulse {
+                    0%, 100% { opacity: 1; border-color: rgba(255,0,0,0.5); }
+                    50% { opacity: 0.7; border-color: rgba(255,0,0,0.8); }
                 }
             `}</style>
         </div>
@@ -1684,6 +1851,9 @@ export default function App() {
 
     // Performance monitoring
     const [performanceStats, setPerformanceStats] = useState({ fps: 60, drawCalls: 0, particles: 0 });
+    
+    // Admin panel visibility
+    const [adminPanelVisible, setAdminPanelVisible] = useState(true);
 
     // Audio Hook
     const { initAudio, playSfx, setMusicStyle, setEngineRpm } = useAudio(connected);
@@ -1984,6 +2154,10 @@ export default function App() {
                         showToast('No CPUs to remove', 'error');
                     }
                     break;
+                case 'tab': // Tab - Toggle admin panel
+                    e.preventDefault();
+                    setAdminPanelVisible(v => !v);
+                    break;
                 default:
                     break;
             }
@@ -2042,7 +2216,7 @@ export default function App() {
 
             {/* Admin UI */}
             <ToastNotification toasts={toasts} setToasts={setToasts} />
-            <PerformanceOverlay stats={performanceStats} visible={graphicsSettings.showPerformance} />
+            <PerformanceOverlay stats={performanceStats} visible={graphicsSettings.showPerformance && adminPanelVisible} />
             <AdminPanel
                 socket={socket}
                 tracks={trackList}
@@ -2053,6 +2227,8 @@ export default function App() {
                 graphicsSettings={graphicsSettings}
                 onGraphicsChange={setGraphicsSettings}
                 performanceStats={performanceStats}
+                visible={adminPanelVisible}
+                onToggleVisible={() => setAdminPanelVisible(v => !v)}
             />
 
             {!connected && (
